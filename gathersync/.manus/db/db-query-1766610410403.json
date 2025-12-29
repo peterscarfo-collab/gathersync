@@ -1,0 +1,9 @@
+{
+  "query": "DELETE FROM participants \nWHERE id IN (\n  SELECT id FROM (\n    SELECT id, ROW_NUMBER() OVER (PARTITION BY eventId, email ORDER BY id) as rn\n    FROM participants\n    WHERE email = 'lynnette.glory@gmail.com'\n  ) t\n  WHERE rn > 1\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute DELETE FROM participants \nWHERE id IN (\n  SELECT id FROM (\n    SELECT id, ROW_NUMBER() OVER (PARTITION BY eventId, email ORDER BY id) as rn\n    FROM participants\n    WHERE email = 'lynnette.glory@gmail.com'\n  ) t\n  WHERE rn > 1\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1579
+}

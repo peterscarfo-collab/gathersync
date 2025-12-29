@@ -1,0 +1,24 @@
+{
+  "query": "SELECT p.id, p.eventId, p.name, p.email, p.phone\nFROM participants p\nWHERE p.name = 'Lynnette Glory' OR p.email = 'lynnette.glory@gmail.com'\nORDER BY p.eventId, p.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT p.id, p.eventId, p.name, p.email, p.phone\nFROM participants p\nWHERE p.name = 'Lynnette Glory' OR p.email = 'lynnette.glory@gmail.com'\nORDER BY p.eventId, p.id;",
+  "rows": [
+    {
+      "id": "1766468198710-i65h6xfzb",
+      "eventId": "1766468138623-eqr7wnne9",
+      "name": "Lynnette Glory",
+      "email": "Lynnette.fl",
+      "phone": "0414686104"
+    },
+    {
+      "id": "1766468235087-e4leojeq6",
+      "eventId": "1766468138623-eqr7wnne9",
+      "name": "Lynnette Glory",
+      "email": "NULL",
+      "phone": "0414686104"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\teventId\tname\temail\tphone\n1766468198710-i65h6xfzb\t1766468138623-eqr7wnne9\tLynnette Glory\tLynnette.fl\t0414686104\n1766468235087-e4leojeq6\t1766468138623-eqr7wnne9\tLynnette Glory\tNULL\t0414686104\n",
+  "stderr": "",
+  "execution_time_ms": 1510
+}

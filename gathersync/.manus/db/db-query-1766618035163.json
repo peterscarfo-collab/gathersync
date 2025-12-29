@@ -1,0 +1,16 @@
+{
+  "query": "SELECT subscriptionTier, subscriptionStatus, stripeSubscriptionId, isLifetimePro FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT subscriptionTier, subscriptionStatus, stripeSubscriptionId, isLifetimePro FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%';",
+  "rows": [
+    {
+      "subscriptionTier": "free",
+      "subscriptionStatus": "active",
+      "stripeSubscriptionId": "NULL",
+      "isLifetimePro": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "subscriptionTier\tsubscriptionStatus\tstripeSubscriptionId\tisLifetimePro\nfree\tactive\tNULL\t0\n",
+  "stderr": "",
+  "execution_time_ms": 1517
+}

@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, email, name, \"subscriptionTier\", \"subscriptionStatus\", \"trialEndsAt\", \"stripeCustomerId\" FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%' ORDER BY \"createdAt\" DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, email, name, \"subscriptionTier\", \"subscriptionStatus\", \"trialEndsAt\", \"stripeCustomerId\" FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%' ORDER BY \"createdAt\" DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "2343023",
+      "email": "lynnette.glory@gmail.com",
+      "name": "Lynnette Glory",
+      "subscriptionTier": "subscriptionTier",
+      "subscriptionStatus": "subscriptionStatus",
+      "trialEndsAt": "trialEndsAt",
+      "stripeCustomerId": "stripeCustomerId"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\temail\tname\tsubscriptionTier\tsubscriptionStatus\ttrialEndsAt\tstripeCustomerId\n2343023\tlynnette.glory@gmail.com\tLynnette Glory\tsubscriptionTier\tsubscriptionStatus\ttrialEndsAt\tstripeCustomerId\n",
+  "stderr": "",
+  "execution_time_ms": 1621
+}

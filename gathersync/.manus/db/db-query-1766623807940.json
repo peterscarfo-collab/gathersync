@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, name, email, subscriptionTier, stripeCustomerId FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, email, subscriptionTier, stripeCustomerId FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "2343023",
+      "name": "Lynnette Glory",
+      "email": "lynnette.glory@gmail.com",
+      "subscriptionTier": "lite",
+      "stripeCustomerId": "cus_test_lite"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tsubscriptionTier\tstripeCustomerId\n2343023\tLynnette Glory\tlynnette.glory@gmail.com\tlite\tcus_test_lite\n",
+  "stderr": "",
+  "execution_time_ms": 1595
+}

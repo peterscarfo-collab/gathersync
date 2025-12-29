@@ -1,0 +1,17 @@
+{
+  "query": "SELECT p.id, p.name, p.rsvpStatus, p.eventId, e.name as eventName FROM participants p JOIN events e ON p.eventId = e.id ORDER BY p.createdAt DESC LIMIT 10",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT p.id, p.name, p.rsvpStatus, p.eventId, e.name as eventName FROM participants p JOIN events e ON p.eventId = e.id ORDER BY p.createdAt DESC LIMIT 10",
+  "rows": [
+    {
+      "id": "1766439631719-imb7jgm2l",
+      "name": "Carlo Lauricella",
+      "rsvpStatus": "attending",
+      "eventId": "1766439535837-ltm6p6q35",
+      "eventName": "Test Event"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\trsvpStatus\teventId\teventName\n1766439631719-imb7jgm2l\tCarlo Lauricella\tattending\t1766439535837-ltm6p6q35\tTest Event\n",
+  "stderr": "",
+  "execution_time_ms": 1537
+}

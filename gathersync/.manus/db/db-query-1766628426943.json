@@ -1,0 +1,26 @@
+{
+  "query": "SELECT id, openId, email, name, subscriptionTier, subscriptionStatus FROM users ORDER BY lastSignedIn DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, openId, email, name, subscriptionTier, subscriptionStatus FROM users ORDER BY lastSignedIn DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "openId": "Zi4EbyiQ9vpPqw5pH2FRL6",
+      "email": "peter.scarfo@gmail.com",
+      "name": "Peter Scarfo",
+      "subscriptionTier": "pro",
+      "subscriptionStatus": "active"
+    },
+    {
+      "id": "2343023",
+      "openId": "bTxaRA3bvhWkfD8Lv6ZPTc",
+      "email": "lynnette.glory@gmail.com",
+      "name": "Lynnette Glory",
+      "subscriptionTier": "lite",
+      "subscriptionStatus": "active"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\topenId\temail\tname\tsubscriptionTier\tsubscriptionStatus\n1\tZi4EbyiQ9vpPqw5pH2FRL6\tpeter.scarfo@gmail.com\tPeter Scarfo\tpro\tactive\n2343023\tbTxaRA3bvhWkfD8Lv6ZPTc\tlynnette.glory@gmail.com\tLynnette Glory\tlite\tactive\n",
+  "stderr": "",
+  "execution_time_ms": 1535
+}

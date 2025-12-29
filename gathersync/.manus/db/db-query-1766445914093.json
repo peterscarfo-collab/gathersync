@@ -1,0 +1,13 @@
+{
+  "query": "SELECT COUNT(*) as total FROM events;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT COUNT(*) as total FROM events;",
+  "rows": [
+    {
+      "total": "2"
+    }
+  ],
+  "messages": [],
+  "stdout": "total\n2\n",
+  "stderr": "",
+  "execution_time_ms": 1568
+}

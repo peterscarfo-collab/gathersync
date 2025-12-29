@@ -1,0 +1,38 @@
+{
+  "query": "SELECT id, name, month, year, DATE_FORMAT(createdAt, '%Y-%m-%d %H:%i:%s') as created FROM events ORDER BY name, createdAt;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, month, year, DATE_FORMAT(createdAt, '%Y-%m-%d %H:%i:%s') as created FROM events ORDER BY name, createdAt;",
+  "rows": [
+    {
+      "id": "1766350692880-ya1otlgkp",
+      "name": "AI Guys",
+      "month": "1",
+      "year": "2026",
+      "created": "2025-12-22 00:50:25"
+    },
+    {
+      "id": "1766436668285-y2fkjfth1",
+      "name": "AI Guys",
+      "month": "1",
+      "year": "2026",
+      "created": "2025-12-22 20:51:10"
+    },
+    {
+      "id": "1766350843647-jxzln8dpr",
+      "name": "Guru Breakfast",
+      "month": "1",
+      "year": "2026",
+      "created": "2025-12-22 00:50:28"
+    },
+    {
+      "id": "1766436668297-3sulvn9oc",
+      "name": "Guru Breakfast",
+      "month": "1",
+      "year": "2026",
+      "created": "2025-12-22 20:51:13"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tmonth\tyear\tcreated\n1766350692880-ya1otlgkp\tAI Guys\t1\t2026\t2025-12-22 00:50:25\n1766436668285-y2fkjfth1\tAI Guys\t1\t2026\t2025-12-22 20:51:10\n1766350843647-jxzln8dpr\tGuru Breakfast\t1\t2026\t2025-12-22 00:50:28\n1766436668297-3sulvn9oc\tGuru Breakfast\t1\t2026\t2025-12-22 20:51:13\n",
+  "stderr": "",
+  "execution_time_ms": 1561
+}

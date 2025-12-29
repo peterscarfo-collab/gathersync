@@ -1,0 +1,7 @@
+# Netlify redirects file for GatherSync marketing site
+
+# Redirect /app to Manus-hosted app (will be configured after deployment)
+/app/* https://8081-ienb1rj930k0x92csc3x6-a41ba8ee.manus-asia.computer/:splat 200
+
+# SPA fallback for client-side routing
+/*  /index.html  200

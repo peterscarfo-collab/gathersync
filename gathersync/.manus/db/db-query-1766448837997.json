@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO participants (id, eventId, name, phone, email, availability, unavailableAllMonth, source, rsvpStatus)\nVALUES \n  ('1766445370242-b14tfbx2x', '1766445207002-v6qh4gt8z', 'Mr Peter Scarfo', '+61419294386', 'peter@peterscarfo.com', '{}', false, 'contacts', 'not-attending'),\n  ('1766445406657-8ydagaxon', '1766445207002-v6qh4gt8z', 'Carlo Lauricella', '0412 411 404', 'carlo.lauricella@appliedtraining.com.au', '{}', false, 'contacts', 'attending');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute INSERT INTO participants (id, eventId, name, phone, email, availability, unavailableAllMonth, source, rsvpStatus)\nVALUES \n  ('1766445370242-b14tfbx2x', '1766445207002-v6qh4gt8z', 'Mr Peter Scarfo', '+61419294386', 'peter@peterscarfo.com', '{}', false, 'contacts', 'not-attending'),\n  ('1766445406657-8ydagaxon', '1766445207002-v6qh4gt8z', 'Carlo Lauricella', '0412 411 404', 'carlo.lauricella@appliedtraining.com.au', '{}', false, 'contacts', 'attending');",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1529
+}

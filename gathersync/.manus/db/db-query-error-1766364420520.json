@@ -1,0 +1,8 @@
+{
+  "query": "SELECT e.id, e.name, COUNT(p.id) as participant_count FROM events e LEFT JOIN participants p ON e.id = p.\"eventId\" GROUP BY e.id, e.name ORDER BY e.\"createdAt\" DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT e.id, e.name, COUNT(p.id) as participant_count FROM events e LEFT JOIN participants p ON e.id = p.\"eventId\" GROUP BY e.id, e.name ORDER BY e.\"createdAt\" DESC;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 1: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 1 column 114 near \"\"eventId\" GROUP BY e.id, e.name ORDER BY e.\"createdAt\" DESC\""
+  ]
+}

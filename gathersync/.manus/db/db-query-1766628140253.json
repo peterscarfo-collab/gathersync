@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, email, name, subscriptionTier, subscriptionStatus, subscriptionSource, trialUsed FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, email, name, subscriptionTier, subscriptionStatus, subscriptionSource, trialUsed FROM users WHERE email LIKE '%lynnette%' OR name LIKE '%Lynnette%';",
+  "rows": [
+    {
+      "id": "2343023",
+      "email": "lynnette.glory@gmail.com",
+      "name": "Lynnette Glory",
+      "subscriptionTier": "lite",
+      "subscriptionStatus": "active",
+      "subscriptionSource": "trial",
+      "trialUsed": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\temail\tname\tsubscriptionTier\tsubscriptionStatus\tsubscriptionSource\ttrialUsed\n2343023\tlynnette.glory@gmail.com\tLynnette Glory\tlite\tactive\ttrial\t1\n",
+  "stderr": "",
+  "execution_time_ms": 1521
+}

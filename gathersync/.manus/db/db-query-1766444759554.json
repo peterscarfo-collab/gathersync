@@ -1,0 +1,108 @@
+{
+  "query": "SELECT id, name, month, year, createdAt FROM events ORDER BY name, createdAt;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, month, year, createdAt FROM events ORDER BY name, createdAt;",
+  "rows": [
+    {
+      "id": "1766442020361-ngv9n55qm",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 22:21:12"
+    },
+    {
+      "id": "1766444336231-pjmuy7hvo",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:02:17"
+    },
+    {
+      "id": "1766444540269-yqbxxk6ov",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:00"
+    },
+    {
+      "id": "1766444545122-c2e0kjvxw",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:04"
+    },
+    {
+      "id": "1766444575149-vfsnzbxib",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:07"
+    },
+    {
+      "id": "1766444605364-jhchqtiof",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:11"
+    },
+    {
+      "id": "1766444633257-ifsko3z45",
+      "name": "Breakfast meeting test",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:15"
+    },
+    {
+      "id": "1766439535837-ltm6p6q35",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 21:39:05"
+    },
+    {
+      "id": "1766444336220-3oi4uirl9",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:02:15"
+    },
+    {
+      "id": "1766444540261-2m20w8d6j",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:03:59"
+    },
+    {
+      "id": "1766444545120-a5f8rdvlk",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:02"
+    },
+    {
+      "id": "1766444575147-zba16irs9",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:06"
+    },
+    {
+      "id": "1766444605362-2werwewrc",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:09"
+    },
+    {
+      "id": "1766444633255-g7uucwwzt",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "createdAt": "2025-12-22 23:04:13"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tmonth\tyear\tcreatedAt\n1766442020361-ngv9n55qm\tBreakfast meeting test\t12\t2025\t2025-12-22 22:21:12\n1766444336231-pjmuy7hvo\tBreakfast meeting test\t12\t2025\t2025-12-22 23:02:17\n1766444540269-yqbxxk6ov\tBreakfast meeting test\t12\t2025\t2025-12-22 23:04:00\n1766444545122-c2e0kjvxw\tBreakfast meeting test\t12\t2025\t2025-12-22 23:04:04\n1766444575149-vfsnzbxib\tBreakfast meeting test\t12\t2025\t2025-12-22 23:04:07\n1766444605364-jhchqtiof\tBreakfast meeting test\t12\t2025\t2025-12-22 23:04:11\n1766444633257-ifsko3z45\tBreakfast meeting test\t12\t2025\t2025-12-22 23:04:15\n1766439535837-ltm6p6q35\tTest Event\t12\t2025\t2025-12-22 21:39:05\n1766444336220-3oi4uirl9\tTest Event\t12\t2025\t2025-12-22 23:02:15\n1766444540261-2m20w8d6j\tTest Event\t12\t2025\t2025-12-22 23:03:59\n1766444545120-a5f8rdvlk\tTest Event\t12\t2025\t2025-12-22 23:04:02\n1766444575147-zba16irs9\tTest Event\t12\t2025\t2025-12-22 23:04:06\n1766444605362-2werwewrc\tTest Event\t12\t2025\t2025-12-22 23:04:09\n1766444633255-g7uucwwzt\tTest Event\t12\t2025\t2025-12-22 23:04:13\n",
+  "stderr": "",
+  "execution_time_ms": 1637
+}

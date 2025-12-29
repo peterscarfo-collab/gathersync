@@ -1,0 +1,55 @@
+{
+  "query": "SELECT id, name, month, year, \"eventType\", \"createdAt\", \"updatedAt\" FROM events ORDER BY \"createdAt\" DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, month, year, \"eventType\", \"createdAt\", \"updatedAt\" FROM events ORDER BY \"createdAt\" DESC;",
+  "rows": [
+    {
+      "id": "1766445207002-v6qh4gt8z",
+      "name": "Test Event",
+      "month": "12",
+      "year": "2025",
+      "eventType": "eventType",
+      "createdAt": "createdAt",
+      "updatedAt": "updatedAt"
+    },
+    {
+      "id": "1766445278661-s9d0f3j84",
+      "name": "Breakfast Meeting",
+      "month": "12",
+      "year": "2025",
+      "eventType": "eventType",
+      "createdAt": "createdAt",
+      "updatedAt": "updatedAt"
+    },
+    {
+      "id": "1766450413821-en6iudfdm",
+      "name": "AI Guys",
+      "month": "1",
+      "year": "2026",
+      "eventType": "eventType",
+      "createdAt": "createdAt",
+      "updatedAt": "updatedAt"
+    },
+    {
+      "id": "1766450715124-e3c2f45i2",
+      "name": "Guru Breakfast",
+      "month": "1",
+      "year": "2026",
+      "eventType": "eventType",
+      "createdAt": "createdAt",
+      "updatedAt": "updatedAt"
+    },
+    {
+      "id": "1766450895727-exhyd31kf",
+      "name": "Test New Year lunch",
+      "month": "1",
+      "year": "2025",
+      "eventType": "eventType",
+      "createdAt": "createdAt",
+      "updatedAt": "updatedAt"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tmonth\tyear\teventType\tcreatedAt\tupdatedAt\n1766445207002-v6qh4gt8z\tTest Event\t12\t2025\teventType\tcreatedAt\tupdatedAt\n1766445278661-s9d0f3j84\tBreakfast Meeting\t12\t2025\teventType\tcreatedAt\tupdatedAt\n1766450413821-en6iudfdm\tAI Guys\t1\t2026\teventType\tcreatedAt\tupdatedAt\n1766450715124-e3c2f45i2\tGuru Breakfast\t1\t2026\teventType\tcreatedAt\tupdatedAt\n1766450895727-exhyd31kf\tTest New Year lunch\t1\t2025\teventType\tcreatedAt\tupdatedAt\n",
+  "stderr": "",
+  "execution_time_ms": 1685
+}

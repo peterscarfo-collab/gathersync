@@ -1,0 +1,35 @@
+{
+  "query": "SELECT id, name, eventType FROM events LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, eventType FROM events LIMIT 5;",
+  "rows": [
+    {
+      "id": "1766445207002-v6qh4gt8z",
+      "name": "Test Event",
+      "eventType": "fixed"
+    },
+    {
+      "id": "1766445278661-s9d0f3j84",
+      "name": "Breakfast Meeting",
+      "eventType": "fixed"
+    },
+    {
+      "id": "1766450413821-en6iudfdm",
+      "name": "AI Guys",
+      "eventType": "fixed"
+    },
+    {
+      "id": "1766450715124-e3c2f45i2",
+      "name": "Guru Breakfast",
+      "eventType": "fixed"
+    },
+    {
+      "id": "1766450895727-exhyd31kf",
+      "name": "Test New Year lunch",
+      "eventType": "flexible"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\teventType\n1766445207002-v6qh4gt8z\tTest Event\tfixed\n1766445278661-s9d0f3j84\tBreakfast Meeting\tfixed\n1766450413821-en6iudfdm\tAI Guys\tfixed\n1766450715124-e3c2f45i2\tGuru Breakfast\tfixed\n1766450895727-exhyd31kf\tTest New Year lunch\tflexible\n",
+  "stderr": "",
+  "execution_time_ms": 1793
+}

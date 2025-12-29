@@ -1,0 +1,46 @@
+{
+  "query": "SELECT id, name, \"eventType\", month, year, \"fixedDate\", \"fixedTime\" FROM events ORDER BY \"createdAt\" DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, name, \"eventType\", month, year, \"fixedDate\", \"fixedTime\" FROM events ORDER BY \"createdAt\" DESC;",
+  "rows": [
+    {
+      "id": "1766350692880-ya1otlgkp",
+      "name": "AI Guys",
+      "eventType": "eventType",
+      "month": "1",
+      "year": "2026",
+      "fixedDate": "fixedDate",
+      "fixedTime": "fixedTime"
+    },
+    {
+      "id": "1766350843647-jxzln8dpr",
+      "name": "Guru Breakfast",
+      "eventType": "eventType",
+      "month": "1",
+      "year": "2026",
+      "fixedDate": "fixedDate",
+      "fixedTime": "fixedTime"
+    },
+    {
+      "id": "1766363982541-3ar01tw87",
+      "name": "Guru Breakfast",
+      "eventType": "eventType",
+      "month": "1",
+      "year": "2026",
+      "fixedDate": "fixedDate",
+      "fixedTime": "fixedTime"
+    },
+    {
+      "id": "1766363982541-bp0nj2lfe",
+      "name": "AI Guys",
+      "eventType": "eventType",
+      "month": "1",
+      "year": "2026",
+      "fixedDate": "fixedDate",
+      "fixedTime": "fixedTime"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\teventType\tmonth\tyear\tfixedDate\tfixedTime\n1766350692880-ya1otlgkp\tAI Guys\teventType\t1\t2026\tfixedDate\tfixedTime\n1766350843647-jxzln8dpr\tGuru Breakfast\teventType\t1\t2026\tfixedDate\tfixedTime\n1766363982541-3ar01tw87\tGuru Breakfast\teventType\t1\t2026\tfixedDate\tfixedTime\n1766363982541-bp0nj2lfe\tAI Guys\teventType\t1\t2026\tfixedDate\tfixedTime\n",
+  "stderr": "",
+  "execution_time_ms": 2778
+}

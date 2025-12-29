@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO events (id, userId, name, eventType, month, year, fixedDate, fixedTime, meetingType, createdAt, updatedAt, archived, finalized)\nVALUES (\n  '1766445278661-s9d0f3j84',\n  (SELECT id FROM users LIMIT 1),\n  'Breakfast Meeting',\n  'fixed',\n  12,\n  2025,\n  '2025-12-24',\n  '10:00',\n  'in-person',\n  '2025-12-22 23:14:38',\n  '2025-12-22 23:22:52',\n  false,\n  false\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute INSERT INTO events (id, userId, name, eventType, month, year, fixedDate, fixedTime, meetingType, createdAt, updatedAt, archived, finalized)\nVALUES (\n  '1766445278661-s9d0f3j84',\n  (SELECT id FROM users LIMIT 1),\n  'Breakfast Meeting',\n  'fixed',\n  12,\n  2025,\n  '2025-12-24',\n  '10:00',\n  'in-person',\n  '2025-12-22 23:14:38',\n  '2025-12-22 23:22:52',\n  false,\n  false\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1566
+}

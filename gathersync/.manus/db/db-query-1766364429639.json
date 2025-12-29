@@ -1,0 +1,30 @@
+{
+  "query": "SELECT e.id, e.name, COUNT(p.id) as participant_count FROM events e LEFT JOIN participants p ON e.id = p.eventId GROUP BY e.id, e.name;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT e.id, e.name, COUNT(p.id) as participant_count FROM events e LEFT JOIN participants p ON e.id = p.eventId GROUP BY e.id, e.name;",
+  "rows": [
+    {
+      "id": "1766363982541-3ar01tw87",
+      "name": "Guru Breakfast",
+      "participant_count": "0"
+    },
+    {
+      "id": "1766350692880-ya1otlgkp",
+      "name": "AI Guys",
+      "participant_count": "3"
+    },
+    {
+      "id": "1766350843647-jxzln8dpr",
+      "name": "Guru Breakfast",
+      "participant_count": "2"
+    },
+    {
+      "id": "1766363982541-bp0nj2lfe",
+      "name": "AI Guys",
+      "participant_count": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tparticipant_count\n1766363982541-3ar01tw87\tGuru Breakfast\t0\n1766350692880-ya1otlgkp\tAI Guys\t3\n1766350843647-jxzln8dpr\tGuru Breakfast\t2\n1766363982541-bp0nj2lfe\tAI Guys\t0\n",
+  "stderr": "",
+  "execution_time_ms": 1533
+}

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Success! - GatherSync</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="thank-you.css">
+</head>
+<body>
+    <div class="thank-you-container">
+        <!-- Success Header -->
+        <div class="success-header">
+            <div class="success-icon">
+                <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                    <circle cx="40" cy="40" r="40" fill="#30D158" opacity="0.1"/>
+                    <circle cx="40" cy="40" r="32" fill="#30D158"/>
+                    <path d="M28 40L36 48L52 32" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h1 class="success-title">Event Success!</h1>
+            <p class="success-subtitle">Your event was coordinated perfectly</p>
+        </div>
+
+        <!-- Metrics Section -->
+        <div class="metrics-container">
+            <div class="metric-card">
+                <div class="metric-icon">👥</div>
+                <div class="metric-value" id="peopleCount">15</div>
+                <div class="metric-label">People Coordinated</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">⏰</div>
+                <div class="metric-value" id="timeS saved">2 days</div>
+                <div class="metric-label">Time Saved</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">💬</div>
+                <div class="metric-value" id="messagesSaved">47</div>
+                <div class="metric-label">Messages Avoided</div>
+            </div>
+        </div>
+
+        <!-- Coffee Donation Section -->
+        <div class="donation-section">
+            <div class="donation-header">
+                <h2>Did GatherSync save you time and hassle?</h2>
+                <p>If you found GatherSync helpful, consider buying us a coffee! Your support helps us keep the app free for everyone.</p>
+            </div>
+
+            <div class="donation-amounts">
+                <button class="amount-btn" data-amount="3">
+                    <span class="coffee-icon">☕</span>
+                    <span class="amount-label">$3</span>
+                    <span class="amount-desc">Small Coffee</span>
+                </button>
+                <button class="amount-btn amount-popular" data-amount="5">
+                    <span class="popular-badge">Most Popular</span>
+                    <span class="coffee-icon">☕☕</span>
+                    <span class="amount-label">$5</span>
+                    <span class="amount-desc">Large Coffee</span>
+                </button>
+                <button class="amount-btn" data-amount="10">
+                    <span class="coffee-icon">☕☕☕</span>
+                    <span class="amount-label">$10</span>
+                    <span class="amount-desc">Coffee for the Team</span>
+                </button>
+                <button class="amount-btn amount-custom" data-amount="custom">
+                    <span class="coffee-icon">💝</span>
+                    <span class="amount-label">Custom</span>
+                    <span class="amount-desc">Choose Your Amount</span>
+                </button>
+            </div>
+
+            <!-- Custom Amount Input (hidden by default) -->
+            <div class="custom-amount-container" id="customAmountContainer" style="display: none;">
+                <div class="custom-amount-input">
+                    <span class="currency-symbol">$</span>
+                    <input type="number" id="customAmount" placeholder="10" min="1" max="1000">
+                </div>
+            </div>
+
+            <!-- Donate Button -->
+            <button class="btn-donate" id="donateBtn" disabled>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M10 3.5C10 2.67 10.67 2 11.5 2C12.33 2 13 2.67 13 3.5V4H15C16.1 4 17 4.9 17 6V16C17 17.1 16.1 18 15 18H5C3.9 18 3 17.1 3 16V6C3 4.9 3.9 4 5 4H7V3.5C7 2.67 7.67 2 8.5 2C9.33 2 10 2.67 10 3.5ZM10 8C8.34 8 7 9.34 7 11C7 12.66 8.34 14 10 14C11.66 14 13 12.66 13 11C13 9.34 11.66 8 10 8Z" fill="currentColor"/>
+                </svg>
+                <span id="donateText">Select an amount</span>
+            </button>
+
+            <!-- Skip Button -->
+            <button class="btn-skip" id="skipBtn">
+                Maybe later
+            </button>
+
+            <p class="donation-note">
+                All donations are processed securely through Stripe. You'll receive a receipt via email.
+            </p>
+        </div>
+
+        <!-- Return to App -->
+        <div class="return-section">
+            <a href="#" class="btn-return" id="returnToApp">
+                Return to GatherSync
+            </a>
+        </div>
+    </div>
+
+    <script src="thank-you.js"></script>
+</body>
+</html>

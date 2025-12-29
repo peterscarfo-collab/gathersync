@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "exportedAt": "2025-12-21T03:23:50.628Z",
+  "events": [
+    {
+      "id": "1766267507264-9czqvi886",
+      "name": "Guru Breakfast",
+      "eventType": "fixed",
+      "month": 1,
+      "year": 2026,
+      "fixedDate": "2026-01-21",
+      "fixedTime": "07:15",
+      "participants": [
+        {
+          "id": "1766286486570-ef86fajn6",
+          "name": "Peter Scarfo",
+          "availability": {},
+          "unavailableAllMonth": false,
+          "source": "contacts",
+          "phone": "0419294386",
+          "email": "peter@peterscarfo.com",
+          "rsvpStatus": "attending"
+        }
+      ],
+      "createdAt": "2025-12-20T21:51:47.264Z",
+      "updatedAt": "2025-12-21T03:12:00.843Z",
+      "meetingType": "in-person",
+      "teamLeader": "Mike Schoettler",
+      "venueName": "Kiss the Barista",
+      "venueContact": "Rosie",
+      "venuePhone": "0433582582"
+    }
+  ],
+  "snapshots": [],
+  "templates": []
+}

@@ -1,0 +1,9 @@
+{
+  "query": "DELETE FROM events WHERE name = 'Breakfast Meeting' AND id NOT IN (\n  SELECT DISTINCT e.id \n  FROM events e \n  INNER JOIN participants p ON e.id = p.eventId \n  WHERE e.name = 'Breakfast Meeting'\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute DELETE FROM events WHERE name = 'Breakfast Meeting' AND id NOT IN (\n  SELECT DISTINCT e.id \n  FROM events e \n  INNER JOIN participants p ON e.id = p.eventId \n  WHERE e.name = 'Breakfast Meeting'\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1611
+}

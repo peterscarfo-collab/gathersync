@@ -1,0 +1,18 @@
+{
+  "query": "SELECT id, email, subscriptionTier, subscriptionStatus, stripeSubscriptionId, stripeCustomerId FROM users WHERE email = 'lynnette.glory@gmail.com';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT id, email, subscriptionTier, subscriptionStatus, stripeSubscriptionId, stripeCustomerId FROM users WHERE email = 'lynnette.glory@gmail.com';",
+  "rows": [
+    {
+      "id": "2343023",
+      "email": "lynnette.glory@gmail.com",
+      "subscriptionTier": "pro",
+      "subscriptionStatus": "active",
+      "stripeSubscriptionId": "NULL",
+      "stripeCustomerId": "cus_TfLshxeKhAEGty"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\temail\tsubscriptionTier\tsubscriptionStatus\tstripeSubscriptionId\tstripeCustomerId\n2343023\tlynnette.glory@gmail.com\tpro\tactive\tNULL\tcus_TfLshxeKhAEGty\n",
+  "stderr": "",
+  "execution_time_ms": 1593
+}

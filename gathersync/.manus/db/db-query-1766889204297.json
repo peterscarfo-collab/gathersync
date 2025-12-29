@@ -1,0 +1,18 @@
+{
+  "query": "SELECT name, email, subscriptionTier, subscriptionStatus, isLifetimePro, eventsCreatedThisMonth FROM users WHERE name LIKE '%Peter%'",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT name, email, subscriptionTier, subscriptionStatus, isLifetimePro, eventsCreatedThisMonth FROM users WHERE name LIKE '%Peter%'",
+  "rows": [
+    {
+      "name": "Peter Scarfo",
+      "email": "peter.scarfo@gmail.com",
+      "subscriptionTier": "pro",
+      "subscriptionStatus": "active",
+      "isLifetimePro": "1",
+      "eventsCreatedThisMonth": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "name\temail\tsubscriptionTier\tsubscriptionStatus\tisLifetimePro\teventsCreatedThisMonth\nPeter Scarfo\tpeter.scarfo@gmail.com\tpro\tactive\t1\t0\n",
+  "stderr": "",
+  "execution_time_ms": 1567
+}

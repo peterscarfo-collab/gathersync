@@ -1,0 +1,8 @@
+{
+  "query": "SELECT p.id, p.eventId, p.name, p.email, p.phone, e.title as eventTitle\nFROM participants p\nJOIN events e ON p.eventId = e.id\nWHERE p.name = 'Lynnette Glory' OR p.email = 'lynnette.glory@gmail.com'\nORDER BY p.eventId, p.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user Y6Heg22s6WvxiCe.0062ed04113d --database GpST7r2ZJs9P8QoQn8cBn6 --execute SELECT p.id, p.eventId, p.name, p.email, p.phone, e.title as eventTitle\nFROM participants p\nJOIN events e ON p.eventId = e.id\nWHERE p.name = 'Lynnette Glory' OR p.email = 'lynnette.glory@gmail.com'\nORDER BY p.eventId, p.id;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'e.title' in 'field list'"
+  ]
+}
