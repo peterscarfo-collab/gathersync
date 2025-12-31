@@ -66,18 +66,22 @@ const encodeState = (value: string) => {
   return value;
 };
 
-export const getLoginUrl = () => {
-  // Always use API server callback for OAuth redirect
-  // In production, this will be the Render API server
-  // In development, this will be the local/sandbox API server
-  const redirectUri = `${getApiBaseUrl()}/api/oauth/callback`;
-  const state = encodeState(redirectUri);
+export function getLoginUrl() {
+  const apiBaseUrl = getApiBaseUrl();
 
-  const url = new URL(`${OAUTH_PORTAL_URL}/app-auth`);
+  // ✅ Production / Netlify: send the OAuth callback to Railway
+  // ✅ Manus sandbox: fall back to Linking deep-link URL
+  const redirectUri =
+    apiBaseUrl && apiBaseUrl.startsWith("http")
+      ? `${apiBaseUrl}/api/auth/google/callback`
+      : Linking.createURL("api/oauth/callback", { scheme: env.deepLinkScheme });
+
+  const url = new URL(`${OAUTH_SERVER_URL}/app-auth`);
   url.searchParams.set("appId", APP_ID);
   url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
+  url.searchParams.set("state", encodeState(redirectUri));
   url.searchParams.set("type", "signIn");
 
   return url.toString();
-};
+}
+
