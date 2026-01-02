@@ -1,0 +1,1 @@
+ALTER TABLE `users` MODIFY COLUMN `subscriptionTier` enum('free','lite','pro','enterprise') NOT NULL DEFAULT 'free';

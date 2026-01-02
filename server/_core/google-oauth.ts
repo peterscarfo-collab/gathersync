@@ -1,0 +1,178 @@
+import { recentAuth, AUTH_GRACE_MS } from "./sdk";
+import type { Express, Request, Response } from "express";
+import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
+import { getUserByOpenId, upsertUser } from "../db";
+import { getSessionCookieOptions } from "./cookies";
+import crypto from "crypto";
+
+// Environment variables
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+  throw new Error("Google OAuth not configured");
+}
+
+// In-memory state storage (in production, use Redis or database)
+const stateStore = new Map<string, { created: number }>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, data] of stateStore.entries()) {
+    if (now - data.created > 3600000) {
+      stateStore.delete(state);
+    }
+  }
+}, 3600000);
+
+function generateState(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function getQueryParam(req: Request, key: string): string | undefined {
+  const value = req.query[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+async function syncUser(userInfo: {
+  openId: string;
+  name?: string | null;
+  email?: string | null;
+}) {
+  const lastSignedIn = new Date();
+  await upsertUser({
+    openId: userInfo.openId,
+    name: userInfo.name || null,
+    email: userInfo.email ?? null,
+    loginMethod: "google",
+    lastSignedIn,
+  });
+
+  return (
+    (await getUserByOpenId(userInfo.openId)) ?? {
+      openId: userInfo.openId,
+      name: userInfo.name,
+      email: userInfo.email,
+      loginMethod: "google",
+      lastSignedIn,
+    }
+  );
+}
+
+function generateSessionToken(userId: number, openId: string): string {
+  const payload = JSON.stringify({ userId, openId, created: Date.now() });
+  return Buffer.from(payload).toString("base64");
+}
+
+export function registerGoogleOAuthRoutes(app: Express) {
+  app.get("/api/auth/google", (_req: Request, res: Response) => {
+    const state = generateState();
+    stateStore.set(state, { created: Date.now() });
+
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID!,
+      redirect_uri: GOOGLE_REDIRECT_URI!,
+      response_type: "code",
+      scope: "openid email profile",
+      state,
+      access_type: "offline",
+      prompt: "consent",
+    });
+
+    res.redirect(
+      `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+    );
+  });
+
+  app.get("/api/auth/google/callback", async (req: Request, res: Response) => {
+    const code = getQueryParam(req, "code");
+    const state = getQueryParam(req, "state");
+    const error = getQueryParam(req, "error");
+    const frontendUrl =
+      process.env.FRONTEND_URL || "https://app.gathersync.app";
+
+    if (error) {
+      return res.redirect(
+        `${frontendUrl}/?auth=failed&reason=${encodeURIComponent(error)}`
+      );
+    }
+
+    if (!code || !state || !stateStore.has(state)) {
+      return res.redirect(
+        `${frontendUrl}/?auth=failed&reason=invalid_state`
+      );
+    }
+
+    stateStore.delete(state);
+
+    try {
+      const tokenResponse = await fetch(
+        "https://oauth2.googleapis.com/token",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_CLIENT_ID!,
+            client_secret: GOOGLE_CLIENT_SECRET!,
+            redirect_uri: GOOGLE_REDIRECT_URI!,
+            grant_type: "authorization_code",
+          }),
+        }
+      );
+
+      if (!tokenResponse.ok) {
+        throw new Error("Token exchange failed");
+      }
+
+      const tokens = await tokenResponse.json();
+
+      const userInfoResponse = await fetch(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+          },
+        }
+      );
+
+      if (!userInfoResponse.ok) {
+        throw new Error("Userinfo request failed");
+      }
+
+      const googleUser = await userInfoResponse.json();
+
+      const user = await syncUser({
+        openId: googleUser.id,
+        name: googleUser.name,
+        email: googleUser.email,
+      });
+
+      const sessionToken = generateSessionToken(
+        (user as any).id ?? 0,
+        user.openId
+      );
+
+      res.cookie(COOKIE_NAME, sessionToken, {
+        ...getSessionCookieOptions(req),
+        maxAge: ONE_YEAR_MS,
+      });
+
+	recentAuth.set(sessionToken, {
+  	token: sessionToken,
+  	expires: Date.now() + AUTH_GRACE_MS,
+	});
+
+      return res.redirect(
+        `${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`
+      );
+    } catch (err: any) {
+      return res.redirect(
+        `${frontendUrl}/?auth=failed&reason=${encodeURIComponent(
+          err?.message || "oauth_failed"
+        )}`
+      );
+    }
+  });
+}

@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "GatherSync",
+    "slug": "gathersync",
+    "scheme": "gathersync",
+    "platforms": ["web"],
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    }
+  }
+}
