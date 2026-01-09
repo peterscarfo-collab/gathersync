@@ -1,3 +1,4 @@
+import { createOAuthState, verifyOAuthState } from "./oauthState";
 import { recentAuth, AUTH_GRACE_MS } from "./sdk";
 import type { Express, Request, Response } from "express";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
@@ -67,10 +68,8 @@ function generateSessionToken(userId: number, openId: string): string {
 
 export function registerGoogleOAuthRoutes(app: Express) {
   app.get("/api/auth/google", (_req: Request, res: Response) => {
-    const state = generateState();
-    stateStore.set(state, { created: Date.now() });
-
-    const params = new URLSearchParams({
+    const state = createOAuthState();
+const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
       redirect_uri: GOOGLE_REDIRECT_URI!,
       response_type: "code",
@@ -89,19 +88,20 @@ export function registerGoogleOAuthRoutes(app: Express) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
-    const frontendUrl =
-      process.env.FRONTEND_URL || "https://app.gathersync.app";
+    const frontendUrl = process.env.FRONTEND_URL || "gathersync:///oauth/callback";
+
+    const redirectWithParams = (params: Record<string, string>) => {
+      const u = new URL(frontendUrl);
+      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+      return res.redirect(u.toString());
+    };
 
     if (error) {
-      return res.redirect(
-        `${frontendUrl}/?auth=failed&reason=${encodeURIComponent(error)}`
-      );
+      return redirectWithParams({ error });
     }
 
     if (!code || !state || !stateStore.has(state)) {
-      return res.redirect(
-        `${frontendUrl}/?auth=failed&reason=invalid_state`
-      );
+      return redirectWithParams({ error: "invalid_state" });
     }
 
     stateStore.delete(state);
@@ -164,15 +164,11 @@ export function registerGoogleOAuthRoutes(app: Express) {
   	expires: Date.now() + AUTH_GRACE_MS,
 	});
 
-      return res.redirect(
-        `${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`
-      );
+      return redirectWithParams({ sessionToken });
     } catch (err: any) {
-      return res.redirect(
-        `${frontendUrl}/?auth=failed&reason=${encodeURIComponent(
-          err?.message || "oauth_failed"
-        )}`
-      );
+      return redirectWithParams({
+        error: err?.message || "oauth_failed",
+      });
     }
   });
 }
