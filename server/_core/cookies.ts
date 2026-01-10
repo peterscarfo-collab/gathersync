@@ -25,24 +25,21 @@ function isSecureRequest(req: Request) {
  * This allows cookies set by 3000-xxx to be read by 8081-xxx
  */
 function getParentDomain(hostname: string): string | undefined {
-  // Don't set domain for localhost or IP addresses
   if (LOCAL_HOSTS.has(hostname) || isIpAddress(hostname)) {
     return undefined;
   }
 
-  // Split hostname into parts
-  const parts = hostname.split(".");
-
-  // Need at least 3 parts for a subdomain (e.g., "3000-xxx.manuspre.computer")
-  // For "manuspre.computer", we can't set a parent domain
-  if (parts.length < 3) {
+  // Hosted domains where setting a parent domain breaks cookies (browser rejects it)
+  if (hostname.endsWith(".fly.dev") || hostname === "fly.dev") {
     return undefined;
   }
 
-  // Return parent domain with leading dot (e.g., ".manuspre.computer")
-  // This allows cookie to be shared across all subdomains
+  const parts = hostname.split(".");
+  if (parts.length < 3) return undefined;
+
   return "." + parts.slice(-2).join(".");
 }
+
 
 export function getSessionCookieOptions(
   req: Request,
