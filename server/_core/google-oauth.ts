@@ -1,5 +1,5 @@
 import { createOAuthState, verifyOAuthState } from "./oauthState";
-import { recentAuth, AUTH_GRACE_MS } from "./sdk";
+import { sdk, recentAuth, AUTH_GRACE_MS } from "./sdk";
 import type { Express, Request, Response } from "express";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import { getUserByOpenId, upsertUser } from "../db";

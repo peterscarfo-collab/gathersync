@@ -44,7 +44,11 @@ function getParentDomain(hostname: string): string | undefined {
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
-  const hostname = req.hostname;
+  const forwardedHost = req.headers["x-forwarded-host"];
+const hostname = (
+  (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost)?.split(",")[0]?.trim()
+) || req.hostname;
+
 
   // IMPORTANT:
   // - On fly.dev you must NOT set a Domain attribute (browsers reject it)
