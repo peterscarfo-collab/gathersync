@@ -59,7 +59,7 @@ const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
       redirect_uri: GOOGLE_REDIRECT_URI!,
       response_type: "code",
-      scope: "opened email profile",
+scope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
       state,
       access_type: "offline",
       prompt: "consent",
