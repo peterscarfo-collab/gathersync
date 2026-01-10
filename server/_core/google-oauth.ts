@@ -4,7 +4,6 @@ import type { Express, Request, Response } from "express";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import { getUserByOpenId, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
-import crypto from "crypto";
 
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -16,20 +15,7 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
 }
 
 // In-memory state storage (in production, use Redis or database)
-const stateStore = new Map<string, { created: number }>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, data] of stateStore.entries()) {
-    if (now - data.created > 3600000) {
-      stateStore.delete(state);
-    }
-  }
-}, 3600000);
-
-function generateState(): string {
-  return crypto.randomBytes(32).toString("hex");
-}
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -73,7 +59,7 @@ const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
       redirect_uri: GOOGLE_REDIRECT_URI!,
       response_type: "code",
-      scope: "openid email profile",
+      scope: "opened email profile",
       state,
       access_type: "offline",
       prompt: "consent",
@@ -100,11 +86,17 @@ const params = new URLSearchParams({
       return redirectWithParams({ error });
     }
 
-    if (!code || !state || !stateStore.has(state)) {
-      return redirectWithParams({ error: "invalid_state" });
-    }
+const stateCheck = verifyOAuthState(state);
 
-    stateStore.delete(state);
+if (!stateCheck.ok) {
+  return redirectWithParams({ error: stateCheck.reason });
+}
+
+if (!code) {
+  return redirectWithParams({ error: "missing_code" });
+}
+
+
 
     try {
       const tokenResponse = await fetch(
@@ -149,10 +141,11 @@ const params = new URLSearchParams({
         email: googleUser.email,
       });
 
-      const sessionToken = generateSessionToken(
-        (user as any).id ?? 0,
-        user.openId
-      );
+     const sessionToken = await sdk.createSessionToken(user.openId!, {
+  name: googleUser.name || "",
+  expiresInMs: ONE_YEAR_MS,
+});
+
 
       res.cookie(COOKIE_NAME, sessionToken, {
         ...getSessionCookieOptions(req),
