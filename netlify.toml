@@ -1,0 +1,9 @@
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://gathersync-api-deploy.fly.dev/api/:splat"
+  status = 200
+  force = true
