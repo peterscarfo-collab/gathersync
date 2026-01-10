@@ -45,13 +45,25 @@ export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
   const hostname = req.hostname;
-  const domain = getParentDomain(hostname);
+
+  // IMPORTANT:
+  // - On fly.dev you must NOT set a Domain attribute (browsers reject it)
+  // - SameSite=None requires Secure=true
+  const domain =
+    hostname.endsWith(".fly.dev") ||
+    hostname === "fly.dev" ||
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1"
+      ? undefined
+      : "." + hostname.split(".").slice(-2).join(".");
 
   return {
     domain,
     httpOnly: true,
     path: "/",
     sameSite: "none",
-    secure: isSecureRequest(req),
+    secure: true,
   };
 }
+
