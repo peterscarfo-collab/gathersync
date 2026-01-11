@@ -1,38 +1,9 @@
-plugins = []
-headers = []
-
-[functions]
-
-[functions."*"]
-
 [build]
-publish = "/Users/peter_scarfo/dev/gathersync/dist"
-publishOrigin = "ui"
-commandOrigin = "ui"
-command = "npm run build"
-
-[build.environment]
-
-[build.processing]
-
-[build.processing.css]
-
-[build.processing.html]
-
-[build.processing.images]
-
-[build.processing.js]
-
-[build.services]
+  command = "npm run build:web"
+  publish = "dist-web"
 
 [[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200.0
-force = false
-
-[redirects.query]
-
-[redirects.conditions]
-
-[redirects.headers]
+  from = "/api/*"
+  to = "https://gathersync-api-deploy.fly.dev/api/:splat"
+  status = 200
+  force = true
