@@ -7,3 +7,6 @@ dist
 .DS_Store
 *.zip
 *.tar.gz
+
+# build outputs
+/dist-web
