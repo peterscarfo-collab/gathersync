@@ -10,3 +10,8 @@ dist
 
 # build outputs
 /dist-web
+
+# Local / secrets / generated
+.manuspre.computer
+android/app/debug.keystore
+**/*.bak
