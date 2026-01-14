@@ -1,10 +1,12 @@
+// constants/oauth.ts
+
 export function getApiBaseUrl() {
-  // Web: use Netlify proxy (/api/* → Fly)
-  if (Platform.OS === "web") return "";
-  // Native apps must call Fly directly
-  return "https://gathersync-api-deploy.fly.dev";
+  // This MUST be the API domain, not the app domain
+  // (Your curl tests show api.gathersync.app is correct)
+  return "https://api.gathersync.app";
 }
 
 export function getLoginUrl() {
-  return "https://api.gathersync.app/api/auth/google";
+  // This MUST be an absolute URL for web redirect
+  return `${getApiBaseUrl()}/api/auth/google`;
 }
