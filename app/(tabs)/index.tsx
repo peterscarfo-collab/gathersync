@@ -709,7 +709,6 @@ export default function EventsScreen() {
   style={[styles.loginButton, { backgroundColor: tintColor }]}
   onPress={async () => {
     console.log("[LoginBanner] CLICK FIRED");
-    alert("Login clicked"); // temporary
 
     const loginUrl = getLoginUrl();
     console.log("[LoginBanner] pressed");
