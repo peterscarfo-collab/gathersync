@@ -32,7 +32,10 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     console.log("[API] apiCall:", { endpoint, platform: "web", method: options.method || "GET" });
   }
 
-  const baseUrl = getApiBaseUrl();
+// On web, use relative URLs so Netlify can proxy /api/* to Fly (avoids CORS/cookie issues)
+const baseUrl = getApiBaseUrl();
+
+
   // Ensure no double slashes between baseUrl and endpoint
   const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -146,8 +149,8 @@ export async function getMe(): Promise<{
 export async function establishSession(token: string): Promise<boolean> {
   try {
     console.log("[API] establishSession: setting cookie on backend...");
-    const baseUrl = getApiBaseUrl();
-    const url = `${baseUrl}/api/auth/session`;
+    const url = Platform.OS === "web" ? "/api/auth/session" : `${getApiBaseUrl()}/api/auth/session`;
+
 
     const response = await fetch(url, {
       method: "POST",
