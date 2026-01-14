@@ -1,8 +1,8 @@
 export function getApiBaseUrl() {
-  return (
-    process.env.EXPO_PUBLIC_API_BASE_URL ||
-    "https://gathersync-api-deploy.fly.dev"
-  );
+  // Web: use Netlify proxy (/api/* → Fly)
+  if (Platform.OS === "web") return "";
+  // Native apps must call Fly directly
+  return "https://gathersync-api-deploy.fly.dev";
 }
 
 export function getLoginUrl() {
