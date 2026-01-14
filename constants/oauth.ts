@@ -1,12 +1,15 @@
 // constants/oauth.ts
 
 export function getApiBaseUrl() {
-  // This MUST be the API domain, not the app domain
-  // (Your curl tests show api.gathersync.app is correct)
-  return "https://api.gathersync.app";
+  // Web in production: use your API domain
+  if (typeof window !== "undefined") return "https://api.gathersync.app";
+
+  // Fallback (native / dev)
+  return process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.gathersync.app";
 }
 
 export function getLoginUrl() {
-  // This MUST be an absolute URL for web redirect
-  return `${getApiBaseUrl()}/api/auth/google`;
+  // Login always starts at the backend OAuth endpoint
+  const base = getApiBaseUrl().replace(/\/$/, "");
+  return `${base}/api/auth/google`;
 }
