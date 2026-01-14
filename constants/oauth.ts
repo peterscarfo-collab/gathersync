@@ -6,5 +6,5 @@ export function getApiBaseUrl() {
 }
 
 export function getLoginUrl() {
-  return `${getApiBaseUrl()}/api/auth/google`;
+  return "https://api.gathersync.app/api/auth/google";
 }

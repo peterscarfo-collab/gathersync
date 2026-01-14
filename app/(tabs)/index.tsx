@@ -705,20 +705,34 @@ export default function EventsScreen() {
             </View>
           </View>
           <View style={styles.loginBannerActions}>
-            <Pressable
-              style={[styles.loginButton, { backgroundColor: tintColor }]}
-              onPress={async () => {
-                const loginUrl = getLoginUrl();
-                if (Platform.OS === 'web') {
-                  window.location.href = loginUrl;
-                } else {
-                  // Mobile: Open OAuth in external browser
-                  await WebBrowser.openBrowserAsync(loginUrl);
-                }
-              }}
-            >
-              <ThemedText style={styles.loginButtonText}>Log In</ThemedText>
-            </Pressable>
+  <Pressable
+  style={[styles.loginButton, { backgroundColor: tintColor }]}
+  onPress={async () => {
+    console.log("[LoginBanner] CLICK FIRED");
+    alert("Login clicked"); // temporary
+
+    const loginUrl = getLoginUrl();
+    console.log("[LoginBanner] pressed");
+    console.log("[LoginBanner] loginUrl =", loginUrl);
+
+    if (!loginUrl) {
+      alert("Login URL is empty. Check getLoginUrl()");
+      return;
+    }
+
+    // Web: OAuth must be top-level navigation
+    if (Platform.OS === "web") {
+      window.location.assign(loginUrl);
+      return;
+    }
+
+    // Native
+    await WebBrowser.openBrowserAsync(loginUrl);
+  }}
+>
+  <ThemedText style={styles.loginButtonText}>Log In</ThemedText>
+</Pressable>
+
             <Pressable
               style={styles.dismissButton}
               onPress={() => setShowLoginBanner(false)}
@@ -777,42 +791,6 @@ export default function EventsScreen() {
         </View>
       )}
 
-      {/* Remove duplicate banner code below */}
-      {false && !authLoading && !isAuthenticated && showLoginBanner && (
-        <View style={[styles.loginBanner, { backgroundColor: tintColor + '10', borderColor: tintColor + '30' }]}>
-          <View style={styles.loginBannerContent}>
-            <IconSymbol name="cloud" size={20} color={tintColor} />
-            <View style={styles.loginBannerText}>
-              <ThemedText style={styles.loginBannerTitle}>Cloud Sync Available</ThemedText>
-              <ThemedText style={[styles.loginBannerDescription, { color: textSecondaryColor }]}>
-                Log in to sync events across devices and share with participants
-              </ThemedText>
-            </View>
-          </View>
-          <View style={styles.loginBannerActions}>
-            <Pressable
-              style={[styles.loginButton, { backgroundColor: tintColor }]}
-              onPress={async () => {
-                const loginUrl = getLoginUrl();
-                if (Platform.OS === 'web') {
-                  window.location.href = loginUrl;
-                } else {
-                  // Mobile: Open OAuth in external browser
-                  await WebBrowser.openBrowserAsync(loginUrl);
-                }
-              }}
-            >
-              <ThemedText style={styles.loginButtonText}>Log In</ThemedText>
-            </Pressable>
-            <Pressable
-              style={styles.dismissButton}
-              onPress={() => setShowLoginBanner(false)}
-            >
-              <IconSymbol name="xmark" size={16} color={textSecondaryColor} />
-            </Pressable>
-          </View>
-        </View>
-      )}
 
       <FlatList
         data={events}
