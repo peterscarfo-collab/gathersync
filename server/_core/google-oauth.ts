@@ -76,12 +76,17 @@ scope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.co
     const error = getQueryParam(req, "error");
     const frontendUrl = process.env.FRONTEND_URL || "https://app.gathersync.app";
 
+const redirectWithParams = (params: Record<string, string>) => {
+  const base = process.env.FRONTEND_URL || "https://app.gathersync.app";
+  const u = new URL("/", base); // ALWAYS frontend root
 
-    const redirectWithParams = (params: Record<string, string>) => {
-      const u = new URL(frontendUrl);
-      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-      return res.redirect(u.toString());
-    };
+  for (const [k, v] of Object.entries(params)) {
+    u.searchParams.set(k, v);
+  }
+
+  return res.redirect(u.toString());
+};
+
 
     if (error) {
       return redirectWithParams({ error });
