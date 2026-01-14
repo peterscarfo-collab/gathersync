@@ -44,10 +44,14 @@ function getParentDomain(hostname: string): string | undefined {
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
-  const forwardedHost = req.headers["x-forwarded-host"];
-const hostname = (
-  (Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost)?.split(",")[0]?.trim()
-) || req.hostname;
+  return {
+    domain: ".gathersync.app",
+    httpOnly: true,
+    path: "/",
+    sameSite: "none",
+    secure: true,
+  };
+}
 
 
   // IMPORTANT:
