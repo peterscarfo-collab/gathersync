@@ -147,16 +147,40 @@ export function registerOAuthRoutes(app: Express) {
     res.json({ success: true });
   });
 
-  // Get current authenticated user - works with both cookie (web) and Bearer token (mobile)
-  app.get("/api/auth/me", async (req: Request, res: Response) => {
-    try {
-      const user = await sdk.authenticateRequest(req);
-      res.json({ user: buildUserResponse(user) });
-    } catch (error) {
-      console.error("[Auth] /api/auth/me failed:", error);
-      res.status(401).json({ error: "Not authenticated", user: null });
+   // Get current authenticated user (web + mobile)
+ app.get("/api/auth/me", async (req: Request, res: Response) => {
+  try {
+    // Read session token ONLY from cookie (web auth lock)
+    const token = req.cookies?.[COOKIE_NAME];
+
+    if (!token) {
+      return res.status(401).json({ error: "No session cookie", user: null });
     }
-  });
+
+    // Verify JWT locally — no DB, no OAuth calls
+    const session = await sdk.verifySession(token);
+    if (!session) {
+      return res.status(401).json({ error: "Invalid session", user: null });
+    }
+
+    // Minimal guaranteed-safe response
+    res.json({
+      user: buildUserResponse({
+        openId: session.openId,
+        name: session.name,
+        email: null,
+        loginMethod: "cookie",
+        lastSignedIn: new Date(),
+      }),
+    });
+  } catch (error) {
+    console.error("[Auth] /api/auth/me failed:", error);
+    res.status(401).json({ error: "Not authenticated", user: null });
+  }
+});
+
+
+
 
   // Establish session cookie from Bearer token
   // Used by iframe preview: frontend receives token via postMessage, then calls this endpoint
