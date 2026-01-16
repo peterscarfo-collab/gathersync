@@ -8,7 +8,7 @@ import { getSessionCookieOptions } from "./cookies";
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+const GOOGLE_REDIRECT_URI = "https://api.gathersync.app/api/auth/google/callback";
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
   throw new Error("Google OAuth not configured");
@@ -59,7 +59,10 @@ const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
       redirect_uri: GOOGLE_REDIRECT_URI!,
       response_type: "code",
-scope: "https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+scope:
+  "https://www.googleapis.com/auth/userinfo.email " +
+  "https://www.googleapis.com/auth/userinfo.profile " +
+  "https://www.googleapis.com/auth/calendar",
       state,
       access_type: "offline",
       prompt: "consent",
@@ -153,10 +156,16 @@ if (!code) {
 });
 
 
-      res.cookie(COOKIE_NAME, sessionToken, {
-        ...getSessionCookieOptions(req),
-        maxAge: ONE_YEAR_MS,
-      });
+res.cookie(COOKIE_NAME, sessionToken, {
+  domain: ".gathersync.app",
+  path: "/",
+  httpOnly: true,
+  sameSite: "none",
+  secure: true,
+  maxAge: ONE_YEAR_MS,
+});
+
+
 
 	recentAuth.set(sessionToken, {
   	token: sessionToken,
