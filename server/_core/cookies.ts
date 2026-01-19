@@ -3,52 +3,47 @@ import type { CookieOptions, Request } from "express";
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 function isIpAddress(host: string) {
-  // Basic IPv4 check and IPv6 presence detection.
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
   return host.includes(":");
 }
 
 function isSecureRequest(req: Request) {
+  // express "req.protocol" depends on trust proxy; you already set trust proxy = 1
   if (req.protocol === "https") return true;
 
   const forwardedProto = req.headers["x-forwarded-proto"];
   if (!forwardedProto) return false;
 
   const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
-
-  return protoList.some((proto) => proto.trim().toLowerCase() === "https");
+  return protoList.some((p) => p.trim().toLowerCase() === "https");
 }
 
-/**
- * Extract parent domain for cookie sharing across subdomains.
- * e.g., "3000-xxx.manuspre.computer" -> ".manuspre.computer"
- * This allows cookies set by 3000-xxx to be read by 8081-xxx
- */
-function getParentDomain(hostname: string): string | undefined {
-  if (LOCAL_HOSTS.has(hostname) || isIpAddress(hostname)) {
-    return undefined;
+function getCookieDomain(req: Request): string | undefined {
+  const hostHeader = req.headers.host;
+  const hostname = (hostHeader || "").split(":")[0];
+
+  if (!hostname) return undefined;
+  if (LOCAL_HOSTS.has(hostname) || isIpAddress(hostname)) return undefined;
+
+  // Don't try to set a parent domain on fly.dev hosts
+  if (hostname.endsWith(".fly.dev") || hostname === "fly.dev") return undefined;
+
+  // ✅ Production: share across app.gathersync.app + api.gathersync.app
+  if (hostname === "gathersync.app" || hostname.endsWith(".gathersync.app")) {
+    return ".gathersync.app";
   }
 
-  // Hosted domains where setting a parent domain breaks cookies (browser rejects it)
-  if (hostname.endsWith(".fly.dev") || hostname === "fly.dev") {
-    return undefined;
-  }
-
-  const parts = hostname.split(".");
-  if (parts.length < 3) return undefined;
-
-  return "." + parts.slice(-2).join(".");
+  return undefined;
 }
 
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
   return {
-    domain: ".gathersync.app",
+    domain: getCookieDomain(req),
     httpOnly: true,
     path: "/",
     sameSite: "none",
-    secure: true,
+    secure: isSecureRequest(req),
   };
 }
-

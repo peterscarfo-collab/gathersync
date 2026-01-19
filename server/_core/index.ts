@@ -90,7 +90,7 @@ async function startServer() {
   // Bump this string so you can confirm the deploy is live
   app.get("/api/version", (_req, res) => {
     res.json({
-      version: "oauth-fix-v6-cookie-to-auth",
+      version: "oauth-fix-v7-cookie-to-auth",
       timestamp: Date.now(),
     });
   });
