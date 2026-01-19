@@ -1,5 +1,11 @@
 import { Router } from "express";
-import * as db from "./db";
+import {
+  getUserEvents,
+  getEventById,
+  getEventParticipants,
+  updateParticipant,
+  createParticipant,
+} from "./db";
 
 /**
  * Public REST API endpoints (no authentication required)
@@ -8,17 +14,21 @@ import * as db from "./db";
 export const publicApiRouter = Router();
 
 // Debug endpoint to test database connection
-publicApiRouter.get("/debug/db-test", async (req, res) => {
+publicApiRouter.get("/debug/db-test", async (_req, res) => {
   try {
     const hasDbUrl = !!process.env.DATABASE_URL;
-    const allEvents = await db.getUserEvents(1); // Try to get events for user 1
+
+    // If the DB is reachable, this should return an array (possibly empty).
+    // Using userId=1 is fine as a connectivity smoke test.
+    const allEvents = await getUserEvents(1);
+
     res.json({
       hasDbUrl,
       eventCount: allEvents.length,
       firstEventId: allEvents[0]?.id || null,
     });
   } catch (error: any) {
-    res.json({ error: error.message, stack: error.stack });
+    res.json({ error: error?.message || String(error), stack: error?.stack });
   }
 });
 
@@ -26,21 +36,21 @@ publicApiRouter.get("/debug/db-test", async (req, res) => {
 publicApiRouter.get("/events/:eventId", async (req, res) => {
   try {
     const { eventId } = req.params;
-    console.log('[PublicAPI] Fetching event:', eventId);
-    console.log('[PublicAPI] DATABASE_URL exists:', !!process.env.DATABASE_URL);
-    const event = await db.getEventById(eventId);
-    console.log('[PublicAPI] Event found:', event ? 'yes' : 'no');
-    if (event) {
-      console.log('[PublicAPI] Event name:', event.name);
-    }
-    
+
+    console.log("[PublicAPI] Fetching event:", eventId);
+    console.log("[PublicAPI] DATABASE_URL exists:", !!process.env.DATABASE_URL);
+
+    const event = await getEventById(eventId);
+
+    console.log("[PublicAPI] Event found:", event ? "yes" : "no");
+    if (event) console.log("[PublicAPI] Event name:", event.name);
+
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    const participants = await db.getEventParticipants(eventId);
+    const participants = await getEventParticipants(eventId);
 
-    // Convert database types to app types
     const response = {
       id: event.id,
       userId: event.userId,
@@ -99,35 +109,37 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
       return res.status(400).json({ error: "participantName is required" });
     }
 
-    const event = await db.getEventById(eventId);
+    const event = await getEventById(eventId);
     if (!event) {
       return res.status(404).json({ error: "Event not found" });
     }
 
-    // Get participants for this event
-    const eventParticipants = await db.getEventParticipants(eventId);
+    const eventParticipants = await getEventParticipants(eventId);
 
-    // Find existing participant
     const existingParticipant = eventParticipants.find(
       (p) => p.name.toLowerCase() === participantName.toLowerCase()
     );
 
     if (existingParticipant) {
-      // Update existing participant
-      await db.updateParticipant(existingParticipant.id, {
+      await updateParticipant(existingParticipant.id, {
         availability: availability as Record<string, boolean> | undefined,
-        rsvpStatus: rsvpStatus as "attending" | "not-attending" | "no-response" | undefined,
+        rsvpStatus: rsvpStatus as
+          | "attending"
+          | "not-attending"
+          | "no-response"
+          | undefined,
       });
     } else {
-      // Create new participant
-      await db.createParticipant({
+      await createParticipant({
         id: `participant-${Date.now()}`,
-        eventId: eventId,
+        eventId,
         name: participantName,
         availability: (availability as Record<string, boolean>) || {},
         unavailableAllMonth: false,
         source: "manual",
-        rsvpStatus: (rsvpStatus as "attending" | "not-attending" | "no-response") || "no-response",
+        rsvpStatus:
+          (rsvpStatus as "attending" | "not-attending" | "no-response") ||
+          "no-response",
       });
     }
 
@@ -137,3 +149,4 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
