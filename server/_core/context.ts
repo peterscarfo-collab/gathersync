@@ -1,6 +1,8 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
+import { COOKIE_NAME } from "../../shared/const.js";
+
 
 function getCookieToken(cookieHeader: string | undefined, name: string): string | null {
   if (!cookieHeader) return null;
@@ -26,7 +28,7 @@ export async function createContext(
   const req = opts.req;
 
   // Prefer cookie token on web
-  const cookieToken = getCookieToken(req.headers.cookie, "app_session_token");
+const cookieToken = getCookieToken(req.headers.cookie, COOKIE_NAME);
 
   // If we have a cookie token but no Authorization header,
   // set Authorization so sdk.authenticateRequest() can work consistently.
