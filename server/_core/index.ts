@@ -9,7 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
 import cookieParser from "cookie-parser";
-
+import { COOKIE_NAME } from "../../shared/const.js";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -32,10 +32,27 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 async function startServer() {
   const app = express();
-  app.set("trust proxy", 1);
-  app.use(cookieParser());
-  const server = createServer(app);
 
+  // IMPORTANT: trust proxy so req.protocol + secure cookies behave correctly behind Fly
+  app.set("trust proxy", 1);
+
+  // Cookie parsing MUST come before anything that needs req.cookies
+  app.use(cookieParser());
+
+  /**
+   * ✅ KEY FIX:
+   * If the browser sends the session cookie, force it into Authorization:
+   * so tRPC context/auth code can reliably read it as Bearer.
+   */
+  app.use((req, _res, next) => {
+    const cookieToken = (req as any).cookies?.[COOKIE_NAME];
+    if (!req.headers.authorization && cookieToken) {
+      req.headers.authorization = `Bearer ${cookieToken}`;
+    }
+    next();
+  });
+
+  const server = createServer(app);
 
   // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
@@ -70,27 +87,48 @@ async function startServer() {
     res.json({ ok: true, timestamp: Date.now() });
   });
 
+  // Bump this string so you can confirm the deploy is live
   app.get("/api/version", (_req, res) => {
-    res.json({ 
-    version: "oauth-fix-v5-cookieparser",
-      buildTime: "2025-12-30T01:37:00Z",
-      timestamp: Date.now() 
+    res.json({
+      version: "oauth-fix-v6-cookie-to-auth",
+      timestamp: Date.now(),
+    });
+  });
+
+  /**
+   * ✅ DEBUG ENDPOINT:
+   * Visit https://api.gathersync.app/api/debug/auth in the SAME logged-in browser session.
+   * It should show hasCookieToken:true and hasAuthHeader:true
+   */
+  app.get("/api/debug/auth", (req, res) => {
+    const cookieToken = (req as any).cookies?.[COOKIE_NAME] as string | undefined;
+    const auth = req.headers.authorization as string | undefined;
+
+    res.json({
+      cookieName: COOKIE_NAME,
+      hasCookieToken: !!cookieToken,
+      cookieTokenPrefix: cookieToken ? cookieToken.slice(0, 20) : null,
+      hasAuthHeader: !!auth,
+      authPrefix: auth ? auth.slice(0, 30) : null,
+      host: req.headers.host || null,
+      origin: req.headers.origin || null,
     });
   });
 
   // Stripe webhook (raw body needed for signature verification)
   app.post(
     "/api/webhooks/stripe",
-    express.raw({ type: 'application/json' }),
+    express.raw({ type: "application/json" }),
     async (req, res) => {
-      const { handleStripeWebhook } = await import('../webhooks/stripe');
+      const { handleStripeWebhook } = await import("../webhooks/stripe");
       return handleStripeWebhook(req, res);
-    }
+    },
   );
 
   // Public REST API (no authentication)
   app.use("/api/public", publicApiRouter);
 
+  // tRPC
   app.use(
     "/api/trpc",
     createExpressMiddleware({
@@ -99,7 +137,7 @@ async function startServer() {
     }),
   );
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
+  const preferredPort = parseInt(process.env.PORT || "3000", 10);
   const port = await findAvailablePort(preferredPort);
 
   if (port !== preferredPort) {
