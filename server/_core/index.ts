@@ -128,6 +128,23 @@ async function startServer() {
   // Public REST API (no authentication)
   app.use("/api/public", publicApiRouter);
 
+app.get("/api/debug/cookies", (req, res) => {
+  res.json({
+    host: req.headers.host || null,
+    origin: req.headers.origin || null,
+    protocol: (req as any).protocol || null,
+    forwardedProto: req.headers["x-forwarded-proto"] || null,
+    cookieHeaderPresent: !!req.headers.cookie,
+    cookieHeaderPrefix: req.headers.cookie ? String(req.headers.cookie).slice(0, 80) : null,
+    cookieName: COOKIE_NAME,
+    hasCookieToken: !!(req as any).cookies?.[COOKIE_NAME],
+    cookieTokenPrefix: (req as any).cookies?.[COOKIE_NAME]
+      ? String((req as any).cookies?.[COOKIE_NAME]).slice(0, 20)
+      : null,
+    authHeaderPresent: !!req.headers.authorization,
+  });
+});
+
   // tRPC
   app.use(
     "/api/trpc",
