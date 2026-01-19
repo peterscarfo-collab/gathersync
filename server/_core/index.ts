@@ -144,6 +144,27 @@ app.get("/api/debug/cookies", (req, res) => {
     authHeaderPresent: !!req.headers.authorization,
   });
 });
+app.get("/api/debug/whoami", async (req, res) => {
+  try {
+    // This uses the same auth logic your protected routes should use
+    const user = await sdk.authenticateRequest(req);
+
+    res.json({
+      ok: true,
+      user: {
+        id: (user as any)?.id ?? null,
+        openId: (user as any)?.openId ?? null,
+        name: (user as any)?.name ?? null,
+        email: (user as any)?.email ?? null,
+      },
+    });
+  } catch (e: any) {
+    res.status(401).json({
+      ok: false,
+      error: e?.message || "unauthorized",
+    });
+  }
+});
 
   // tRPC
   app.use(
