@@ -8,6 +8,8 @@ import { registerGoogleOAuthRoutes } from "./google-oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
+import cookieParser from "cookie-parser";
+
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -30,7 +32,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 
 async function startServer() {
   const app = express();
+  app.set("trust proxy", 1);
+  app.use(cookieParser());
   const server = createServer(app);
+
 
   // Enable CORS for all routes - reflect the request origin to support credentials
   app.use((req, res, next) => {
@@ -67,7 +72,7 @@ async function startServer() {
 
   app.get("/api/version", (_req, res) => {
     res.json({ 
-      version: "oauth-fix-v4-writeHead", 
+    version: "oauth-fix-v5-cookieparser",
       buildTime: "2025-12-30T01:37:00Z",
       timestamp: Date.now() 
     });
