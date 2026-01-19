@@ -4,6 +4,6 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "https://gathersync-api-deploy.fly.dev/api/:splat"
+  to = "https://api.gathersync.app/api/:splat"
   status = 200
   force = true
