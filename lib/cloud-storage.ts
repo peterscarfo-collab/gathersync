@@ -26,7 +26,7 @@ function getTRPCClient() {
   return createTRPCClient<AppRouter>({
     links: [
       httpBatchLink({
-url: typeof window !== "undefined" ? "/api/trpc" : `${getApiBaseUrl()}/api/trpc`,
+url: `${getApiBaseUrl()}/api/trpc`,
         transformer: superjson,
         async headers() {
           const token = await Auth.getSessionToken();
