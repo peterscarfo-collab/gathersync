@@ -23,24 +23,20 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: strin
 function getTRPCClient() {
   return createTRPCClient<AppRouter>({
     links: [
-      httpBatchLink({
-   url: typeof window !== "undefined"
-     ? "/api/trpc"
-     : "https://api.gathersync.app/api/trpc",
-
-        transformer: superjson,
-        headers() {
-          return {};
-        },
-
-        fetch(url, options) {
-          console.log('[CloudStorage] Making API call to:', url);
-          return fetch(url, {
-            ...options,
-            credentials: 'include',
-          });
-        },
-      }),
+ httpBatchLink({
+  url: "https://api.gathersync.app/api/trpc",
+  transformer: superjson,
+  headers() {
+    return {};
+  },
+  fetch(url, options) {
+    console.log('[CloudStorage] Making API call to:', url);
+    return fetch(url, {
+      ...options,
+      credentials: 'include',
+    });
+  },
+}),
     ],
   });
 }
