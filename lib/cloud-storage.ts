@@ -1,8 +1,9 @@
 import type { Event, Participant, EventSnapshot, GroupTemplate } from '@/types/models';
-import { QueryClient } from '@tanstack/react-query';
-import { createTRPCClient, httpBatchLink } from "@/lib/trpc";
+import { createTRPCClient } from "@/lib/trpc";
 import superjson from 'superjson';
 import type { AppRouter } from '@/server/routers';
+import * as Auth from "@/lib/auth";
+
 
 /**
  * Cloud storage adapter using tRPC client
@@ -20,26 +21,13 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: strin
 }
 
 // Create a standalone tRPC client for imperative calls
+let _client: ReturnType<typeof createTRPCClient> | null = null;
+
 function getTRPCClient() {
-  return createTRPCClient<AppRouter>({
-    links: [
- httpBatchLink({
-  url: "https://api.gathersync.app/api/trpc",
-  transformer: superjson,
-  headers() {
-    return {};
-  },
-  fetch(url, options) {
-    console.log('[CloudStorage] Making API call to:', url);
-    return fetch(url, {
-      ...options,
-      credentials: 'include',
-    });
-  },
-}),
-    ],
-  });
+  if (!_client) _client = createTRPCClient();
+  return _client;
 }
+
 
 export const eventsCloudStorage = {
   async getAll(): Promise<Event[]> {

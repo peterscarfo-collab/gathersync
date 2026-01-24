@@ -1,7 +1,28 @@
 import { useEffect, useState } from "react";
 
-const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "https://gathersync-api-deploy.fly.dev";
+function getWebApiBase() {
+  // Web-only helper
+  const isWeb = typeof window !== "undefined";
+
+  // If you set EXPO_PUBLIC_API_BASE_URL, we’ll respect it.
+  // Otherwise:
+  // - on localhost (dev), hit your local API
+  // - on prod, use same-origin so cookies work cleanly
+  const envBase = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+  if (!isWeb) return envBase || "https://gathersync-api-deploy.fly.dev";
+
+  const host = window.location.hostname;
+
+  // Dev on localhost / 127.0.0.1
+if (host === "localhost" || host === "127.0.0.1") {
+return envBase || "";
+
+}
+
+  // Prod web: same-origin is best (keeps cookie scope correct)
+  return envBase || "";
+}
 
 export default function OAuthCallback() {
   const [msg, setMsg] = useState("Signing you in…");
@@ -23,12 +44,17 @@ export default function OAuthCallback() {
       }
 
       try {
-        // Ask the backend to convert the token into a proper cookie (Set-Cookie)
-        const r = await fetch(`${API_BASE}/api/auth/session`, {
+        const API_BASE = getWebApiBase();
+        const endpoint = `${API_BASE}/api/auth/session`;
+
+        // Convert sessionToken -> httpOnly cookie (Set-Cookie)
+        const r = await fetch(endpoint, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${sessionToken}`,
           },
+          // ✅ REQUIRED so the browser stores/sends cookies
+          credentials: "include",
         });
 
         if (!r.ok) {
@@ -36,7 +62,8 @@ export default function OAuthCallback() {
           throw new Error(`session setup failed (${r.status}) ${text}`);
         }
 
-        // Go to the app home (or change this to wherever you want)
+        // Optional: clean URL (remove sessionToken from address bar)
+        // then redirect home.
         window.location.replace("/");
       } catch (e: any) {
         setMsg(`Login failed: ${e?.message || "unknown error"}`);
@@ -47,9 +74,15 @@ export default function OAuthCallback() {
   }, []);
 
   return (
-    <div style={{ padding: 24, fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial" }}>
+    <div
+      style={{
+        padding: 24,
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+      }}
+    >
       <h2>GatherSync</h2>
       <p>{msg}</p>
     </div>
   );
 }
+

@@ -32,14 +32,19 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
     console.log("[API] apiCall:", { endpoint, platform: "web", method: options.method || "GET" });
   }
 
-// On web, use relative URLs so Netlify can proxy /api/* to Fly (avoids CORS/cookie issues)
-const baseUrl = getApiBaseUrl();
+// Web: use same-origin so local Caddy (8081) or Netlify can proxy /api/*
+// Native: use explicit API base URL
+const baseUrl =
+  Platform.OS === "web"
+    ? ""
+    : getApiBaseUrl();
+
 
 
   // Ensure no double slashes between baseUrl and endpoint
   const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  const url = baseUrl ? `${cleanBaseUrl}${cleanEndpoint}` : endpoint;
+  const url = baseUrl ? `${cleanBaseUrl}${cleanEndpoint}` : cleanEndpoint;
   console.log("[API] Full URL:", url);
 
   try {
@@ -63,6 +68,12 @@ const baseUrl = getApiBaseUrl();
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[API] Error response:", errorText);
+      
+      // Check if response is HTML (likely an error page or 404)
+      if (errorText.trim().startsWith("<!DOCTYPE") || errorText.trim().startsWith("<html")) {
+        throw new Error(`API endpoint returned HTML (likely 404). The backend server may not be running on port 3000, or the endpoint ${endpoint} doesn't exist.`);
+      }
+      
       let errorMessage = errorText;
       try {
         const errorJson = JSON.parse(errorText);
@@ -82,7 +93,24 @@ const baseUrl = getApiBaseUrl();
 
     const text = await response.text();
     console.log("[API] Text response received");
-    return (text ? JSON.parse(text) : {}) as T;
+    
+    // Check if response is HTML (likely an error page)
+    if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
+      console.error("[API] Received HTML instead of JSON. This usually means the API endpoint doesn't exist or the server isn't running.");
+      throw new Error(`API endpoint returned HTML instead of JSON. The backend server may not be running on port 3000, or the endpoint ${endpoint} doesn't exist.`);
+    }
+    
+    // Try to parse as JSON, but handle errors gracefully
+    if (!text || text.trim() === "") {
+      return {} as T;
+    }
+    
+    try {
+      return JSON.parse(text) as T;
+    } catch (parseError) {
+      console.error("[API] Failed to parse response as JSON:", text.substring(0, 200));
+      throw new Error(`API returned invalid JSON: ${text.substring(0, 100)}...`);
+    }
   } catch (error) {
     console.error("[API] Request failed:", error);
     if (error instanceof Error) {
@@ -149,7 +177,8 @@ export async function getMe(): Promise<{
 export async function establishSession(token: string): Promise<boolean> {
   try {
     console.log("[API] establishSession: setting cookie on backend...");
-    const url = Platform.OS === "web" ? "/api/auth/session" : `${getApiBaseUrl()}/api/auth/session`;
+  const baseUrl = Platform.OS === "web" ? "" : getApiBaseUrl();
+  const url = baseUrl ? `${baseUrl}/api/auth/session` : "/api/auth/session";
 
 
     const response = await fetch(url, {

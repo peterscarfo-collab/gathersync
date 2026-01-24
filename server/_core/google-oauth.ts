@@ -8,7 +8,7 @@ import { getSessionCookieOptions } from "./cookies";
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = "https://api.gathersync.app/api/auth/google/callback";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
   throw new Error("Google OAuth not configured");
@@ -77,10 +77,18 @@ scope:
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
-    const frontendUrl = process.env.FRONTEND_URL || "https://app.gathersync.app";
+    
+    // Use FRONTEND_URL or EXPO_PUBLIC_OAUTH_REDIRECT_URL, fallback to localhost for dev
+    const isProduction = process.env.NODE_ENV === "production";
+    const getFrontendUrl = () => 
+      process.env.FRONTEND_URL || 
+      process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL || 
+      (isProduction ? "https://app.gathersync.app" : "http://127.0.0.1:8081");
+    
+    const frontendUrl = getFrontendUrl();
 
 const redirectWithParams = (params: Record<string, string>) => {
-  const base = process.env.FRONTEND_URL || "https://app.gathersync.app";
+  const base = getFrontendUrl();
   const u = new URL("/", base); // ALWAYS frontend root
 
   for (const [k, v] of Object.entries(params)) {
@@ -155,14 +163,15 @@ if (!code) {
   expiresInMs: ONE_YEAR_MS,
 });
 
+const isProd = process.env.NODE_ENV === "production";
 
 res.cookie(COOKIE_NAME, sessionToken, {
-  domain: ".gathersync.app",
-  path: "/",
   httpOnly: true,
-  sameSite: "none",
-  secure: true,
-  maxAge: ONE_YEAR_MS,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  domain: isProd ? ".gathersync.app" : undefined,
+  path: "/",
+  maxAge: ONE_YEAR_MS, // or whatever you use here
 });
 
 

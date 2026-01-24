@@ -293,9 +293,20 @@ try {
         });
         user = await db.getUserByOpenId(userInfo.openId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw new ForbiddenError("Failed to sync user info");
-      }
+  console.error("[Auth] Failed to sync user from OAuth:", error);
+
+  // ✅ TEMP: don't hard-fail auth if DB sync is down
+  // We'll still allow the session if the JWT is valid.
+  return {
+    id: null as any,
+    openId: sessionUserId as any,
+    name: (session as any).name ?? null,
+    email: null,
+    loginMethod: "cookie",
+    lastSignedIn: signedInAt,
+  } as any;
+}
+
     }
 
     if (!user) {

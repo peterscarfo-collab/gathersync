@@ -1,17 +1,93 @@
-// constants/oauth.ts
+import { Platform } from "react-native";
 
-export function getApiBaseUrl() {
-  // Web in production: use your API domain
-  if (typeof window !== "undefined") return "https://api.gathersync.app";
+const IS_WEB = Platform.OS === "web";
 
-  // Fallback (native / dev)
-  return process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.gathersync.app";
+/**
+ * API base:
+ * - Web: use same-origin so Caddy (localhost:8081) or Netlify can proxy /api/*
+ * - Native: go direct to production API
+ */
+export function getApiBaseUrl(): string {
+  return IS_WEB ? "" : "https://api.gathersync.app";
 }
 
-export function getApiBaseUrl() {
-  // WEB in production: use same-origin so Netlify can proxy /api/* and cookies work
-  if (typeof window !== "undefined") return "";
+/**
+ * OAuth server base (same as API server)
+ */
+export function getOAuthServerUrl(): string {
+  return getApiBaseUrl();
+}
 
-  // Native / dev: call the API directly
-  return process.env.EXPO_PUBLIC_API_BASE_URL || "https://api.gathersync.app";
+/**
+ * Get OAuth portal URL from environment variables
+ */
+function getOAuthPortalUrl(): string {
+  const portalUrl = 
+    process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL ||
+    process.env.VITE_OAUTH_PORTAL_URL ||
+    "";
+  
+  if (!portalUrl) {
+    console.warn("[OAuth] OAuth portal URL not configured. Set EXPO_PUBLIC_OAUTH_PORTAL_URL or VITE_OAUTH_PORTAL_URL");
+  }
+  
+  return portalUrl;
+}
+
+/**
+ * Get App ID from environment variables
+ */
+function getAppId(): string {
+  const appId = 
+    process.env.EXPO_PUBLIC_APP_ID ||
+    process.env.VITE_APP_ID ||
+    "";
+  
+  if (!appId) {
+    console.warn("[OAuth] App ID not configured. Set EXPO_PUBLIC_APP_ID or VITE_APP_ID");
+  }
+  
+  return appId;
+}
+
+/**
+ * Constructs the OAuth login URL for Manus authentication
+ * - Web: redirects to /api/oauth/callback on the same origin
+ * - Native: redirects to deep link or mobile callback endpoint
+ */
+export function getLoginUrl(): string {
+  const portalUrl = getOAuthPortalUrl();
+  const appId = getAppId();
+  
+  if (!portalUrl) {
+    console.error("[OAuth] Missing OAuth portal URL. Set EXPO_PUBLIC_OAUTH_PORTAL_URL");
+    return "";
+  }
+
+  // Construct redirect URI
+  // For web: use same-origin callback endpoint
+  // For native: use mobile callback endpoint
+  const apiBase = getApiBaseUrl();
+  const redirectUri = IS_WEB
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/oauth/callback`
+    : `${apiBase}/api/oauth/callback`;
+
+  // Encode redirect URI in state parameter (base64)
+  const state = btoa(redirectUri);
+
+  // Construct OAuth authorization URL
+  // For local Google OAuth testing, appId may be optional
+  const params = new URLSearchParams({
+    redirect_uri: redirectUri,
+    state: state,
+    response_type: "code",
+    scope: "openid email profile",
+  });
+
+  // Only add project_id if appId is provided (required for Manus OAuth)
+  if (appId) {
+    params.set("project_id", appId);
+  }
+
+  return `${portalUrl}?${params.toString()}`;
 }

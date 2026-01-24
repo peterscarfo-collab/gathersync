@@ -3,10 +3,20 @@
     "name": "GatherSync",
     "slug": "gathersync",
     "scheme": "gathersync",
-    "platforms": ["web"],
+    "platforms": [
+      "web"
+    ],
     "web": {
       "bundler": "metro",
-      "output": "static"
-    }
+      "proxy": {
+        "/api": {
+          "target": "http://127.0.0.1:3000",
+          "changeOrigin": true
+        }
+      }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }

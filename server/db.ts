@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import {
   InsertUser,
   users,
@@ -16,20 +17,34 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
-let _db: ReturnType<typeof drizzle> | null = null;
-
-// Lazily create the drizzle instance so local tooling can run without a DB.
+let _db: ReturnType<typeof drizzle> | undefined;
+// Lazily create the drizzle instance (retryable)
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try {
-      _db = drizzle(process.env.DATABASE_URL);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
+  if (_db) return _db;
+
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.warn("[Database] DATABASE_URL not set");
+    return null;
   }
-  return _db;
+
+  try {
+    console.log("[Database] Initialising DB connection (pool + SSL)");
+    const pool = mysql.createPool({
+      uri: url,
+      ssl: { rejectUnauthorized: true },
+    });
+
+    _db = drizzle(pool);
+    return _db;
+  } catch (error) {
+    console.error("[Database] Failed to initialise DB:", error);
+    // IMPORTANT: do NOT cache failure
+    _db = undefined;
+    return null;
+  }
 }
+
 
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {

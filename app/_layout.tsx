@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { Platform } from "react-native";
+import { trpc, createTRPCClient } from "@/lib/trpc";
 import {
   SafeAreaFrameContext,
   SafeAreaInsetsContext,
@@ -15,7 +16,6 @@ import {
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/manus-runtime";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useTrialCheck } from "@/hooks/use-trial-check";
@@ -32,42 +32,43 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
   const initialFrame = initialWindowMetrics?.frame ?? DEFAULT_WEB_FRAME;
-useEffect(() => {
-  if (Platform.OS !== "web") return;
 
-  const url = new URL(window.location.href);
-  const token = url.searchParams.get("sessionToken");
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
 
-  if (token) {
-  localStorage.setItem("sessionToken", token);
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get("sessionToken");
 
-  // IMPORTANT: create the session cookie on the backend using the token
-  (async () => {
-    try {
-      const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: "include",
-      });
+    if (token) {
+      localStorage.setItem("sessionToken", token);
 
-      if (!res.ok) {
-        console.log("[Auth] establishSession failed:", res.status);
-      } else {
-        console.log("[Auth] establishSession ok");
-      }
-    } catch (e) {
-      console.log("[Auth] establishSession error:", e);
-    } finally {
-      // Remove token from URL so it doesn't keep re-triggering
-      url.searchParams.delete("sessionToken");
-      window.history.replaceState({}, "", url.toString());
+      // IMPORTANT: create the session cookie on the backend using the token
+      (async () => {
+        try {
+          const res = await fetch("/api/auth/session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: "include",
+          });
+
+          if (!res.ok) {
+            console.log("[Auth] establishSession failed:", res.status);
+          } else {
+            console.log("[Auth] establishSession ok");
+          }
+        } catch (e) {
+          console.log("[Auth] establishSession error:", e);
+        } finally {
+          // Remove token from URL so it doesn't keep re-triggering
+          url.searchParams.delete("sessionToken");
+          window.history.replaceState({}, "", url.toString());
+        }
+      })();
     }
-  })();
-}
-}, []);
+  }, []);
 
   // Initialize push notifications
   usePushNotifications();

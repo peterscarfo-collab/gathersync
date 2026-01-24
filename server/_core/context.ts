@@ -2,6 +2,10 @@ import type { CreateExpressContextOptions } from "@trpc/server/adapters/express"
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 import { COOKIE_NAME } from "../../shared/const.js";
+import { upsertUser, getUserByOpenId } from "../db";
+import * as db from "../db";
+
+
 
 
 function getCookieToken(cookieHeader: string | undefined, name: string): string | null {
@@ -39,7 +43,23 @@ const cookieToken = getCookieToken(req.headers.cookie, COOKIE_NAME);
   let user: User | null = null;
 
   try {
-    user = await sdk.authenticateRequest(req);
+    const authed = await sdk.authenticateRequest(req) as any;
+
+    // Make sure the user exists in DB and we have a numeric id
+    if (authed?.openId) {
+      await upsertUser({
+        openId: authed.openId,
+        name: authed.name ?? null,
+        email: authed.email ?? null,
+        loginMethod: authed.loginMethod ?? null,
+        lastSignedIn: new Date(),
+      });
+
+      const dbUser = await getUserByOpenId(authed.openId);
+      user = (dbUser ?? null) as User | null;
+    } else {
+      user = null;
+    }
   } catch {
     user = null;
   }

@@ -7,7 +7,34 @@ function isIpAddress(host: string) {
   return host.includes(":");
 }
 
+function isLocalhost(req: Request): boolean {
+  const hostHeader = req.headers.host;
+  if (!hostHeader) return false;
+  
+  const hostname = hostHeader.split(":")[0];
+  
+  // Check if it's localhost/127.0.0.1 (any port)
+  return LOCAL_HOSTS.has(hostname) || isIpAddress(hostname);
+}
+
+function isLocalHttpDev(req: Request): boolean {
+  const hostHeader = req.headers.host;
+  if (!hostHeader) return false;
+  
+  const hostname = hostHeader.split(":")[0];
+  const port = hostHeader.split(":")[1];
+  
+  // Check if it's localhost/127.0.0.1 on port 8081 (local HTTP dev)
+  const isLocalHost = LOCAL_HOSTS.has(hostname) || isIpAddress(hostname);
+  const isPort8081 = port === "8081";
+  
+  return isLocalHost && isPort8081;
+}
+
 function isSecureRequest(req: Request) {
+  // Local HTTP dev (127.0.0.1:8081) should never be secure
+  if (isLocalHttpDev(req)) return false;
+  
   // express "req.protocol" depends on trust proxy; you already set trust proxy = 1
   if (req.protocol === "https") return true;
 
@@ -39,11 +66,35 @@ function getCookieDomain(req: Request): string | undefined {
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
+  const isProduction = process.env.NODE_ENV === "production";
+  const secure = isSecureRequest(req);
+  const isLocalDev = isLocalHttpDev(req);
+  const isLocal = isLocalhost(req);
+
+  // Development mode (NODE_ENV !== 'production'): Always use secure=false and sameSite='lax'
+  if (!isProduction) {
+    return {
+      domain: getCookieDomain(req),
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      secure: false,
+    };
+  }
+
+  // Production mode: Use secure settings
+  // Localhost (any port): ALWAYS SameSite=Lax, never None
+  // Local HTTP dev (127.0.0.1:8081): SameSite=Lax, Secure=false
+  // Production HTTPS (not localhost): SameSite=None (for cross-site), Secure=true
+  // Other cases: SameSite=Lax, Secure based on protocol
+  const sameSite = isLocal ? "lax" : secure ? "none" : "lax";
+  const cookieSecure = isLocalDev ? false : secure;
+
   return {
     domain: getCookieDomain(req),
     httpOnly: true,
     path: "/",
-    sameSite: "none",
-    secure: isSecureRequest(req),
+    sameSite,
+    secure: cookieSecure,
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -12,15 +12,66 @@ import { ContactPickerModal } from '@/components/contact-picker-modal';
 import { VenueAddressInput } from '@/components/venue-address-input';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
+import { useAuth } from '@/hooks/use-auth';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { eventsCloudStorage } from '@/lib/cloud-storage';
 import type { Event } from '@/types/models';
 
 export default function EditMeetingDetailsScreen() {
+  console.log('[EditMeetingDetails] Component mounting...');
+  
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { eventId } = useLocalSearchParams<{ eventId: string }>();
+  const params = useLocalSearchParams<{ eventId: string }>();
+  
+  console.log('[EditMeetingDetails] Hooks initialized, params:', params);
+  
+  // Extract eventId - handle both params and URL query string
+  const [eventId, setEventId] = useState<string | undefined>(() => {
+    try {
+      // Initial state: try params first
+      const paramEventId = params.eventId;
+      console.log('[EditMeetingDetails] Initializing eventId from params:', paramEventId);
+      if (paramEventId && typeof paramEventId === 'string') {
+        return paramEventId;
+      }
+      if (Array.isArray(paramEventId) && paramEventId.length > 0) {
+        return paramEventId[0];
+      }
+      // Try URL as fallback during initialization
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlEventId = urlParams.get('eventId');
+        console.log('[EditMeetingDetails] Initializing eventId from URL:', urlEventId);
+        return urlEventId || undefined;
+      }
+      return undefined;
+    } catch (error) {
+      console.error('[EditMeetingDetails] Error initializing eventId:', error);
+      return undefined;
+    }
+  });
+  
+  console.log('[EditMeetingDetails] eventId state:', eventId);
+
+  // Update eventId from URL if params didn't work (web fallback)
+  useEffect(() => {
+    if (!eventId && Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlEventId = urlParams.get('eventId');
+        if (urlEventId) {
+          console.log('[EditMeetingDetails] Using eventId from URL:', urlEventId);
+          setEventId(urlEventId);
+        }
+      } catch (e) {
+        console.error('[EditMeetingDetails] Error reading URL params:', e);
+      }
+    }
+  }, [eventId]);
 
   const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
   const [teamLeader, setTeamLeader] = useState('');
   const [teamLeaderPhone, setTeamLeaderPhone] = useState('');
   const [meetingType, setMeetingType] = useState<'in-person' | 'virtual'>('in-person');
@@ -45,34 +96,101 @@ export default function EditMeetingDetailsScreen() {
   
   // Use auto-sync for proper event updates
   const { updateEvent: autoUpdateEvent } = useAutoSync();
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
+    console.log('[EditMeetingDetails] eventId from params:', params.eventId);
+    console.log('[EditMeetingDetails] eventId from URL:', eventId);
+    console.log('[EditMeetingDetails] Full URL:', Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : 'N/A');
     loadEvent();
-  }, [eventId]);
+  }, [eventId, params.eventId]);
 
-  const loadEvent = async () => {
-    if (!eventId) return;
-    const loadedEvent = await eventsLocalStorage.getById(eventId);
-    if (loadedEvent) {
-      setEvent(loadedEvent);
-      setTeamLeader(loadedEvent.teamLeader || '');
-      setTeamLeaderPhone(loadedEvent.teamLeaderPhone || '');
-      setMeetingType(loadedEvent.meetingType || 'in-person');
-      setVenueName(loadedEvent.venueName || '');
-      setVenueAddress(loadedEvent.venueAddress || '');
-      setVenueContact(loadedEvent.venueContact || '');
-      setVenuePhone(loadedEvent.venuePhone || '');
-      setMeetingLink(loadedEvent.meetingLink || '');
-      setRsvpDeadline(loadedEvent.rsvpDeadline || '');
-      setMeetingNotes(loadedEvent.meetingNotes || '');
+  const loadEvent = async (retryCount = 0) => {
+    if (!eventId) {
+      console.error('[EditMeetingDetails] No eventId provided');
+      setLoading(false);
+      Alert.alert(
+        'Error',
+        'No event ID provided. Please try again.',
+        [
+          { text: 'OK', onPress: () => router.back() }
+        ]
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log(`[EditMeetingDetails] Loading event ${eventId}... (attempt ${retryCount + 1})`);
       
-      // Initialize fixed date/time if it's a fixed event
-      if (loadedEvent.eventType === 'fixed' && loadedEvent.fixedDate && loadedEvent.fixedTime) {
-        const [hours, minutes] = loadedEvent.fixedTime.split(':').map(Number);
-        const dateTime = new Date(loadedEvent.fixedDate + 'T00:00:00');
-        dateTime.setHours(hours, minutes);
-        setFixedDate(dateTime);
+      // Try local storage first
+      let loadedEvent = await eventsLocalStorage.getById(eventId);
+      
+      // If not found locally and user is authenticated, try fetching from cloud
+      if (!loadedEvent && isAuthenticated) {
+        console.log('[EditMeetingDetails] Event not in local storage, fetching from cloud...');
+        try {
+          loadedEvent = await eventsCloudStorage.getById(eventId);
+          if (loadedEvent) {
+            console.log('[EditMeetingDetails] Event fetched from cloud, saving to local storage...');
+            // Save to local storage for future use
+            await eventsLocalStorage.addWithId(loadedEvent);
+          }
+        } catch (cloudError) {
+          console.error('[EditMeetingDetails] Error fetching from cloud:', cloudError);
+          // Continue to retry logic below
+        }
       }
+      
+      if (loadedEvent) {
+        console.log(`[EditMeetingDetails] Event loaded: ${loadedEvent.name}`);
+        setEvent(loadedEvent);
+        setTeamLeader(loadedEvent.teamLeader || '');
+        setTeamLeaderPhone(loadedEvent.teamLeaderPhone || '');
+        setMeetingType(loadedEvent.meetingType || 'in-person');
+        setVenueName(loadedEvent.venueName || '');
+        setVenueAddress(loadedEvent.venueAddress || '');
+        setVenueContact(loadedEvent.venueContact || '');
+        setVenuePhone(loadedEvent.venuePhone || '');
+        setMeetingLink(loadedEvent.meetingLink || '');
+        setRsvpDeadline(loadedEvent.rsvpDeadline || '');
+        setMeetingNotes(loadedEvent.meetingNotes || '');
+        
+        // Initialize fixed date/time if it's a fixed event
+        if (loadedEvent.eventType === 'fixed' && loadedEvent.fixedDate && loadedEvent.fixedTime) {
+          const [hours, minutes] = loadedEvent.fixedTime.split(':').map(Number);
+          const dateTime = new Date(loadedEvent.fixedDate + 'T00:00:00');
+          dateTime.setHours(hours, minutes);
+          setFixedDate(dateTime);
+        }
+        setLoading(false);
+      } else if (retryCount < 5) {
+        // Event not found - might be AsyncStorage write delay
+        // Retry up to 5 times with 500ms delay (total 2.5 seconds)
+        console.log(`[EditMeetingDetails] Event not found, retrying (${retryCount + 1}/5)...`);
+        setTimeout(() => loadEvent(retryCount + 1), 500);
+      } else {
+        // All retries failed - event truly doesn't exist
+        console.error('[EditMeetingDetails] Event not found after all retries:', eventId);
+        setLoading(false);
+        Alert.alert(
+          'Event Not Found',
+          'Could not load event. It may have been deleted or you may not have access to it.',
+          [
+            { text: 'OK', onPress: () => router.back() }
+          ]
+        );
+      }
+    } catch (error) {
+      console.error('[EditMeetingDetails] Error loading event:', error);
+      setLoading(false);
+      Alert.alert(
+        'Error',
+        'Failed to load event. Please try again.',
+        [
+          { text: 'OK', onPress: () => router.back() }
+        ]
+      );
     }
   };
 
@@ -120,9 +238,9 @@ export default function EditMeetingDetailsScreen() {
     }
   };
 
-  if (!event) {
+  if (loading || !event) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor }]}>
+      <ThemedView style={[styles.container, { backgroundColor, justifyContent: 'center', alignItems: 'center' }]}>
         <ThemedText>Loading...</ThemedText>
       </ThemedView>
     );
