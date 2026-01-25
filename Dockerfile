@@ -70,4 +70,4 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
     fi
 
 EXPOSE 3000
-CMD ["node", "index.js"]
+CMD npx prisma db push --accept-data-loss && node index.js
