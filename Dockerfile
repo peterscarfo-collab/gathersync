@@ -33,16 +33,15 @@ COPY . .
 # Build application
 RUN pnpm run build
 
-# Ensure Prisma schema directory exists in root before prune
-# Check common locations: root, server/prisma, or create empty directory
-RUN if [ -d "prisma" ]; then \
-      echo "Prisma folder found in root"; \
-    elif [ -d "server/prisma" ]; then \
+# Copy prisma folder to root BEFORE prune to ensure it's not deleted
+RUN if [ -d "server/prisma" ]; then \
       cp -r server/prisma ./prisma && \
-      echo "Copied prisma from server/ to root"; \
+      echo "Copied prisma from server/prisma to root before prune"; \
+    elif [ -d "prisma" ]; then \
+      echo "Prisma folder already in root"; \
     else \
       mkdir -p ./prisma && \
-      echo "Created empty prisma directory (Prisma may not be used)"; \
+      echo "Created empty prisma directory"; \
     fi
 
 # Remove development dependencies
@@ -62,8 +61,8 @@ COPY --from=build /app /app
 # Explicitly copy server directory to final stage
 COPY --from=build /app/server ./server
 
-# Copy Prisma schema directory from server/prisma to root where Prisma expects it
-COPY --from=build /app/server/prisma ./prisma
+# Copy Prisma schema directory from build stage (already copied to root before prune)
+COPY --from=build /app/prisma ./prisma
 
 EXPOSE 3000
 CMD ["sh", "-c", "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && node server/index.js"]
