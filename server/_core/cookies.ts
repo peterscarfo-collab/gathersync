@@ -83,12 +83,12 @@ export function getSessionCookieOptions(
   }
 
   // Production mode: Use secure settings
+  // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
+  // For production HTTPS (not localhost): secure=true, sameSite='lax' (same domain)
   // Localhost (any port): ALWAYS SameSite=Lax, never None
   // Local HTTP dev (127.0.0.1:8081): SameSite=Lax, Secure=false
-  // Production HTTPS (not localhost): SameSite=None (for cross-site), Secure=true
-  // Other cases: SameSite=Lax, Secure based on protocol
-  const sameSite = isLocal ? "lax" : secure ? "none" : "lax";
-  const cookieSecure = isLocalDev ? false : secure;
+  const sameSite = "lax"; // Use 'lax' for same-domain cookies (frontend and backend on gathersync.fly.dev)
+  const cookieSecure = isLocalDev ? false : secure; // Secure=true for production HTTPS
 
   return {
     domain: getCookieDomain(req),

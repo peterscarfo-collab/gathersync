@@ -14,6 +14,7 @@ import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
 import { COOKIE_NAME } from "../../shared/const.js";
 import { sdk } from "./sdk";
+import { getSessionCookieOptions } from "./cookies";
 
 /* ---------------------------------------------------- */
 /* Port helpers                                         */
@@ -108,7 +109,7 @@ async function startServer() {
       }
 
       const secret =
-        process.env.JWT_SECRET || process.env.COOKIE_SECRET;
+        process.env.JWT_SECRET || process.env.SESSION_SECRET || process.env.COOKIE_SECRET;
 
       if (!secret) {
         return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
@@ -116,13 +117,11 @@ async function startServer() {
 
       jwt.verify(token, secret);
 
-      const isProd = process.env.NODE_ENV === "production";
-
+      // Use getSessionCookieOptions for proper production cookie settings
+      // This ensures secure: true, sameSite: 'lax' for production with trust proxy active
+      const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? "none" : "lax",
-        path: "/",
+        ...cookieOptions,
         maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       });
 
