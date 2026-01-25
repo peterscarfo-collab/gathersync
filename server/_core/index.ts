@@ -199,6 +199,89 @@ async function startServer() {
     }
   });
 
+  /* ---------------- Debug: Database Events --------------------------- */
+  app.get("/api/debug/events", async (_req, res) => {
+    try {
+      const dbModule = await import("../db");
+      const allEvents = await dbModule.getAllEvents();
+      
+      const eventsWithUsers = allEvents.map((event) => {
+        return {
+          id: event.id,
+          userId: event.userId,
+          name: event.name,
+          eventType: event.eventType,
+          month: event.month,
+          year: event.year,
+          archived: event.archived,
+          finalized: event.finalized,
+          deletedAt: event.deletedAt ? event.deletedAt.toISOString() : null,
+          createdAt: event.createdAt.toISOString(),
+          updatedAt: event.updatedAt.toISOString(),
+        };
+      });
+
+      res.json({
+        ok: true,
+        totalEvents: allEvents.length,
+        activeEvents: allEvents.filter(e => !e.deletedAt).length,
+        deletedEvents: allEvents.filter(e => e.deletedAt).length,
+        events: eventsWithUsers,
+      });
+    } catch (e: any) {
+      console.error("[Debug] Failed to get events:", e);
+      res.status(500).json({
+        ok: false,
+        error: e?.message ?? "database_error",
+        stack: process.env.NODE_ENV === "development" ? e?.stack : undefined,
+      });
+    }
+  });
+
+  /* ---------------- Debug: Database Stats --------------------------- */
+  app.get("/api/debug/db-stats", async (_req, res) => {
+    try {
+      const dbModule = await import("../db");
+      const allEvents = await dbModule.getAllEvents();
+      const uniqueUserIds = new Set(allEvents.map(e => e.userId));
+      
+      // Get user counts
+      const drizzleDb = await dbModule.getDb();
+      let userCount = 0;
+      if (drizzleDb) {
+        const { users } = await import("../../drizzle/schema");
+        const allUsers = await drizzleDb.select().from(users);
+        userCount = allUsers.length;
+      }
+
+      res.json({
+        ok: true,
+        database: {
+          connected: !!drizzleDb,
+          hasDatabaseUrl: !!process.env.DATABASE_URL,
+        },
+        events: {
+          total: allEvents.length,
+          active: allEvents.filter(e => !e.deletedAt).length,
+          deleted: allEvents.filter(e => e.deletedAt).length,
+          archived: allEvents.filter(e => e.archived).length,
+          finalized: allEvents.filter(e => e.finalized).length,
+          uniqueUsers: uniqueUserIds.size,
+        },
+        users: {
+          total: userCount,
+        },
+      });
+    } catch (e: any) {
+      console.error("[Debug] Failed to get DB stats:", e);
+      res.status(500).json({
+        ok: false,
+        error: e?.message ?? "database_error",
+        stack: process.env.NODE_ENV === "development" ? e?.stack : undefined,
+      });
+    }
+  });
+
   /* ---------------- Public API ---------------------- */
   app.use("/api/public", publicApiRouter);
 

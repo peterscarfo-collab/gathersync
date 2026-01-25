@@ -127,6 +127,13 @@ export async function getUserEvents(userId: number) {
   return db.select().from(events).where(eq(events.userId, userId));
 }
 
+export async function getAllEvents() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select().from(events);
+}
+
 export async function getEventById(eventId: string) {
   const db = await getDb();
   if (!db) return null;
