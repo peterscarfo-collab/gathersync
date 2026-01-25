@@ -85,10 +85,11 @@ export function getSessionCookieOptions(
   // Production mode: Use secure settings
   // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
   // Production: secure=true, sameSite='none' (required for cross-site cookies), httpOnly=true, maxAge=24h
-  // Localhost (any port): ALWAYS SameSite=Lax, never None
-  // Local HTTP dev (127.0.0.1:8081): SameSite=Lax, Secure=false
+  // ALWAYS use 'none' for production (not localhost) to allow cross-site cookies
+  // For production (not localhost): secure=true, sameSite='none'
+  // For localhost: secure=false, sameSite='lax' (for local testing)
   const sameSite = isLocal ? "lax" : "none"; // Use 'none' for production (cross-site), 'lax' for localhost
-  const cookieSecure = isLocalDev ? false : secure; // Secure=true for production HTTPS
+  const cookieSecure = isLocal ? false : true; // Secure=true for production (not localhost)
   const maxAge = 24 * 60 * 60 * 1000; // 24 hours for production
 
   return {

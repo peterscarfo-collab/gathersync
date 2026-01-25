@@ -4,6 +4,7 @@ const VERSION = "v1";
 const MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
 function getSecret() {
+  // SESSION_SECRET is the primary secret for OAuth state signing
   const s = process.env.OAUTH_STATE_SECRET || process.env.SESSION_SECRET || process.env.JWT_SECRET;
   if (!s) throw new Error("Missing OAUTH_STATE_SECRET (or SESSION_SECRET/JWT_SECRET)");
   return s;

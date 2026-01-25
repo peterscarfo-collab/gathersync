@@ -117,8 +117,9 @@ async function startServer() {
         return res.status(401).json({ ok: false, error: "missing_bearer_token" });
       }
 
+      // SESSION_SECRET is the primary secret for session management
       const secret =
-        process.env.JWT_SECRET || process.env.SESSION_SECRET || process.env.COOKIE_SECRET;
+        process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.COOKIE_SECRET;
 
       if (!secret) {
         return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
