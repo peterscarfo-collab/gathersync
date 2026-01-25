@@ -47,4 +47,4 @@ COPY --from=build /app /app
 EXPOSE 3000
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-CMD ["pnpm", "start"]
+CMD pnpm start
