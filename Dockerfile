@@ -39,6 +39,10 @@ ENV EXPO_PUBLIC_API_BASE_URL=https://gathersync.fly.dev
 ENV EXPO_PUBLIC_OAUTH_PORTAL_URL=https://gathersync.fly.dev/api/auth/google
 ENV EXPO_PUBLIC_APP_ID=gathersync-prod
 
+# Set backend environment variables (needed for session token creation)
+# APP_ID is required for session tokens - backend reads from APP_ID or VITE_APP_ID
+ENV APP_ID=gathersync-prod
+
 # Build frontend web app (environment variables above will be included)
 RUN pnpm run build:web
 

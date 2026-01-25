@@ -52,6 +52,15 @@ async function startServer() {
   // Using '1' (trust first proxy) is correct for Fly.io's single proxy setup
   app.set("trust proxy", 1);
   console.log("[Server] Trust proxy enabled: app.set('trust proxy', 1)");
+  
+  // Log critical environment variables at startup
+  console.log("[Server] Environment check:", {
+    hasAppId: !!process.env.APP_ID,
+    appId: process.env.APP_ID || "(not set)",
+    hasSessionSecret: !!process.env.SESSION_SECRET,
+    nodeEnv: process.env.NODE_ENV,
+    flyAppName: process.env.FLY_APP_NAME || "(not set)",
+  });
 
   /* ---------------- Cookies FIRST ------------------- */
   app.use(cookieParser());

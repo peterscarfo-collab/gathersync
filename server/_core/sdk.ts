@@ -154,10 +154,17 @@ class SDKServer {
     openId: string,
     options: { expiresInMs?: number; name?: string } = {},
   ): Promise<string> {
+    if (!ENV.appId) {
+      console.error("[Auth] APP_ID is not set! Session tokens will fail verification.");
+      console.error("[Auth] Set APP_ID or VITE_APP_ID environment variable.");
+    }
+    
+    console.log("[Auth] Creating session token with appId:", ENV.appId || "(empty - will fail!)");
+    
     return this.signSession(
       {
         openId,
-        appId: ENV.appId,
+        appId: ENV.appId || "gathersync-prod", // Fallback to prevent empty appId
         name: options.name || "",
       },
       options,
@@ -193,13 +200,33 @@ class SDKServer {
 
     try {
       const secretKey = this.getSessionSecret();
+      if (!secretKey || secretKey.length === 0) {
+        console.error("[Auth] Session secret is missing or empty!");
+        return null;
+      }
+      
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
+      console.log("[Auth] Session payload:", { 
+        hasOpenId: !!openId, 
+        hasAppId: !!appId, 
+        hasName: !!name,
+        appIdValue: appId,
+        expectedAppId: ENV.appId 
+      });
+
       if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
-        console.warn("[Auth] Session payload missing required fields");
+        console.warn("[Auth] Session payload missing required fields", {
+          openId: typeof openId,
+          appId: typeof appId,
+          name: typeof name,
+          openIdValue: openId,
+          appIdValue: appId,
+          nameValue: name
+        });
         return null;
       }
 
@@ -210,6 +237,7 @@ class SDKServer {
       };
     } catch (error) {
       console.warn("[Auth] Session verification failed", String(error));
+      console.warn("[Auth] Error details:", error);
       return null;
     }
   }
