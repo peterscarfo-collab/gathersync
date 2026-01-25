@@ -39,21 +39,19 @@ RUN pnpm prune --prod
 # Final stage for app image
 FROM base
 
-# Install OpenSSL (required for Node.js crypto operations)
+# Install OpenSSL (required for secure database connections)
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy everything from build stage (includes pruned node_modules, dist, package.json, and prisma if it exists)
+# Copy everything from build stage (includes pruned node_modules, dist, and package.json)
 COPY --from=build /app /app
 
-# Generate Prisma client if Prisma schema exists
-RUN if [ -d "prisma" ] && [ -f "prisma/schema.prisma" ]; then \
-      echo "Prisma schema found, generating client..."; \
-      npx prisma generate || echo "Prisma generate failed (may not be installed)"; \
-    else \
-      echo "Prisma schema not found, skipping Prisma generate"; \
-    fi
+# Explicitly copy Prisma schema directory to final stage
+COPY --from=build /app/prisma ./prisma
+
+# Generate Prisma client to ensure it's ready for production
+RUN npx prisma generate
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
