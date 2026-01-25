@@ -36,12 +36,12 @@ RUN pnpm run build
 # Remove development dependencies
 RUN pnpm prune --prod
 
-
 # Final stage for app image
 FROM base
 
 WORKDIR /app
 
+# Copy everything from build stage (includes pruned node_modules, dist, and package.json)
 COPY --from=build /app /app
 
 EXPOSE 3000
