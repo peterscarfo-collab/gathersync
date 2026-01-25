@@ -12,16 +12,16 @@ const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 // Construct callback URL from EXPO_PUBLIC_API_BASE_URL if available, otherwise use GOOGLE_REDIRECT_URI
-// For Fly.io deployment, use https://gathersync.fly.dev/api/auth/google/callback
+// For Fly.io deployment, use exactly https://gathersync.fly.dev/api/auth/google/callback
 function getCallbackUrl(): string {
+  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) - use exact Fly.io URL
+  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
+    return "https://gathersync.fly.dev/api/auth/google/callback";
+  }
   if (API_BASE_URL) {
     // Ensure no trailing slash and append callback path
     const base = API_BASE_URL.replace(/\/+$/, "");
     return `${base}/api/auth/google/callback`;
-  }
-  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io)
-  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
-    return "https://gathersync.fly.dev/api/auth/google/callback";
   }
   if (GOOGLE_REDIRECT_URI) {
     return GOOGLE_REDIRECT_URI;
@@ -119,14 +119,30 @@ const redirectWithParams = (params: Record<string, string>) => {
   return res.redirect(u.toString());
 };
 
+    // Log callback details for debugging (remove in production if needed)
+    console.log("[OAuth Callback] Received:", {
+      hasCode: !!code,
+      hasState: !!state,
+      hasError: !!error,
+      queryKeys: Object.keys(req.query),
+      callbackUrl: CALLBACK_URL,
+    });
 
     if (error) {
+      console.error("[OAuth Callback] Error from Google:", error);
       return redirectWithParams({ error });
+    }
+
+    // Verify state parameter - this prevents CSRF attacks
+    if (!state) {
+      console.error("[OAuth Callback] Missing state parameter");
+      return redirectWithParams({ error: "missing_state" });
     }
 
 const stateCheck = verifyOAuthState(state);
 
 if (!stateCheck.ok) {
+  console.error("[OAuth Callback] State verification failed:", stateCheck.reason);
   return redirectWithParams({ error: stateCheck.reason });
 }
 
@@ -184,15 +200,11 @@ if (!code) {
   expiresInMs: ONE_YEAR_MS,
 });
 
-const isProd = process.env.NODE_ENV === "production";
-
+// Use getSessionCookieOptions for proper production cookie settings
+const cookieOptions = getSessionCookieOptions(req);
 res.cookie(COOKIE_NAME, sessionToken, {
-  httpOnly: true,
-  secure: isProd,
-  sameSite: isProd ? "none" : "lax",
-  domain: isProd ? ".gathersync.app" : undefined,
-  path: "/",
-  maxAge: ONE_YEAR_MS, // or whatever you use here
+  ...cookieOptions,
+  maxAge: ONE_YEAR_MS,
 });
 
 
