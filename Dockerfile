@@ -33,7 +33,13 @@ COPY . .
 # Build backend server
 RUN pnpm run build
 
-# Build frontend web app
+# Set frontend environment variables for production build
+# These EXPO_PUBLIC_* variables are baked into the frontend at build time
+ENV EXPO_PUBLIC_API_BASE_URL=https://gathersync.fly.dev
+ENV EXPO_PUBLIC_OAUTH_PORTAL_URL=https://gathersync.fly.dev/api/auth/google
+ENV EXPO_PUBLIC_APP_ID=gathersync-prod
+
+# Build frontend web app (environment variables above will be included)
 RUN pnpm run build:web
 
 # Remove development dependencies
