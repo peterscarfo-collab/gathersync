@@ -9,7 +9,7 @@
     "dev:server": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
     "dev:metro": "cross-env EXPO_USE_METRO_WORKSPACE_ROOT=1 npx expo start --web --port 8082",
     "build": "esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "start": "NODE_ENV=production node index.js",
+    "start": "node index.js",
     "check": "tsc --noEmit",
     "lint": "expo lint",
     "format": "prettier --write .",
