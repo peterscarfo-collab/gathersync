@@ -59,6 +59,9 @@ WORKDIR /app
 # Copy everything from build stage (includes pruned node_modules, dist, and package.json)
 COPY --from=build /app /app
 
+# Explicitly copy server directory to final stage
+COPY --from=build /app/server ./server
+
 # Copy Prisma schema directory to final stage
 COPY --from=build /app/prisma ./prisma
 
@@ -70,4 +73,4 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
     fi
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma generate && npx prisma db push --accept-data-loss && node server/index.js"]
+CMD ["node", "server/index.js"]
