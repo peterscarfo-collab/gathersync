@@ -202,6 +202,7 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`[api] server listening on port ${port}`);
+    console.log('Server is officially listening on port', port);
   });
 }
 
