@@ -11,22 +11,11 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-// Construct callback URL from EXPO_PUBLIC_API_BASE_URL if available, otherwise use GOOGLE_REDIRECT_URI
-// For Fly.io deployment, use exactly https://gathersync.fly.dev/api/auth/google/callback
+// Construct callback URL - use dynamic variable based on NODE_ENV
 function getCallbackUrl(): string {
-  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) - use exact Fly.io URL
-  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
-    return "https://gathersync.fly.dev/api/auth/google/callback";
-  }
-  if (API_BASE_URL) {
-    // Ensure no trailing slash and append callback path
-    const base = API_BASE_URL.replace(/\/+$/, "");
-    return `${base}/api/auth/google/callback`;
-  }
-  if (GOOGLE_REDIRECT_URI) {
-    return GOOGLE_REDIRECT_URI;
-  }
-  throw new Error("Google OAuth callback URL not configured. Set EXPO_PUBLIC_API_BASE_URL or GOOGLE_REDIRECT_URI");
+  return process.env.NODE_ENV === "production"
+    ? "https://gathersync.fly.dev/api/auth/google/callback"
+    : "http://localhost:3000/api/auth/google/callback";
 }
 
 const CALLBACK_URL = getCallbackUrl();
@@ -99,12 +88,18 @@ scope:
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
     
-    // Use FRONTEND_URL or EXPO_PUBLIC_OAUTH_REDIRECT_URL, fallback to localhost for dev
+    // Determine frontend URL - use production URL for Fly.io, localhost for dev
     const isProduction = process.env.NODE_ENV === "production";
-    const getFrontendUrl = () => 
-      process.env.FRONTEND_URL || 
-      process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL || 
-      (isProduction ? "https://app.gathersync.app" : "http://127.0.0.1:8081");
+    const getFrontendUrl = () => {
+      if (isProduction) {
+        // Production: redirect to live Fly.io URL
+        return "https://gathersync.fly.dev";
+      }
+      // Development: use environment variable or fallback to localhost
+      return process.env.FRONTEND_URL || 
+             process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL || 
+             "http://127.0.0.1:8081";
+    };
     
     const frontendUrl = getFrontendUrl();
 
