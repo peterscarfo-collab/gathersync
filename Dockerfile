@@ -45,4 +45,4 @@ WORKDIR /app
 COPY --from=build /app /app
 
 EXPOSE 3000
-CMD ["node", "index.js"]
+CMD ["node", "dist/index.js"]
