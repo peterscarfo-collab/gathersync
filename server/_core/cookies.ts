@@ -66,12 +66,10 @@ function getCookieDomain(req: Request): string | undefined {
 export function getSessionCookieOptions(
   req: Request,
 ): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure" | "maxAge"> {
-  const isProduction = process.env.NODE_ENV === "production";
-  const secure = isSecureRequest(req);
-  const isLocalDev = isLocalHttpDev(req);
+  const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
   const isLocal = isLocalhost(req);
 
-  // Development mode (NODE_ENV !== 'production'): Always use secure=false and sameSite='lax'
+  // Development mode: Always use secure=false and sameSite='lax'
   if (!isProduction) {
     return {
       domain: getCookieDomain(req),
@@ -82,22 +80,15 @@ export function getSessionCookieOptions(
     };
   }
 
-  // Production mode: Use secure settings
+  // Production mode: EXACT settings as requested
+  // secure: true, sameSite: 'none', httpOnly: true, maxAge: 24 * 60 * 60 * 1000
   // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
-  // Production: secure=true, sameSite='none' (required for cross-site cookies), httpOnly=true, maxAge=24h
-  // ALWAYS use 'none' for production (not localhost) to allow cross-site cookies
-  // For production (not localhost): secure=true, sameSite='none'
-  // For localhost: secure=false, sameSite='lax' (for local testing)
-  const sameSite = isLocal ? "lax" : "none"; // Use 'none' for production (cross-site), 'lax' for localhost
-  const cookieSecure = isLocal ? false : true; // Secure=true for production (not localhost)
-  const maxAge = 24 * 60 * 60 * 1000; // 24 hours for production
-
   return {
     domain: getCookieDomain(req),
     httpOnly: true,
     path: "/",
-    sameSite,
-    secure: cookieSecure,
-    maxAge,
+    sameSite: "none", // REQUIRED for cross-site cookies in production
+    secure: true, // REQUIRED for SameSite=None
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
   };
 }

@@ -199,8 +199,9 @@ export function registerOAuthRoutes(app: Express) {
       const token = authHeader.slice("Bearer ".length).trim();
 
       // Set cookie for this domain (3000-xxx)
+      // cookieOptions already includes maxAge (24h for production)
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      res.cookie(COOKIE_NAME, token, cookieOptions);
 
       res.json({ success: true, user: buildUserResponse(user) });
     } catch (error) {
