@@ -65,7 +65,7 @@ function getCookieDomain(req: Request): string | undefined {
 
 export function getSessionCookieOptions(
   req: Request,
-): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
+): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure" | "maxAge"> {
   const isProduction = process.env.NODE_ENV === "production";
   const secure = isSecureRequest(req);
   const isLocalDev = isLocalHttpDev(req);
@@ -84,11 +84,12 @@ export function getSessionCookieOptions(
 
   // Production mode: Use secure settings
   // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
-  // For production HTTPS (not localhost): secure=true, sameSite='lax' (same domain)
+  // Production: secure=true, sameSite='none' (required for cross-site cookies), httpOnly=true, maxAge=24h
   // Localhost (any port): ALWAYS SameSite=Lax, never None
   // Local HTTP dev (127.0.0.1:8081): SameSite=Lax, Secure=false
-  const sameSite = "lax"; // Use 'lax' for same-domain cookies (frontend and backend on gathersync.fly.dev)
+  const sameSite = isLocal ? "lax" : "none"; // Use 'none' for production (cross-site), 'lax' for localhost
   const cookieSecure = isLocalDev ? false : secure; // Secure=true for production HTTPS
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours for production
 
   return {
     domain: getCookieDomain(req),
@@ -96,5 +97,6 @@ export function getSessionCookieOptions(
     path: "/",
     sameSite,
     secure: cookieSecure,
+    maxAge,
   };
 }

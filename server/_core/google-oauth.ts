@@ -201,11 +201,9 @@ if (!code) {
 });
 
 // Use getSessionCookieOptions for proper production cookie settings
+// cookieOptions already includes maxAge (24h for production, or can be overridden)
 const cookieOptions = getSessionCookieOptions(req);
-res.cookie(COOKIE_NAME, sessionToken, {
-  ...cookieOptions,
-  maxAge: ONE_YEAR_MS,
-});
+res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
 
 

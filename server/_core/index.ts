@@ -46,7 +46,7 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
 
-  // REQUIRED for Fly / reverse proxies
+  // REQUIRED for Fly / reverse proxies - MUST be first before any middleware
   app.set("trust proxy", 1);
 
   /* ---------------- Cookies FIRST ------------------- */
@@ -67,10 +67,19 @@ async function startServer() {
 
   /* ---------------- CORS ---------------------------- */
   app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin) {
-      res.header("Access-Control-Allow-Origin", origin);
+    const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
+    
+    // Production: Explicitly set origin to https://gathersync.fly.dev
+    // Development: Use dynamic origin from request
+    if (isProduction) {
+      res.header("Access-Control-Allow-Origin", "https://gathersync.fly.dev");
+    } else {
+      const origin = req.headers.origin;
+      if (origin) {
+        res.header("Access-Control-Allow-Origin", origin);
+      }
     }
+    
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.header(
       "Access-Control-Allow-Headers",
@@ -118,12 +127,10 @@ async function startServer() {
       jwt.verify(token, secret);
 
       // Use getSessionCookieOptions for proper production cookie settings
-      // This ensures secure: true, sameSite: 'lax' for production with trust proxy active
+      // This ensures secure: true, sameSite: 'none' for production with trust proxy active
+      // cookieOptions already includes maxAge (24h for production)
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, token, {
-        ...cookieOptions,
-        maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
-      });
+      res.cookie(COOKIE_NAME, token, cookieOptions);
 
       return res.json({ ok: true });
     } catch (e: any) {
