@@ -11,11 +11,14 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-// Construct callback URL - use dynamic variable based on NODE_ENV
+// Construct callback URL - use exact Fly.io URL for production
 function getCallbackUrl(): string {
-  return process.env.NODE_ENV === "production"
-    ? "https://gathersync.fly.dev/api/auth/google/callback"
-    : "http://localhost:3000/api/auth/google/callback";
+  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) or production
+  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
+    return "https://gathersync.fly.dev/api/auth/google/callback";
+  }
+  // Development fallback
+  return "http://localhost:3000/api/auth/google/callback";
 }
 
 const CALLBACK_URL = getCallbackUrl();
@@ -89,10 +92,11 @@ scope:
     const error = getQueryParam(req, "error");
     
     // Determine frontend URL - use production URL for Fly.io, localhost for dev
-    const isProduction = process.env.NODE_ENV === "production";
+    // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) or production
+    const isProduction = process.env.FLY_APP_NAME || process.env.NODE_ENV === "production";
     const getFrontendUrl = () => {
       if (isProduction) {
-        // Production: redirect to live Fly.io URL
+        // Production: ALWAYS redirect to live Fly.io URL
         return "https://gathersync.fly.dev";
       }
       // Development: use environment variable or fallback to localhost
