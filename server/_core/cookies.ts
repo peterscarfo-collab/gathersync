@@ -80,15 +80,15 @@ export function getSessionCookieOptions(
     };
   }
 
-  // Production mode: EXACT settings as requested
-  // secure: true, sameSite: 'none', httpOnly: true, maxAge: 24 * 60 * 60 * 1000
+  // Production mode: HARDCODED settings for Fly.io environment
+  // secure: true, sameSite: 'lax', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, domain: 'gathersync.fly.dev'
   // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
   return {
-    domain: getCookieDomain(req),
+    domain: "gathersync.fly.dev", // Hardcoded for Fly.io production
     httpOnly: true,
     path: "/",
-    sameSite: "none", // REQUIRED for cross-site cookies in production
-    secure: true, // REQUIRED for SameSite=None
+    sameSite: "lax", // Compatible with modern browsers for same-domain cookies
+    secure: true, // Required for HTTPS
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   };
 }
