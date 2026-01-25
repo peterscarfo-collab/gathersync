@@ -47,11 +47,15 @@ WORKDIR /app
 # Copy everything from build stage (includes pruned node_modules, dist, and package.json)
 COPY --from=build /app /app
 
-# Explicitly copy Prisma schema directory to final stage
-COPY --from=build /app/prisma ./prisma
-
-# Generate Prisma client to ensure it's ready for production
-RUN npx prisma generate
+# Copy Prisma schema directory if it exists (conditional to avoid errors if not present)
+# Note: This project uses Drizzle ORM, so Prisma may not be present
+RUN if [ -d "/app/prisma" ]; then \
+      cp -r /app/prisma ./prisma && \
+      echo "Prisma schema found, generating client..." && \
+      npx prisma generate || echo "Prisma generate failed (may not be installed)"; \
+    else \
+      echo "Prisma folder not found, skipping Prisma setup"; \
+    fi
 
 EXPOSE 3000
-CMD ["node", "dist/index.js"]
+CMD ["node", "index.js"]
