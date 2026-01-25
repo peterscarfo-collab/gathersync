@@ -40,12 +40,9 @@ RUN pnpm prune --prod
 # Final stage for app image
 FROM base
 
-# Set working directory
 WORKDIR /app
 
-# Copy built application
 COPY --from=build /app /app
 
-# Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
 CMD ["node", "index.js"]
