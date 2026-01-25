@@ -80,15 +80,17 @@ export function getSessionCookieOptions(
     };
   }
 
-  // Production mode: HARDCODED settings for Fly.io environment
-  // secure: true, sameSite: 'lax', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, domain: 'gathersync.fly.dev'
+  // Production mode: Settings for Fly.io environment
+  // secure: true, sameSite: 'lax', httpOnly: true, maxAge: 24 * 60 * 60 * 1000
   // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
+  // For same-domain cookies (frontend and backend on gathersync.fly.dev), 
+  // do NOT set domain - let browser use current domain automatically
   const cookieOptions = {
-    domain: "gathersync.fly.dev", // Hardcoded for Fly.io production
+    domain: undefined, // Don't set domain for same-domain cookies - browser will use current domain
     httpOnly: true,
     path: "/",
     sameSite: "lax" as const, // Compatible with modern browsers for same-domain cookies
-    secure: true, // Required for HTTPS
+    secure: true, // Required for HTTPS (trust proxy ensures req.protocol is 'https')
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   };
   

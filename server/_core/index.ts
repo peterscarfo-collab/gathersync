@@ -46,8 +46,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
 
-  // REQUIRED for Fly / reverse proxies - MUST be the FIRST line after Express initialization
-  // This MUST come before ANY other middleware or configuration
+  // REQUIRED for Fly.io reverse proxy - MUST be the FIRST line after Express initialization
+  // This ensures req.protocol correctly reports 'https' and req.secure is true
+  // Without this, cookies with secure: true will be rejected
+  // Using '1' (trust first proxy) is correct for Fly.io's single proxy setup
   app.set("trust proxy", 1);
   console.log("[Server] Trust proxy enabled: app.set('trust proxy', 1)");
 
