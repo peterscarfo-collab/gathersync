@@ -62,16 +62,8 @@ COPY --from=build /app /app
 # Explicitly copy server directory to final stage
 COPY --from=build /app/server ./server
 
-# Copy Prisma schema directory to final stage (check server/prisma first, then root prisma)
-RUN if [ -d "/app/server/prisma" ]; then \
-      cp -r /app/server/prisma ./prisma && \
-      echo "Copied prisma from server/prisma to root"; \
-    elif [ -d "/app/prisma" ]; then \
-      echo "Prisma folder already in root"; \
-    else \
-      mkdir -p ./prisma && \
-      echo "Created empty prisma directory"; \
-    fi
+# Copy Prisma schema directory from server/prisma to root where Prisma expects it
+COPY --from=build /app/server/prisma ./prisma
 
 EXPOSE 3000
 CMD ["sh", "-c", "npx prisma generate --schema=./prisma/schema.prisma && npx prisma db push --accept-data-loss --schema=./prisma/schema.prisma && node server/index.js"]
