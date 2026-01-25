@@ -203,6 +203,8 @@ if (!code) {
 // Use getSessionCookieOptions for proper production cookie settings
 // cookieOptions already includes maxAge (24h for production, or can be overridden)
 const cookieOptions = getSessionCookieOptions(req);
+console.log("[OAuth Callback] Setting cookie with options:", JSON.stringify(cookieOptions, null, 2));
+console.log("[OAuth Callback] Session token length:", sessionToken?.length || 0);
 res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
 

@@ -152,13 +152,21 @@ export function registerOAuthRoutes(app: Express) {
   try {
     // Read session token ONLY from cookie (web auth lock)
     const token = req.cookies?.[COOKIE_NAME];
+    
+    console.log("[Auth Me] Cookie received:", !!token);
+    console.log("[Auth Me] Cookie name:", COOKIE_NAME);
+    console.log("[Auth Me] All cookies:", Object.keys(req.cookies || {}));
+    console.log("[Auth Me] Request host:", req.headers.host);
+    console.log("[Auth Me] Request origin:", req.headers.origin);
 
     if (!token) {
       return res.status(401).json({ error: "No session cookie", user: null });
     }
 
     // Verify JWT locally — no DB, no OAuth calls
+    console.log("[Auth Me] Verifying session token, length:", token?.length);
     const session = await sdk.verifySession(token);
+    console.log("[Auth Me] Session verification result:", !!session);
     if (!session) {
       return res.status(401).json({ error: "Invalid session", user: null });
     }

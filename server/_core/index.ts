@@ -46,8 +46,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
 
-  // REQUIRED for Fly / reverse proxies - MUST be first before any middleware
+  // REQUIRED for Fly / reverse proxies - MUST be the FIRST line after Express initialization
+  // This MUST come before ANY other middleware or configuration
   app.set("trust proxy", 1);
+  console.log("[Server] Trust proxy enabled: app.set('trust proxy', 1)");
 
   /* ---------------- Cookies FIRST ------------------- */
   app.use(cookieParser());
@@ -120,6 +122,9 @@ async function startServer() {
       // SESSION_SECRET is the primary secret for session management
       const secret =
         process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.COOKIE_SECRET;
+
+      console.log("[Auth Session] SESSION_SECRET exists:", !!process.env.SESSION_SECRET);
+      console.log("[Auth Session] Secret found:", !!secret);
 
       if (!secret) {
         return res.status(500).json({ ok: false, error: "missing_jwt_secret" });
