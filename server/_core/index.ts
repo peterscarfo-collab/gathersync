@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import cookieParser from "cookie-parser";
 import * as jwt from "jsonwebtoken";
+import path from "path";
 
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -81,11 +82,6 @@ async function startServer() {
       return;
     }
     next();
-  });
-
-  /* ---------------- Root route -------------------- */
-  app.get("/", (_req, res) => {
-    res.send("GatherSync Server is Live");
   });
 
   /* ---------------- Status route -------------------- */
@@ -191,6 +187,22 @@ async function startServer() {
       createContext,
     })
   );
+
+  /* ---------------- Static Files (Frontend) --------- */
+  // Serve static files from dist-web directory
+  // Use process.cwd() to get the app root directory
+  const distWebPath = path.join(process.cwd(), "dist-web");
+  app.use(express.static(distWebPath));
+
+  /* ---------------- Catch-all Route (SPA) ----------- */
+  // Serve index.html for all non-API routes (SPA routing)
+  app.get("*", (req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith("/api/")) {
+      return res.status(404).json({ error: "Not found" });
+    }
+    res.sendFile(path.join(distWebPath, "index.html"));
+  });
 
   /* ---------------- Listen -------------------------- */
   const PORT = process.env.PORT || 3000;

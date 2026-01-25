@@ -30,8 +30,11 @@ RUN pnpm install --frozen-lockfile
 # Copy application code
 COPY . .
 
-# Build application
+# Build backend server
 RUN pnpm run build
+
+# Build frontend web app
+RUN pnpm run build:web
 
 # Remove development dependencies
 RUN pnpm prune --prod
@@ -49,6 +52,9 @@ COPY --from=build /app /app
 
 # Explicitly copy server directory to final stage
 COPY --from=build /app/server ./server
+
+# Copy frontend build (dist-web) to final stage
+COPY --from=build /app/dist-web ./dist-web
 
 EXPOSE 3000
 CMD ["node", "server/index.js"]
