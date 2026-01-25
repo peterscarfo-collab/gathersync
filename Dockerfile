@@ -33,6 +33,17 @@ COPY . .
 # Build application
 RUN pnpm run build
 
+# Copy Prisma schema directory if it exists (before prune to ensure it's available)
+# Check both root and server locations
+RUN if [ -d "prisma" ]; then \
+      echo "Prisma folder found in root"; \
+    elif [ -d "server/prisma" ]; then \
+      cp -r server/prisma ./prisma && \
+      echo "Prisma folder found in server/, copied to root"; \
+    else \
+      echo "Prisma folder not found, skipping"; \
+    fi
+
 # Remove development dependencies
 RUN pnpm prune --prod
 
@@ -47,12 +58,14 @@ WORKDIR /app
 # Copy everything from build stage (includes pruned node_modules, dist, and package.json)
 COPY --from=build /app /app
 
-# Copy Prisma schema directory to final stage
-# Note: If prisma folder doesn't exist, create it first or this COPY will fail
-COPY --from=build /app/prisma ./prisma
-
+# Copy Prisma schema directory to final stage (if it exists)
 # Generate Prisma client to ensure it's ready for production
-RUN npx prisma generate
+RUN if [ -d "prisma" ] && [ -f "prisma/schema.prisma" ]; then \
+      echo "Prisma schema found, generating client..."; \
+      npx prisma generate || echo "Prisma generate failed"; \
+    else \
+      echo "Prisma schema not found, skipping Prisma generate"; \
+    fi
 
 EXPOSE 3000
 CMD ["node", "index.js"]
