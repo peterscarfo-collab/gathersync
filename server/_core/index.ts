@@ -200,9 +200,11 @@ async function startServer() {
     console.log(`Port ${preferredPort} busy → using ${port}`);
   }
 
-  server.listen(port, () => {
+  // Listen on 0.0.0.0 to accept connections from all interfaces (required for cloud deployment)
+  server.listen(port, '0.0.0.0', () => {
     console.log(`[api] server listening on port ${port}`);
     console.log('Server is officially listening on port', port);
+    console.log('App successfully listening on 0.0.0.0:' + port);
   });
 }
 
