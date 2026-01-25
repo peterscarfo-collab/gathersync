@@ -8,10 +8,31 @@ import { getSessionCookieOptions } from "./cookies";
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI!;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
-  throw new Error("Google OAuth not configured");
+// Construct callback URL from EXPO_PUBLIC_API_BASE_URL if available, otherwise use GOOGLE_REDIRECT_URI
+// For Fly.io deployment, use https://gathersync.fly.dev/api/auth/google/callback
+function getCallbackUrl(): string {
+  if (API_BASE_URL) {
+    // Ensure no trailing slash and append callback path
+    const base = API_BASE_URL.replace(/\/+$/, "");
+    return `${base}/api/auth/google/callback`;
+  }
+  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io)
+  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
+    return "https://gathersync.fly.dev/api/auth/google/callback";
+  }
+  if (GOOGLE_REDIRECT_URI) {
+    return GOOGLE_REDIRECT_URI;
+  }
+  throw new Error("Google OAuth callback URL not configured. Set EXPO_PUBLIC_API_BASE_URL or GOOGLE_REDIRECT_URI");
+}
+
+const CALLBACK_URL = getCallbackUrl();
+
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  throw new Error("Google OAuth not configured: missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
 }
 
 // In-memory state storage (in production, use Redis or database)
@@ -57,7 +78,7 @@ export function registerGoogleOAuthRoutes(app: Express) {
     const state = createOAuthState();
 const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID!,
-      redirect_uri: GOOGLE_REDIRECT_URI!,
+      redirect_uri: CALLBACK_URL,
       response_type: "code",
 scope:
   "https://www.googleapis.com/auth/userinfo.email " +
@@ -125,7 +146,7 @@ if (!code) {
             code,
             client_id: GOOGLE_CLIENT_ID!,
             client_secret: GOOGLE_CLIENT_SECRET!,
-            redirect_uri: GOOGLE_REDIRECT_URI!,
+            redirect_uri: CALLBACK_URL,
             grant_type: "authorization_code",
           }),
         }

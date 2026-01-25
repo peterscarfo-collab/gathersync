@@ -83,6 +83,16 @@ async function startServer() {
     next();
   });
 
+  /* ---------------- Root route -------------------- */
+  app.get("/", (_req, res) => {
+    res.send("GatherSync Server is Live");
+  });
+
+  /* ---------------- Status route -------------------- */
+  app.get("/api/status", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
   /* ---------------- OAuth routes -------------------- */
   registerOAuthRoutes(app);
   registerGoogleOAuthRoutes(app);
