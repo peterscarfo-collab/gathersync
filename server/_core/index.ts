@@ -193,11 +193,11 @@ async function startServer() {
   );
 
   /* ---------------- Listen -------------------------- */
-  const preferredPort = parseInt(process.env.PORT || "3000", 10);
-  const port = await findAvailablePort(preferredPort);
+  const PORT = parseInt(process.env.PORT || "3000", 10);
+  const port = await findAvailablePort(PORT);
 
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} busy → using ${port}`);
+  if (port !== PORT) {
+    console.log(`Port ${PORT} busy → using ${port}`);
   }
 
   // Listen on 0.0.0.0 to accept connections from all interfaces (required for cloud deployment)
@@ -205,6 +205,7 @@ async function startServer() {
     console.log(`[api] server listening on port ${port}`);
     console.log('Server is officially listening on port', port);
     console.log('App successfully listening on 0.0.0.0:' + port);
+    console.log('Listening on 0.0.0.0:' + port);
   });
 }
 
