@@ -1,9 +1,9 @@
 node_modules
 .env
 .env.*
-dist
 .expo
 .expo-shared
 .DS_Store
 *.zip
 *.tar.gz
+# Note: dist is NOT ignored - it contains the compiled server code needed for production
