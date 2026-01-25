@@ -13,7 +13,7 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 // Construct callback URL - use exact Fly.io URL for production
 function getCallbackUrl(): string {
-  // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) or production
+  // Production: Always use Fly.io URL when FLY_APP_NAME is set or NODE_ENV is production
   if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
     return "https://gathersync.fly.dev/api/auth/google/callback";
   }
@@ -96,7 +96,7 @@ scope:
     const isProduction = process.env.FLY_APP_NAME || process.env.NODE_ENV === "production";
     const getFrontendUrl = () => {
       if (isProduction) {
-        // Production: ALWAYS redirect to live Fly.io URL
+        // Production: ALWAYS redirect to live Fly.io URL (never localhost/127.0.0.1)
         return "https://gathersync.fly.dev";
       }
       // Development: use environment variable or fallback to localhost
@@ -105,7 +105,8 @@ scope:
              "http://127.0.0.1:8081";
     };
     
-    const frontendUrl = getFrontendUrl();
+    // Get frontend URL - ensure production always uses Fly.io
+    const frontendUrl = isProduction ? "https://gathersync.fly.dev" : getFrontendUrl();
 
 const redirectWithParams = (params: Record<string, string>) => {
   const base = getFrontendUrl();
@@ -213,7 +214,10 @@ res.cookie(COOKIE_NAME, sessionToken, {
   	expires: Date.now() + AUTH_GRACE_MS,
 	});
 
-return res.redirect(frontendUrl);
+// Ensure production always redirects to Fly.io (never localhost/127.0.0.1)
+const finalRedirectUrl = isProduction ? "https://gathersync.fly.dev" : frontendUrl;
+console.log("[OAuth Callback] Redirecting to:", finalRedirectUrl, { isProduction, frontendUrl });
+return res.redirect(finalRedirectUrl);
     } catch (err: any) {
       return redirectWithParams({
         error: err?.message || "oauth_failed",
