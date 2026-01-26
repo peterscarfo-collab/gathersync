@@ -13,7 +13,7 @@ import { eventsLocalStorage as eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
 import { syncService } from '@/lib/sync-service';
 import { generateId } from '@/lib/calendar-utils';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import type { Event } from '@/types/models';
 import { canCreateEvent, getSubscriptionLimits } from '@/lib/subscription';
 

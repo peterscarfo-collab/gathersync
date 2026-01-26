@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as schema from "../drizzle/schema";
 import {
   InsertUser,
   users,
@@ -18,28 +19,53 @@ import {
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | undefined;
+let _queryClient: ReturnType<typeof postgres> | undefined;
+
+// Fixed configuration for Fly.io Postgres
+function createQueryClient() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
+  }
+
+  // Ensure DATABASE_URL has sslmode=require for Fly.io Postgres
+  const dbUrl = url.includes('?') 
+    ? (url.includes('sslmode=') ? url : `${url}&sslmode=require`)
+    : `${url}?sslmode=require`;
+
+  console.log("[Database] Initialising DB connection (PostgreSQL + SSL)");
+  return postgres(dbUrl, { 
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 10,  // Increase connection pool
+    idle_timeout: 20,
+    connect_timeout: 10,
+    // Add this to handle TLS issues
+    connection: {
+      application_name: 'gathersync'
+    }
+  });
+}
+
 // Lazily create the drizzle instance (retryable)
 export async function getDb() {
   if (_db) return _db;
 
-  const url = process.env.DATABASE_URL;
-  if (!url) {
+  if (!process.env.DATABASE_URL) {
     console.warn("[Database] DATABASE_URL not set");
     return null;
   }
 
   try {
-    console.log("[Database] Initialising DB connection (PostgreSQL + SSL)");
-    const sql = postgres(url, {
-      ssl: { rejectUnauthorized: false },
-    });
-
-    _db = drizzle(sql);
+    if (!_queryClient) {
+      _queryClient = createQueryClient();
+    }
+    _db = drizzle(_queryClient, { schema });
     return _db;
   } catch (error) {
     console.error("[Database] Failed to initialise DB:", error);
     // IMPORTANT: do NOT cache failure
     _db = undefined;
+    _queryClient = undefined;
     return null;
   }
 }

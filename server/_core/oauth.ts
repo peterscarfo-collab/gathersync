@@ -150,7 +150,22 @@ export function registerOAuthRoutes(app: Express) {
    // Get current authenticated user (web + mobile)
  app.get("/api/auth/me", async (req: Request, res: Response) => {
   try {
-    // Read session token ONLY from cookie (web auth lock)
+    // For web: Check express-session first (connect.sid cookie)
+    const sessionUser = (req.session as any)?.user;
+    if (sessionUser) {
+      console.log("[Auth Me] User from express-session:", sessionUser.email);
+      return res.json({
+        user: buildUserResponse({
+          openId: sessionUser.openId,
+          name: sessionUser.name,
+          email: sessionUser.email,
+          loginMethod: "google",
+          lastSignedIn: new Date(),
+        }),
+      });
+    }
+
+    // Fallback: Read session token from cookie (for native or legacy web)
     const token = req.cookies?.[COOKIE_NAME];
     
     console.log("[Auth Me] Cookie received:", !!token);

@@ -15,10 +15,10 @@ const database = u.pathname.replace(/^\//, "");
 export default {
   schema: "./drizzle/schema.ts",
   out: "./drizzle",
-  dialect: "mysql",
+  dialect: "postgresql",
   dbCredentials: {
     host,
-    port,
+    port: port || 5432, // PostgreSQL default port
     user,
     password,
     database,

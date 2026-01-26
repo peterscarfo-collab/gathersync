@@ -5,7 +5,7 @@ export const ENV = {
   // SESSION_SECRET is the primary secret for session management
   cookieSecret: process.env.SESSION_SECRET ?? process.env.COOKIE_SECRET ?? process.env.JWT_SECRET ?? "",
   databaseUrl: process.env.DATABASE_URL ?? "",
-  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
+  oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? process.env.BASE_URL ?? (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : ""),
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",

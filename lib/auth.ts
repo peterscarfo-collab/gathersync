@@ -24,12 +24,10 @@ const WEB_TOKEN_KEY = "sessionToken"; // keep ONE simple key for web
 export async function getSessionToken(): Promise<string | null> {
   try {
     if (Platform.OS === "web") {
-      const token = window.localStorage.getItem(WEB_TOKEN_KEY);
-      console.log(
-        "[Auth] Web session token from localStorage:",
-        token ? `present (${token.substring(0, 20)}...)` : "missing",
-      );
-      return token;
+      // For web, we rely on HTTP-only cookies sent automatically
+      // We don't store or retrieve session tokens in localStorage
+      console.log("[Auth] Web platform - relying on HTTP-only cookie");
+      return "cookie-based"; // Return a placeholder to indicate cookie auth
     }
 
     console.log("[Auth] Getting session token (native)...");
@@ -48,8 +46,9 @@ export async function getSessionToken(): Promise<string | null> {
 export async function setSessionToken(token: string): Promise<void> {
   try {
     if (Platform.OS === "web") {
-      window.localStorage.setItem(WEB_TOKEN_KEY, token);
-      console.log("[Auth] Web session token stored in localStorage");
+      // For web, cookies are set by the server automatically
+      // We don't need to manually store anything
+      console.log("[Auth] Web platform - cookie will be set by server");
       return;
     }
 
@@ -65,8 +64,9 @@ export async function setSessionToken(token: string): Promise<void> {
 export async function removeSessionToken(): Promise<void> {
   try {
     if (Platform.OS === "web") {
-      window.localStorage.removeItem(WEB_TOKEN_KEY);
-      console.log("[Auth] Web session token removed from localStorage");
+      // For web, cookies are managed by the server
+      // The server will clear the cookie on logout
+      console.log("[Auth] Web platform - cookie will be cleared by server");
       return;
     }
 

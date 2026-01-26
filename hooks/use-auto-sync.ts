@@ -3,7 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
-import { useAuth } from './use-auth';
+import { useAuth } from './auth-context';
 import type { Event } from '@/types/models';
 
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';

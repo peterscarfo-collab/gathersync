@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/auth-context";
 import { getSubscriptionLimits, getTierDisplayName, formatPricing } from "@/lib/subscription";
 
 export default function UpgradeScreen() {

@@ -10,7 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import type { Event } from '@/types/models';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';

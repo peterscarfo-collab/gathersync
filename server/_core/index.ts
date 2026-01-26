@@ -4,6 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import cookieParser from "cookie-parser";
 import session from "express-session";
+import cors from "cors";
 import * as jwt from "jsonwebtoken";
 import path from "path";
 
@@ -47,21 +48,31 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
 
-  // CRITICAL: Trust proxy MUST be the very first line - before any other code
-  app.set("trust proxy", 1);
+  // Add at the top: tells the app it's behind Fly.io's proxy
+  app.set('trust proxy', 1);
 
-  // Session middleware - required for Fly.io with cross-domain redirects
+  // The specific session config that survives redirects
   app.use(session({
-    secret: process.env.SESSION_SECRET || "",
+    name: 'connect.sid',  // Use the standard name
+    secret: process.env.SESSION_SECRET || 'gathersync_dev_secret',
     resave: false,
     saveUninitialized: false,
-    proxy: true, // Required for Fly.io
+    proxy: true,
     cookie: {
-      secure: true,      // Must be true for HTTPS
+      secure: true,
       httpOnly: true,
-      sameSite: 'none',  // 'none' is the only way to survive cross-domain redirects
+      sameSite: 'lax',
       maxAge: 24 * 60 * 60 * 1000
     }
+  }));
+
+  // The bridge that lets the browser send the cookie
+  app.use(cors({
+    origin: 'https://gathersync.fly.dev',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['set-cookie']  // ← Add this
   }));
   
   // Log critical environment variables at startup
@@ -89,35 +100,6 @@ async function startServer() {
   });
 
   const server = createServer(app);
-
-  /* ---------------- CORS ---------------------------- */
-  app.use((req, res, next) => {
-    const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
-    
-    // Production: Set origin to 'https://gathersync.fly.dev'
-    // Development: Use dynamic origin from request
-    if (isProduction) {
-      res.header("Access-Control-Allow-Origin", "https://gathersync.fly.dev");
-    } else {
-      const origin = req.headers.origin;
-      if (origin) {
-        res.header("Access-Control-Allow-Origin", origin);
-      }
-    }
-    
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-    );
-    res.header("Access-Control-Allow-Credentials", "true");
-
-    if (req.method === "OPTIONS") {
-      res.sendStatus(200);
-      return;
-    }
-    next();
-  });
 
   /* ---------------- Status route -------------------- */
   app.get("/api/status", (_req, res) => {

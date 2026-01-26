@@ -8,7 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import { getTierDisplayName, formatPricing, getSubscriptionLimits } from '@/lib/subscription';
 import { getSubscriptionInfo, getSubscriptionDisplayText, isEligibleForTrial } from '@/lib/trial';

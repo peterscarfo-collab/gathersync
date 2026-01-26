@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from './themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 
 export function ProfileIcon() {
   const router = useRouter();

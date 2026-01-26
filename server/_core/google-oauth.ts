@@ -5,22 +5,40 @@ import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
 import { getUserByOpenId, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
 
+// Get base URL - use BASE_URL, fallback to Fly.io app name, then EXPO_PUBLIC_API_BASE_URL
+function getBaseUrl(): string {
+  // Priority: BASE_URL > Fly.io app name > EXPO_PUBLIC_API_BASE_URL
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  
+  // Fallback to Fly.io app name if available
+  if (process.env.FLY_APP_NAME) {
+    return `https://${process.env.FLY_APP_NAME}.fly.dev`;
+  }
+  
+  // Use EXPO_PUBLIC_API_BASE_URL if set
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  }
+  
+  // Development fallback (localhost only)
+  return "http://localhost:3000";
+}
+
+// Construct callback URL - use dynamic baseURL
+function getCallbackUrl(): string {
+  const baseUrl = getBaseUrl();
+  // Ensure no trailing slash
+  const cleanBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  return `${cleanBaseUrl}/api/auth/google/callback`;
+}
+
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
-
-// Construct callback URL - use exact Fly.io URL for production
-function getCallbackUrl(): string {
-  // Production: Always use Fly.io URL when FLY_APP_NAME is set or NODE_ENV is production
-  if (process.env.FLY_APP_NAME || process.env.NODE_ENV === "production") {
-    return "https://gathersync.fly.dev/api/auth/google/callback";
-  }
-  // Development fallback
-  return "http://localhost:3000/api/auth/google/callback";
-}
-
+// GOOGLE_REDIRECT_URI: Use env var if set, otherwise construct dynamically from BASE_URL
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || getCallbackUrl();
 const CALLBACK_URL = getCallbackUrl();
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -91,22 +109,26 @@ scope:
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
     
-    // Determine frontend URL - use production URL for Fly.io, localhost for dev
-    // Check if running on Fly.io (FLY_APP_NAME is set by Fly.io) or production
-    const isProduction = process.env.FLY_APP_NAME || process.env.NODE_ENV === "production";
+    // Determine frontend URL - use BASE_URL with Fly.io fallback
     const getFrontendUrl = () => {
-      if (isProduction) {
-        // Production: ALWAYS redirect to live Fly.io URL (never localhost/127.0.0.1)
-        return "https://gathersync.fly.dev";
+      // Use BASE_URL if available
+      if (process.env.BASE_URL) {
+        return process.env.BASE_URL;
       }
+      
+      // Fallback to Fly.io app name if available
+      if (process.env.FLY_APP_NAME) {
+        return `https://${process.env.FLY_APP_NAME}.fly.dev`;
+      }
+      
       // Development: use environment variable or fallback to localhost
       return process.env.FRONTEND_URL || 
              process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL || 
              "http://127.0.0.1:8081";
     };
     
-    // Get frontend URL - ensure production always uses Fly.io
-    const frontendUrl = isProduction ? "https://gathersync.fly.dev" : getFrontendUrl();
+    // Get frontend URL - use BASE_URL with Fly.io fallback
+    const frontendUrl = getFrontendUrl();
 
 const redirectWithParams = (params: Record<string, string>) => {
   const base = getFrontendUrl();
@@ -189,35 +211,64 @@ if (!code) {
 
       const googleUser = await userInfoResponse.json();
 
-      const user = await syncUser({
-        openId: googleUser.id,
-        name: googleUser.name,
-        email: googleUser.email,
+      console.log(`[Auth] Successful login for user: ${googleUser.email}`);
+
+      // TEMPORARILY SKIP DATABASE - just set session
+      // const user = await syncUser({
+      //   openId: googleUser.id,
+      //   name: googleUser.name,
+      //   email: googleUser.email,
+      // });
+
+      // Regenerate session to ensure it's properly saved
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error('[Auth] Session regeneration error:', err);
+          return redirectWithParams({ error: 'session_failed' });
+        }
+
+        // TEMPORARILY SKIP DATABASE - store user info from Google directly in session
+        (req.session as any).user = {
+          email: googleUser.email,
+          name: googleUser.name,
+          openId: googleUser.id,
+          // id: user.id,  // Skip database ID temporarily
+        };
+
+        // Create session token for cookie-based auth (using Google user ID)
+        sdk.createSessionToken(googleUser.id, {
+          name: googleUser.name || "",
+          expiresInMs: ONE_YEAR_MS,
+        }).then((sessionToken) => {
+          // Use getSessionCookieOptions for proper production cookie settings
+          const cookieOptions = getSessionCookieOptions(req);
+          console.log("[OAuth Callback] Setting cookie with options:", JSON.stringify(cookieOptions, null, 2));
+          console.log("[OAuth Callback] Session token length:", sessionToken?.length || 0);
+          res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
+
+          recentAuth.set(sessionToken, {
+            token: sessionToken,
+            expires: Date.now() + AUTH_GRACE_MS,
+          });
+
+          // Force save session before redirect
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('[Auth] Session save error:', saveErr);
+              return redirectWithParams({ error: 'session_failed' });
+            }
+
+            console.log('[Auth] Session saved successfully, ID:', req.sessionID);
+            // Use BASE_URL with Fly.io fallback for production redirect
+            const finalRedirectUrl = process.env.BASE_URL || (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : frontendUrl);
+            console.log("[OAuth Callback] Redirecting to:", finalRedirectUrl);
+            return res.redirect(finalRedirectUrl);
+          });
+        }).catch((tokenErr) => {
+          console.error('[Auth] Session token creation error:', tokenErr);
+          return redirectWithParams({ error: 'token_failed' });
+        });
       });
-
-     const sessionToken = await sdk.createSessionToken(user.openId!, {
-  name: googleUser.name || "",
-  expiresInMs: ONE_YEAR_MS,
-});
-
-// Use getSessionCookieOptions for proper production cookie settings
-// cookieOptions already includes maxAge (24h for production, or can be overridden)
-const cookieOptions = getSessionCookieOptions(req);
-console.log("[OAuth Callback] Setting cookie with options:", JSON.stringify(cookieOptions, null, 2));
-console.log("[OAuth Callback] Session token length:", sessionToken?.length || 0);
-res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
-
-
-
-	recentAuth.set(sessionToken, {
-  	token: sessionToken,
-  	expires: Date.now() + AUTH_GRACE_MS,
-	});
-
-// Ensure production always redirects to Fly.io (never localhost/127.0.0.1)
-const finalRedirectUrl = isProduction ? "https://gathersync.fly.dev" : frontendUrl;
-console.log("[OAuth Callback] Redirecting to:", finalRedirectUrl, { isProduction, frontendUrl });
-return res.redirect(finalRedirectUrl);
     } catch (err: any) {
       return redirectWithParams({
         error: err?.message || "oauth_failed",

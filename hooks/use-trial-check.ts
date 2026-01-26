@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { trpc } from '@/lib/trpc';
-import { useAuth } from './use-auth';
+import { useAuth } from './auth-context';
 
 /**
  * Hook to check and expire trials on app launch

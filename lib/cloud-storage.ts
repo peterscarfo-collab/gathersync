@@ -78,6 +78,7 @@ export const eventsCloudStorage = {
               teamLeaderPhone: event.teamLeaderPhone,
               meetingType: event.meetingType,
               venueName: event.venueName,
+              venueAddress: event.venueAddress,
               venueContact: event.venueContact,
               venuePhone: event.venuePhone,
               meetingLink: event.meetingLink,
@@ -106,29 +107,63 @@ export const eventsCloudStorage = {
 
   async getById(id: string): Promise<Event | null> {
     try {
+      console.log('[CloudStorage] getById: Fetching event', id);
       const client = getTRPCClient();
       const event = await client.events.get.query({ id });
       
-      if (!event) return null;
+      if (!event) {
+        console.log('[CloudStorage] getById: Event not found');
+        return null;
+      }
 
+      console.log('[CloudStorage] getById: Event found, fetching participants...');
       const participants = await client.participants.list.query({ eventId: id });
       
-      return {
+      // Map all fields from the database event to match Event type
+      const mappedEvent: Event = {
         id: event.id,
         name: event.name,
+        eventType: event.eventType || 'flexible',
         month: event.month,
         year: event.year,
-        createdAt: event.createdAt.toISOString(),
-        updatedAt: event.updatedAt.toISOString(),
+        fixedDate: event.fixedDate || undefined,
+        fixedTime: event.fixedTime || undefined,
+        reminderDaysBefore: event.reminderDaysBefore || undefined,
+        reminderScheduled: event.reminderScheduled || undefined,
+        archived: event.archived || false,
+        finalized: event.finalized || false,
+        finalizedDate: event.finalizedDate || undefined,
+        teamLeader: event.teamLeader || undefined,
+        teamLeaderPhone: event.teamLeaderPhone || undefined,
+        meetingType: event.meetingType || undefined,
+        venueName: event.venueName || undefined,
+        venueAddress: event.venueAddress || undefined,
+        venueContact: event.venueContact || undefined,
+        venuePhone: event.venuePhone || undefined,
+        meetingLink: event.meetingLink || undefined,
+        rsvpDeadline: event.rsvpDeadline || undefined,
+        meetingNotes: event.meetingNotes || undefined,
+        createdAt: typeof event.createdAt === 'string' ? event.createdAt : event.createdAt.toISOString(),
+        updatedAt: typeof event.updatedAt === 'string' ? event.updatedAt : event.updatedAt.toISOString(),
         participants: participants.map((p) => ({
           id: p.id,
           name: p.name,
+          phone: p.phone,
+          email: p.email,
           availability: p.availability as Record<string, boolean>,
           unavailableAllMonth: p.unavailableAllMonth,
+          notes: p.notes,
+          source: p.source,
+          rsvpStatus: p.rsvpStatus,
+          deletedAt: p.deletedAt ? (typeof p.deletedAt === 'string' ? p.deletedAt : p.deletedAt.toISOString()) : undefined,
         })),
-      } as Event;
+        deletedAt: event.deletedAt ? (typeof event.deletedAt === 'string' ? event.deletedAt : event.deletedAt.toISOString()) : undefined,
+      };
+      
+      console.log('[CloudStorage] getById: Successfully mapped event with', participants.length, 'participants');
+      return mappedEvent;
     } catch (error) {
-      console.error('Failed to fetch event:', error);
+      console.error('[CloudStorage] getById: Failed to fetch event:', error);
       return null;
     }
   },
@@ -158,6 +193,7 @@ export const eventsCloudStorage = {
       if (event.teamLeaderPhone !== null && event.teamLeaderPhone !== undefined) eventPayload.teamLeaderPhone = event.teamLeaderPhone;
       if (event.meetingType !== null && event.meetingType !== undefined) eventPayload.meetingType = event.meetingType;
       if (event.venueName !== null && event.venueName !== undefined) eventPayload.venueName = event.venueName;
+      if (event.venueAddress !== null && event.venueAddress !== undefined) eventPayload.venueAddress = event.venueAddress;
       if (event.venueContact !== null && event.venueContact !== undefined) eventPayload.venueContact = event.venueContact;
       if (event.venuePhone !== null && event.venuePhone !== undefined) eventPayload.venuePhone = event.venuePhone;
       if (event.meetingLink !== null && event.meetingLink !== undefined) eventPayload.meetingLink = event.meetingLink;
@@ -235,6 +271,7 @@ export const eventsCloudStorage = {
       if (updates.teamLeaderPhone !== undefined && updates.teamLeaderPhone !== null) eventUpdatePayload.teamLeaderPhone = updates.teamLeaderPhone;
       if (updates.meetingType !== undefined && updates.meetingType !== null) eventUpdatePayload.meetingType = updates.meetingType;
       if (updates.venueName !== undefined && updates.venueName !== null) eventUpdatePayload.venueName = updates.venueName;
+      if (updates.venueAddress !== undefined && updates.venueAddress !== null) eventUpdatePayload.venueAddress = updates.venueAddress;
       if (updates.venueContact !== undefined && updates.venueContact !== null) eventUpdatePayload.venueContact = updates.venueContact;
       if (updates.venuePhone !== undefined && updates.venuePhone !== null) eventUpdatePayload.venuePhone = updates.venuePhone;
       if (updates.meetingLink !== undefined && updates.meetingLink !== null) eventUpdatePayload.meetingLink = updates.meetingLink;

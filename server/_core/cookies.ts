@@ -6,14 +6,14 @@ export function getSessionCookieOptions(
   const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
 
   // Session cookie configuration for Fly.io production
-  // Must match express-session config: sameSite: 'none' for cross-domain OAuth redirects
+  // Must match express-session config: sameSite: 'lax'
   // CRITICAL: No domain property - defaults to current host
   if (isProduction) {
     return {
       httpOnly: true,
       path: "/",
-      sameSite: "none" as const, // Must be 'none' to survive cross-domain OAuth redirects
-      secure: true, // Required when sameSite is 'none'
+      sameSite: "lax" as const,
+      secure: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
     };
   }

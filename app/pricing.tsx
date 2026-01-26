@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { SUBSCRIPTION_PLANS, type SubscriptionTier } from '@/constants/stripe';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { trpc } from '@/lib/trpc';
 import { APP_SCHEME, WEB_BASE_URL } from '@/constants/urls';

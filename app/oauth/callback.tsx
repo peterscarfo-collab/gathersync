@@ -10,7 +10,16 @@ function getWebApiBase() {
   // - on prod, use same-origin so cookies work cleanly
   const envBase = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-  if (!isWeb) return envBase || "https://gathersync-api-deploy.fly.dev";
+  if (!isWeb) {
+    // Use BASE_URL if available, fallback to Fly.io app name, then EXPO_PUBLIC_API_BASE_URL
+    if (process.env.BASE_URL) {
+      return process.env.BASE_URL;
+    }
+    if (process.env.FLY_APP_NAME) {
+      return `https://${process.env.FLY_APP_NAME}.fly.dev`;
+    }
+    return envBase || "";
+  }
 
   const host = window.location.hostname;
 

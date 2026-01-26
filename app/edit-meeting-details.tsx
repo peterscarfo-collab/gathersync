@@ -12,9 +12,10 @@ import { ContactPickerModal } from '@/components/contact-picker-modal';
 import { VenueAddressInput } from '@/components/venue-address-input';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
+import { trpc } from '@/lib/trpc';
 import type { Event } from '@/types/models';
 
 export default function EditMeetingDetailsScreen() {
@@ -97,6 +98,12 @@ export default function EditMeetingDetailsScreen() {
   // Use auto-sync for proper event updates
   const { updateEvent: autoUpdateEvent } = useAutoSync();
   const { isAuthenticated } = useAuth();
+
+  // Fetch event data using tRPC
+  const { data: eventData, isLoading: isEventLoading, error: eventError } = trpc.events.get.useQuery(
+    { id: eventId! },
+    { enabled: !!eventId && isAuthenticated }
+  );
 
   useEffect(() => {
     console.log('[EditMeetingDetails] eventId from params:', params.eventId);
@@ -237,6 +244,42 @@ export default function EditMeetingDetailsScreen() {
       Alert.alert('Error', 'Failed to update meeting details. Please try again.');
     }
   };
+
+  // Safety check for tRPC query (when authenticated and using cloud data)
+  if (isAuthenticated && eventId) {
+    if (isEventLoading) {
+      return (
+        <ThemedView style={[styles.container, { backgroundColor, justifyContent: 'center', alignItems: 'center' }]}>
+          <ThemedText>Loading...</ThemedText>
+        </ThemedView>
+      );
+    }
+    if (eventError || !eventData) {
+      // Web-specific rendering with standard HTML elements
+      if (Platform.OS === 'web') {
+        return (
+          <div style={{ padding: 32, textAlign: 'center', backgroundColor, minHeight: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+            <h2 style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 16, color: textColor }}>Session Expired</h2>
+            <p style={{ marginBottom: 24, color: textColor }}>Please log in again to view this event.</p>
+            <a href="/" style={{ color: tintColor, textDecoration: 'underline' }}>Return Home</a>
+          </div>
+        );
+      }
+      // React Native rendering
+      return (
+        <ThemedView style={[styles.container, { backgroundColor, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+          <ThemedText type="title" style={{ marginBottom: 16 }}>Session Expired</ThemedText>
+          <ThemedText style={{ marginBottom: 24, textAlign: 'center' }}>Please log in again to view this event.</ThemedText>
+          <Pressable
+            onPress={() => router.push('/')}
+            style={[styles.saveButton, { color: tintColor, textDecorationLine: 'underline' }]}
+          >
+            <ThemedText style={{ color: tintColor, textDecorationLine: 'underline' }}>Return Home</ThemedText>
+          </Pressable>
+        </ThemedView>
+      );
+    }
+  }
 
   if (loading || !event) {
     return (

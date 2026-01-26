@@ -11,7 +11,7 @@ import { EventCard } from '@/components/event-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { OnboardingModal } from '@/components/onboarding-modal';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/auth-context';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { recurringTemplatesStorage } from '@/lib/recurring-storage';

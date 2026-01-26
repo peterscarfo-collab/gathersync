@@ -136,6 +136,43 @@ export default function EditEventScreen() {
     }
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor, justifyContent: 'center', alignItems: 'center' }]}>
+        <ThemedText>Loading...</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  // Safety check: Show friendly message if event is null/undefined after loading
+  if (!event) {
+    return (
+      <ThemedView style={[styles.container, { backgroundColor, justifyContent: 'center', alignItems: 'center', padding: 32 }]}>
+        <ThemedText type="title" style={{ marginBottom: 16, textAlign: 'center' }}>
+          Session Expired
+        </ThemedText>
+        <ThemedText style={{ marginBottom: 24, textAlign: 'center', color: textSecondaryColor }}>
+          Please log in again to view this event.
+        </ThemedText>
+        <Pressable
+          onPress={() => router.push('/login')}
+          style={[styles.createButton, { backgroundColor: tintColor, minWidth: 200 }]}
+        >
+          <ThemedText style={styles.createButtonText}>Go to Login</ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={() => router.back()}
+          style={{ marginTop: 16 }}
+        >
+          <ThemedText style={{ color: tintColor, textDecorationLine: 'underline' }}>
+            Return Home
+          </ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
+  }
+
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
       <View

@@ -3,12 +3,40 @@ import { Platform } from "react-native";
 const IS_WEB = Platform.OS === "web";
 
 /**
+ * Get base URL - use BASE_URL, fallback to Fly.io app name
+ */
+function getBaseUrl(): string {
+  // Priority: BASE_URL > Fly.io app name > EXPO_PUBLIC_API_BASE_URL
+  if (process.env.BASE_URL) {
+    return process.env.BASE_URL;
+  }
+  
+  // Fallback to Fly.io app name if available
+  if (process.env.FLY_APP_NAME) {
+    return `https://${process.env.FLY_APP_NAME}.fly.dev`;
+  }
+  
+  // Use EXPO_PUBLIC_API_BASE_URL if set
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  }
+  
+  // No fallback - return empty string (will cause error if used)
+  console.error("[OAuth] BASE_URL is not set! Set BASE_URL environment variable or FLY_APP_NAME.");
+  return "";
+}
+
+/**
  * API base:
  * - Web: use same-origin so Caddy (localhost:8081) or Netlify can proxy /api/*
- * - Native: go direct to production API
+ * - Native: use BASE_URL with Fly.io fallback
  */
 export function getApiBaseUrl(): string {
-  return IS_WEB ? "" : "https://api.gathersync.app";
+  if (IS_WEB) {
+    return "";
+  }
+  
+  return getBaseUrl();
 }
 
 /**

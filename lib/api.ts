@@ -15,8 +15,8 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
 
   // Determine the auth method:
   // - Native platform: use stored session token as Bearer auth
-  // - Web (including iframe): use cookie-based auth (browser handles automatically)
-  //   Cookie is set on backend domain via POST /api/auth/session after receiving token via postMessage
+  // - Web: use cookie-based auth (browser handles automatically via credentials: 'include')
+  //   express-session creates connect.sid cookie automatically
   if (Platform.OS !== "web") {
     const sessionToken = await Auth.getSessionToken();
     console.log("[API] apiCall:", {
@@ -24,11 +24,13 @@ export async function apiCall<T>(endpoint: string, options: RequestInit = {}): P
       hasToken: !!sessionToken,
       method: options.method || "GET",
     });
-    if (sessionToken) {
+    // Only add Bearer token if it's a real token (not "cookie-based" placeholder)
+    if (sessionToken && sessionToken !== "cookie-based") {
       headers["Authorization"] = `Bearer ${sessionToken}`;
       console.log("[API] Authorization header added");
     }
   } else {
+    // Web: rely on cookies (connect.sid) sent automatically with credentials: 'include'
     console.log("[API] apiCall:", { endpoint, platform: "web", method: options.method || "GET" });
   }
 
@@ -168,6 +170,10 @@ export async function getMe(): Promise<{
     return result.user || null;
   } catch (error) {
     console.error("[API] getMe failed:", error);
+    // Re-throw "No session cookie" errors so useAuth can detect and stop retrying
+    if (error instanceof Error && (error.message.includes("No session cookie") || error.message.includes("session cookie"))) {
+      throw error;
+    }
     return null;
   }
 }
