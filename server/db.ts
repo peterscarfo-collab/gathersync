@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import mysql from "mysql2/promise";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
 import {
   InsertUser,
   users,
@@ -29,13 +29,12 @@ export async function getDb() {
   }
 
   try {
-    console.log("[Database] Initialising DB connection (pool + SSL)");
-    const pool = mysql.createPool({
-      uri: url,
-      ssl: { rejectUnauthorized: true },
+    console.log("[Database] Initialising DB connection (PostgreSQL + SSL)");
+    const sql = postgres(url, {
+      ssl: { rejectUnauthorized: false },
     });
 
-    _db = drizzle(pool);
+    _db = drizzle(sql);
     return _db;
   } catch (error) {
     console.error("[Database] Failed to initialise DB:", error);
@@ -96,7 +95,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       updateSet.lastSignedIn = new Date();
     }
 
-    await db.insert(users).values(values).onDuplicateKeyUpdate({
+    await db.insert(users).values(values).onConflictDoUpdate({
+      target: users.openId,
       set: updateSet,
     });
   } catch (error) {
@@ -257,7 +257,8 @@ export async function registerPushToken(data: InsertPushToken) {
   if (!db) throw new Error("Database not available");
 
   // Upsert: update if exists, insert if not
-  await db.insert(pushTokens).values(data).onDuplicateKeyUpdate({
+  await db.insert(pushTokens).values(data).onConflictDoUpdate({
+    target: pushTokens.token,
     set: {
       deviceId: data.deviceId,
       updatedAt: new Date(),
