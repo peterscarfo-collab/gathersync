@@ -1,99 +1,29 @@
 import type { CookieOptions, Request } from "express";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
-function isIpAddress(host: string) {
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
-  return host.includes(":");
-}
-
-function isLocalhost(req: Request): boolean {
-  const hostHeader = req.headers.host;
-  if (!hostHeader) return false;
-  
-  const hostname = hostHeader.split(":")[0];
-  
-  // Check if it's localhost/127.0.0.1 (any port)
-  return LOCAL_HOSTS.has(hostname) || isIpAddress(hostname);
-}
-
-function isLocalHttpDev(req: Request): boolean {
-  const hostHeader = req.headers.host;
-  if (!hostHeader) return false;
-  
-  const hostname = hostHeader.split(":")[0];
-  const port = hostHeader.split(":")[1];
-  
-  // Check if it's localhost/127.0.0.1 on port 8081 (local HTTP dev)
-  const isLocalHost = LOCAL_HOSTS.has(hostname) || isIpAddress(hostname);
-  const isPort8081 = port === "8081";
-  
-  return isLocalHost && isPort8081;
-}
-
-function isSecureRequest(req: Request) {
-  // Local HTTP dev (127.0.0.1:8081) should never be secure
-  if (isLocalHttpDev(req)) return false;
-  
-  // express "req.protocol" depends on trust proxy; you already set trust proxy = 1
-  if (req.protocol === "https") return true;
-
-  const forwardedProto = req.headers["x-forwarded-proto"];
-  if (!forwardedProto) return false;
-
-  const protoList = Array.isArray(forwardedProto) ? forwardedProto : forwardedProto.split(",");
-  return protoList.some((p) => p.trim().toLowerCase() === "https");
-}
-
-function getCookieDomain(req: Request): string | undefined {
-  const hostHeader = req.headers.host;
-  const hostname = (hostHeader || "").split(":")[0];
-
-  if (!hostname) return undefined;
-  if (LOCAL_HOSTS.has(hostname) || isIpAddress(hostname)) return undefined;
-
-  // Don't try to set a parent domain on fly.dev hosts
-  if (hostname.endsWith(".fly.dev") || hostname === "fly.dev") return undefined;
-
-  // ✅ Production: share across app.gathersync.app + api.gathersync.app
-  if (hostname === "gathersync.app" || hostname.endsWith(".gathersync.app")) {
-    return ".gathersync.app";
-  }
-
-  return undefined;
-}
-
 export function getSessionCookieOptions(
   req: Request,
-): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure" | "maxAge"> {
+): Pick<CookieOptions, "httpOnly" | "path" | "sameSite" | "secure" | "maxAge"> {
   const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
-  const isLocal = isLocalhost(req);
 
-  // Development mode: Always use secure=false and sameSite='lax'
-  if (!isProduction) {
+  // Session cookie configuration for Fly.io production
+  // Must match express-session config: sameSite: 'none' for cross-domain OAuth redirects
+  // CRITICAL: No domain property - defaults to current host
+  if (isProduction) {
     return {
-      domain: getCookieDomain(req),
       httpOnly: true,
       path: "/",
-      sameSite: "lax",
-      secure: false,
+      sameSite: "none" as const, // Must be 'none' to survive cross-domain OAuth redirects
+      secure: true, // Required when sameSite is 'none'
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
     };
   }
-
-  // Production mode: Settings for Fly.io environment
-  // secure: true, sameSite: 'lax', httpOnly: true, maxAge: 24 * 60 * 60 * 1000
-  // Trust proxy must be active (app.set('trust proxy', 1)) for this to work correctly
-  // For same-domain cookies (frontend and backend on gathersync.fly.dev), 
-  // do NOT set domain - let browser use current domain automatically
-  const cookieOptions = {
-    domain: undefined, // Don't set domain for same-domain cookies - browser will use current domain
+  
+  // Development: use lax with secure=false for local testing
+  return {
     httpOnly: true,
     path: "/",
-    sameSite: "lax" as const, // Compatible with modern browsers for same-domain cookies
-    secure: true, // Required for HTTPS (trust proxy ensures req.protocol is 'https')
+    sameSite: "lax" as const,
+    secure: false, // Local development doesn't use HTTPS
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
   };
-  
-  console.log("[Cookie] Production cookie options:", JSON.stringify(cookieOptions, null, 2));
-  return cookieOptions;
 }

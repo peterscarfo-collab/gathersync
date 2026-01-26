@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import cookieParser from "cookie-parser";
+import session from "express-session";
 import * as jwt from "jsonwebtoken";
 import path from "path";
 
@@ -46,14 +47,25 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
 
-  // REQUIRED for Fly.io reverse proxy - MUST be the FIRST line after Express initialization
-  // This ensures req.protocol correctly reports 'https' and req.secure is true
-  // Without this, cookies with secure: true will be rejected
-  // Using '1' (trust first proxy) is correct for Fly.io's single proxy setup
+  // CRITICAL: Trust proxy MUST be the very first line - before any other code
   app.set("trust proxy", 1);
-  console.log("[Server] Trust proxy enabled: app.set('trust proxy', 1)");
+
+  // Session middleware - required for Fly.io with cross-domain redirects
+  app.use(session({
+    secret: process.env.SESSION_SECRET || "",
+    resave: false,
+    saveUninitialized: false,
+    proxy: true, // Required for Fly.io
+    cookie: {
+      secure: true,      // Must be true for HTTPS
+      httpOnly: true,
+      sameSite: 'none',  // 'none' is the only way to survive cross-domain redirects
+      maxAge: 24 * 60 * 60 * 1000
+    }
+  }));
   
   // Log critical environment variables at startup
+  console.log("[Server] Trust proxy enabled: app.set('trust proxy', 1)");
   console.log("[Server] Environment check:", {
     hasAppId: !!process.env.APP_ID,
     appId: process.env.APP_ID || "(not set)",
@@ -82,7 +94,7 @@ async function startServer() {
   app.use((req, res, next) => {
     const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
     
-    // Production: Explicitly set origin to https://gathersync.fly.dev
+    // Production: Set origin to 'https://gathersync.fly.dev'
     // Development: Use dynamic origin from request
     if (isProduction) {
       res.header("Access-Control-Allow-Origin", "https://gathersync.fly.dev");
@@ -144,7 +156,7 @@ async function startServer() {
       jwt.verify(token, secret);
 
       // Use getSessionCookieOptions for proper production cookie settings
-      // This ensures secure: true, sameSite: 'none' for production with trust proxy active
+      // This ensures secure: true, sameSite: 'lax' for production with trust proxy active
       // cookieOptions already includes maxAge (24h for production)
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, token, cookieOptions);
@@ -322,6 +334,13 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// Export as default for server/index.js to import (production)
+export default startServer;
+
+// For dev mode: execute directly when run with tsx watch
+// This allows 'tsx watch server/_core/index.ts' to work
+if (process.env.NODE_ENV === 'development' && !process.env.SKIP_AUTO_START) {
+  startServer().catch(console.error);
+}
 
 
