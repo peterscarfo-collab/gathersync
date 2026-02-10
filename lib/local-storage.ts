@@ -264,6 +264,71 @@ export class EventsLocalStorage {
   }
 
   /**
+   * De-duplicate events by signature (name/date/type) and soft-delete extras
+   */
+  async dedupeBySignature(): Promise<number> {
+    try {
+      const events = await this.getAllRaw();
+      if (events.length <= 1) return 0;
+
+      const bySignature = new Map<string, Event>();
+      const nowIso = now();
+      let dedupedCount = 0;
+
+      for (const event of events) {
+        if (event.deletedAt) {
+          continue;
+        }
+
+        const signature = [
+          event.name,
+          event.eventType,
+          event.month,
+          event.year,
+          event.fixedDate,
+          event.fixedTime,
+        ].join('|');
+
+        const existing = bySignature.get(signature);
+        if (!existing) {
+          bySignature.set(signature, event);
+          continue;
+        }
+
+        const existingUpdated = new Date(existing.updatedAt).getTime();
+        const candidateUpdated = new Date(event.updatedAt).getTime();
+        if (candidateUpdated > existingUpdated) {
+          bySignature.set(signature, event);
+        }
+      }
+
+      const keepIds = new Set(Array.from(bySignature.values()).map((e) => e.id));
+      const updated = events.map((event) => {
+        if (event.deletedAt || keepIds.has(event.id)) {
+          return event;
+        }
+
+        dedupedCount += 1;
+        return {
+          ...event,
+          deletedAt: nowIso,
+          updatedAt: nowIso,
+        };
+      });
+
+      if (dedupedCount > 0) {
+        await AsyncStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(updated));
+        console.log(`[LocalStorage] Deduped ${dedupedCount} events`);
+      }
+
+      return dedupedCount;
+    } catch (error) {
+      console.error('[LocalStorage] Error deduping events:', error);
+      return 0;
+    }
+  }
+
+  /**
    * Clear all events (dangerous!)
    */
   async clear(): Promise<void> {

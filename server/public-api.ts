@@ -130,8 +130,9 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
           | undefined,
       });
     } else {
+      const { generateId } = await import('./db.js');
       await createParticipant({
-        id: `participant-${Date.now()}`,
+        id: generateId(),
         eventId,
         name: participantName,
         availability: (availability as Record<string, boolean>) || {},

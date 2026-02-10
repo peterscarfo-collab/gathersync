@@ -12,9 +12,7 @@ import {
   createPortalSession,
   getSubscription,
 } from '../stripe';
-import { getDb } from '../db';
-import { users } from '../../drizzle/schema';
-import { eq } from 'drizzle-orm';
+import { adminDb, tx } from '../../lib/admin-db';
 
 export const subscriptionRouter = router({
   /**
@@ -29,14 +27,6 @@ export const subscriptionRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Database not available',
-        });
-      }
-
       const user = ctx.user;
       if (!user) {
         throw new TRPCError({
@@ -57,10 +47,9 @@ export const subscriptionRouter = router({
           );
 
           // Save customer ID to database
-          await db
-            .update(users)
-            .set({ stripeCustomerId })
-            .where(eq(users.id, user.id));
+          await adminDb.transact([
+            tx.$users[user.id].update({ stripeCustomerId }),
+          ]);
         }
 
         // Create checkout session
@@ -139,6 +128,72 @@ export const subscriptionRouter = router({
   }),
 
   /**
+   * Check gifted (admin-granted temporary) access and expire it when needed.
+   * This is called from the client on app launch to enforce renewal flow.
+   */
+  checkGiftedAccess: protectedProcedure.mutation(async ({ ctx }) => {
+    const user = ctx.user;
+    if (!user) {
+      throw new TRPCError({
+        code: 'UNAUTHORIZED',
+        message: 'User not found',
+      });
+    }
+
+    // Lifetime grants never expire
+    if (user.isLifetimePro) {
+      return {
+        isGifted: false,
+        expired: false,
+        daysRemaining: null as number | null,
+        expiryDate: null as Date | null,
+      };
+    }
+
+    // Temporary gifted access = admin source + explicit end date
+    const isGifted = user.subscriptionSource === 'admin' && Boolean(user.subscriptionEndDate);
+    if (!isGifted || !user.subscriptionEndDate) {
+      return {
+        isGifted: false,
+        expired: false,
+        daysRemaining: null as number | null,
+        expiryDate: null as Date | null,
+      };
+    }
+
+    const now = new Date();
+    const expiryDate = new Date(user.subscriptionEndDate);
+    const msRemaining = expiryDate.getTime() - now.getTime();
+    const daysRemaining = Math.max(0, Math.ceil(msRemaining / (1000 * 60 * 60 * 24)));
+
+    // Enforce expiry: gifted period is over, downgrade to free
+    if (now > expiryDate) {
+      await adminDb.transact([
+        tx.$users[user.id].update({
+          subscriptionTier: 'free',
+          subscriptionStatus: 'expired',
+          subscriptionSource: 'free',
+          subscriptionEndDate: null,
+        }),
+      ]);
+
+      return {
+        isGifted: true,
+        expired: true,
+        daysRemaining: 0,
+        expiryDate,
+      };
+    }
+
+    return {
+      isGifted: true,
+      expired: false,
+      daysRemaining,
+      expiryDate,
+    };
+  }),
+
+  /**
    * Get subscription details from Stripe
    */
   getDetails: protectedProcedure.query(async ({ ctx }) => {
@@ -176,14 +231,6 @@ export const subscriptionRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const db = await getDb();
-      if (!db) {
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Database not available',
-        });
-      }
-
       const user = ctx.user;
       if (!user) {
         throw new TRPCError({
@@ -216,17 +263,16 @@ export const subscriptionRouter = router({
         trialEnd.setDate(trialEnd.getDate() + 14); // 14 days from now
 
         // Update user with trial information
-        await db
-          .update(users)
-          .set({
+        await adminDb.transact([
+          tx.$users[user.id].update({
             subscriptionTier: input.tier,
             subscriptionStatus: 'trialing',
             subscriptionSource: 'trial',
             trialStartDate: now,
             trialEndDate: trialEnd,
             trialUsed: true,
-          })
-          .where(eq(users.id, user.id));
+          }),
+        ]);
 
         return {
           success: true,

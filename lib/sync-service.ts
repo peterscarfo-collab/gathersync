@@ -220,6 +220,9 @@ class SyncService {
    */
   async autoSyncOnLaunch(): Promise<void> {
     try {
+      console.log('[SyncService] Auto-sync on launch is temporarily disabled for testing');
+      return;
+      
       const user = await Auth.getUserInfo();
       const isAuthenticated = user !== null;
       if (!isAuthenticated) {

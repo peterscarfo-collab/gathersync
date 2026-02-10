@@ -10,12 +10,12 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { eventsLocalStorage as eventsLocalStorage } from '@/lib/local-storage';
-import { eventsCloudStorage } from '@/lib/cloud-storage';
-import { syncService } from '@/lib/sync-service';
+import { eventMutations } from '@/lib/instant-mutations';
 import { generateId } from '@/lib/calendar-utils';
-import { useAuth } from '@/hooks/auth-context';
+import { useAuthState } from '@/hooks/use-auth';
 import type { Event } from '@/types/models';
 import { canCreateEvent, getSubscriptionLimits } from '@/lib/subscription';
+import { getSubscriptionInfo } from '@/lib/trial';
 
 export default function CreateEventScreen() {
   const router = useRouter();
@@ -50,7 +50,7 @@ export default function CreateEventScreen() {
   const [rsvpDeadline, setRsvpDeadline] = useState(params.rsvpDeadline || '');
   const [meetingNotes, setMeetingNotes] = useState(params.meetingNotes || '');
 
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuthState();
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
   const surfaceColor = useThemeColor({}, 'surface');
@@ -73,7 +73,8 @@ export default function CreateEventScreen() {
 
     // Check subscription limits
     if (user && isAuthenticated) {
-      const tier = (user as any).subscriptionTier || 'free';
+      // Use effective tier so expired gifted access is treated as free immediately.
+      const tier = getSubscriptionInfo(user).tier || 'free';
       
       // Count actual events created this month (not relying on database counter)
       const now = new Date();
@@ -146,28 +147,22 @@ export default function CreateEventScreen() {
         meetingNotes: meetingNotes.trim() || undefined,
       };
 
-      // Save locally first (use addWithId to preserve our generated ID)
+      // Save directly to InstantDB with the current user as creator
+      if (!user?.id) {
+        Alert.alert('Error', 'You must be logged in to create events');
+        return;
+      }
+      
+      const eventId = await eventMutations.createEvent(newEvent, user.id);
       await eventsLocalStorage.addWithId(newEvent);
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Navigate immediately - don't wait for cloud sync
+      // Navigate to the new event
       router.replace({
         pathname: '/event-detail' as any,
-        params: { eventId: newEvent.id },
+        params: { eventId },
       });
-      
-      // Push to cloud in background (fire-and-forget)
-      if (isAuthenticated) {
-        eventsCloudStorage.add(newEvent)
-          .then(() => {
-            console.log('[CreateEvent] Event pushed to cloud successfully:', newEvent.id);
-          })
-          .catch((syncError) => {
-            console.error('[CreateEvent] Failed to push to cloud:', syncError);
-            // Don't block user - local save succeeded, will sync later
-          });
-      }
     } catch (error) {
       console.error('Failed to create event:', error);
       Alert.alert('Error', 'Failed to create event. Please try again.');

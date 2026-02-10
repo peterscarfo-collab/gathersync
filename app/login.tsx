@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as WebBrowser from 'expo-web-browser';
 import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/auth-context';
+import { db } from '@/lib/db';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -17,7 +17,10 @@ export default function LoginScreen() {
   const params = useLocalSearchParams<{ error?: string }>();
   const { isAuthenticated, loading: authLoading } = useAuth();
   
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [sentEmail, setSentEmail] = useState(false);
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -33,69 +36,48 @@ export default function LoginScreen() {
     }
   }, [isAuthenticated, authLoading, router]);
 
-  // Handle OAuth errors from callback
-  useEffect(() => {
-    if (params.error) {
-      let errorMessage = 'Login failed. Please try again.';
-      
-      switch (params.error) {
-        case 'missing_state':
-          errorMessage = 'Security verification failed. Please try again.';
-          break;
-        case 'missing_code':
-          errorMessage = 'Authorization incomplete. Please try again.';
-          break;
-        case 'access_denied':
-          errorMessage = 'Login was cancelled.';
-          break;
-        default:
-          errorMessage = `Login error: ${params.error}`;
-      }
-
-      Alert.alert('Login Error', errorMessage);
-      
-      // Clear error from URL
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('error');
-        window.history.replaceState({}, '', url.toString());
-      }
+  const handleSendCode = async () => {
+    if (!email || !email.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
     }
-  }, [params.error]);
 
-  const handleGoogleLogin = async () => {
     try {
       setIsLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      // Use the Google OAuth endpoint directly
-      const loginUrl = Platform.OS === 'web' 
-        ? '/api/auth/google'
-        : 'https://gathersync.fly.dev/api/auth/google';
-
-      console.log('[Login] Initiating Google OAuth:', loginUrl);
-
-      if (Platform.OS === 'web') {
-        // Web: OAuth must be top-level navigation
-        window.location.href = loginUrl;
-        return;
-      }
-
-      // Native: open in browser
-      const result = await WebBrowser.openBrowserAsync(loginUrl, {
-        showInRecents: true,
-      });
-
+      await db.auth.sendMagicCode({ email });
+      setSentEmail(true);
+      Alert.alert('Code Sent!', `Check your email at ${email} for your login code.`);
+    } catch (error: any) {
+      console.error('[Login] Failed to send code:', error);
+      Alert.alert('Error', error.message || 'Failed to send login code. Please try again.');
+    } finally {
       setIsLoading(false);
+    }
+  };
 
-      // Check if user cancelled
-      if (result.type === 'cancel') {
-        console.log('[Login] User cancelled OAuth');
-      }
-    } catch (error) {
-      console.error('[Login] OAuth initiation failed:', error);
+  const handleVerifyCode = async () => {
+    if (!code || code.length !== 6) {
+      Alert.alert('Invalid Code', 'Please enter the 6-digit code from your email.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      console.log('[Login] Attempting to verify code for:', email);
+      const result = await db.auth.signInWithMagicCode({ email, code });
+      console.log('[Login] Sign in result:', result);
+
+      Alert.alert('Success!', 'Logged in successfully');
+      // Auth state will update automatically and redirect
+    } catch (error: any) {
+      console.error('[Login] Failed to verify code:', error);
+      Alert.alert('Error', error.message || 'Invalid code. Please try again.');
+    } finally {
       setIsLoading(false);
-      Alert.alert('Error', 'Failed to start login. Please try again.');
     }
   };
 
@@ -152,8 +134,95 @@ export default function LoginScreen() {
 
           {/* Description */}
           <ThemedText style={[styles.description, { color: textSecondaryColor }]}>
-            Log in to sync your events across devices and share them with participants.
+            {sentEmail 
+              ? 'Enter the 6-digit code sent to your email'
+              : 'Sign in with your email - no password needed!'}
           </ThemedText>
+
+          {!sentEmail ? (
+            <>
+              {/* Email Input */}
+              <TextInput
+                style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                placeholder="Enter your email"
+                placeholderTextColor={textSecondaryColor}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoading}
+              />
+
+              {/* Send Code Button */}
+              <Pressable
+                style={[
+                  styles.loginButton,
+                  { backgroundColor: tintColor },
+                  isLoading && styles.loginButtonDisabled,
+                ]}
+                onPress={handleSendCode}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ThemedText style={styles.loginButtonText}>Sending...</ThemedText>
+                ) : (
+                  <>
+                    <IconSymbol name="envelope.fill" size={20} color="#FFFFFF" />
+                    <ThemedText style={styles.loginButtonText}>Send Login Code</ThemedText>
+                  </>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {/* Code Input */}
+              <TextInput
+                style={[styles.input, styles.codeInput, { backgroundColor: surfaceColor, color: textColor }]}
+                placeholder="000000"
+                placeholderTextColor={textSecondaryColor}
+                value={code}
+                onChangeText={setCode}
+                keyboardType="number-pad"
+                maxLength={6}
+                autoFocus
+                editable={!isLoading}
+              />
+
+              {/* Verify Code Button */}
+              <Pressable
+                style={[
+                  styles.loginButton,
+                  { backgroundColor: tintColor },
+                  isLoading && styles.loginButtonDisabled,
+                ]}
+                onPress={handleVerifyCode}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ThemedText style={styles.loginButtonText}>Verifying...</ThemedText>
+                ) : (
+                  <>
+                    <IconSymbol name="checkmark.circle.fill" size={20} color="#FFFFFF" />
+                    <ThemedText style={styles.loginButtonText}>Verify Code</ThemedText>
+                  </>
+                )}
+              </Pressable>
+
+              {/* Resend Code */}
+              <Pressable
+                onPress={() => {
+                  setSentEmail(false);
+                  setCode('');
+                }}
+                disabled={isLoading}
+              >
+                <ThemedText style={[styles.linkText, { color: tintColor }]}>
+                  Use a different email
+                </ThemedText>
+              </Pressable>
+            </>
+          )}
 
           {/* Benefits List */}
           <View style={styles.benefitsContainer}>
@@ -170,26 +239,6 @@ export default function LoginScreen() {
               <ThemedText style={styles.benefitText}>Access your data anywhere</ThemedText>
             </View>
           </View>
-
-          {/* Login Button */}
-          <Pressable
-            style={[
-              styles.loginButton,
-              { backgroundColor: tintColor },
-              isLoading && styles.loginButtonDisabled,
-            ]}
-            onPress={handleGoogleLogin}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ThemedText style={styles.loginButtonText}>Loading...</ThemedText>
-            ) : (
-              <>
-                <IconSymbol name="globe" size={20} color="#FFFFFF" />
-                <ThemedText style={styles.loginButtonText}>Continue with Google</ThemedText>
-              </>
-            )}
-          </Pressable>
 
           {/* Privacy Note */}
           <ThemedText style={[styles.privacyNote, { color: textSecondaryColor }]}>
@@ -291,5 +340,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
+  },
+  input: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  codeInput: {
+    fontSize: 24,
+    fontWeight: '600',
+    letterSpacing: 8,
+    textAlign: 'center',
+  },
+  linkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 24,
   },
 });

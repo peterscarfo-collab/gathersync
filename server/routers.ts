@@ -13,10 +13,55 @@ export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
+    // Debug endpoint to check authentication state
+    debug: publicProcedure.query((opts) => {
+      const req = opts.ctx.req;
+      const cookieHeader = req.headers.cookie || '';
+      const sessionUser = (req.session as any)?.user;
+      return {
+        hasCookieHeader: !!cookieHeader,
+        cookieHeaderLength: cookieHeader.length,
+        hasConnectSid: cookieHeader.includes('connect.sid'),
+        hasCookieToken: cookieHeader.includes('app_session_token'),
+        hasSession: !!req.session,
+        sessionId: req.sessionID?.substring(0, 10),
+        hasSessionUser: !!sessionUser,
+        sessionUserEmail: sessionUser?.email,
+        parsedCookies: req.cookies ? Object.keys(req.cookies) : [],
+        origin: req.headers.origin,
+        host: req.headers.host,
+        user: opts.ctx.user ? {
+          id: opts.ctx.user.id,
+          email: opts.ctx.user.email,
+        } : null,
+      };
+    }),
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
+      // Destroy express-session if it exists (for web users)
+      if (ctx.req.session) {
+        ctx.req.session.destroy((err) => {
+          if (err) {
+            console.error("[Auth Logout] Error destroying session:", err);
+          } else {
+            console.log("[Auth Logout] Express session destroyed");
+          }
+        });
+      }
+      
+      // Also clear the COOKIE_NAME cookie (for native/legacy web)
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      
+      // Clear connect.sid cookie (express-session)
+      ctx.res.clearCookie('connect.sid', { 
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+        maxAge: -1 
+      });
+      
       return {
         success: true,
       } as const;
@@ -104,9 +149,10 @@ export const appRouter = router({
             rsvpStatus: input.rsvpStatus,
           });
         } else {
-          // Create new participant
+          // Create new participant with proper UUID
+          const participantId = db.generateId();
           await db.createParticipant({
-            id: `participant-${Date.now()}`,
+            id: participantId,
             eventId: input.eventId,
             name: input.participantName,
             availability: input.availability as Record<string, boolean> || {},
@@ -121,7 +167,7 @@ export const appRouter = router({
   }),
 
   events: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserEvents(ctx.user.id)),
+    list: protectedProcedure.query(({ ctx }) => db.getUserEvents(String(ctx.user.id))),
 
     get: protectedProcedure
       .input(z.object({ id: z.string() }))
@@ -154,12 +200,15 @@ export const appRouter = router({
           meetingNotes: z.string().optional(),
         })
       )
-      .mutation(({ ctx, input }) =>
-        db.createEvent({
+      .mutation(({ ctx, input }) => {
+        // Generate a proper UUID for InstantDB
+        const eventId = db.generateId();
+        return db.createEvent({
           ...input,
-          userId: ctx.user.id,
-        })
-      ),
+          id: eventId,
+          userId: String(ctx.user.id),
+        });
+      }),
 
     update: protectedProcedure
       .input(
@@ -268,7 +317,7 @@ export const appRouter = router({
         if (event && data.availability) {
           await notifications.notifyEventUpdate(
             eventId,
-            ctx.user.id,
+            String(ctx.user.id),
             {
               title: `${event.name} - Availability Updated`,
               body: `${input.name || 'Someone'} updated their availability`,
@@ -286,7 +335,7 @@ export const appRouter = router({
   }),
 
   snapshots: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserSnapshots(ctx.user.id)),
+    list: protectedProcedure.query(({ ctx }) => db.getUserSnapshots(String(ctx.user.id))),
 
     create: protectedProcedure
       .input(
@@ -300,7 +349,7 @@ export const appRouter = router({
       .mutation(({ ctx, input }) =>
         db.createSnapshot({
           ...input,
-          userId: ctx.user.id,
+          userId: String(ctx.user.id),
         })
       ),
 
@@ -310,7 +359,7 @@ export const appRouter = router({
   }),
 
   templates: router({
-    list: protectedProcedure.query(({ ctx }) => db.getUserTemplates(ctx.user.id)),
+    list: protectedProcedure.query(({ ctx }) => db.getUserTemplates(String(ctx.user.id))),
 
     create: protectedProcedure
       .input(
@@ -323,7 +372,7 @@ export const appRouter = router({
       .mutation(({ ctx, input }) =>
         db.createTemplate({
           ...input,
-          userId: ctx.user.id,
+          userId: String(ctx.user.id),
         })
       ),
 
@@ -342,7 +391,8 @@ export const appRouter = router({
       )
       .mutation(({ ctx, input }) =>
         db.registerPushToken({
-          userId: ctx.user.id,
+          id: db.generateId(),
+          userId: String(ctx.user.id),
           token: input.token,
           deviceId: input.deviceId,
         })

@@ -303,9 +303,9 @@ if (!session) {
     const signedInAt = new Date();
 let user: User | null = null;
 try {
-  user = await db.getUserByOpenId(sessionUserId);
+  user = await db.getUserById(sessionUserId);
 } catch (e) {
-  console.warn("[Database] getUserByOpenId failed (continuing without DB)");
+  console.warn("[Database] getUserById failed (continuing without DB)");
 }
 
     // If user not in DB, sync from OAuth server automatically
@@ -319,7 +319,7 @@ try {
           loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
           lastSignedIn: signedInAt,
         });
-        user = await db.getUserByOpenId(userInfo.openId);
+        user = await db.getUserById(userInfo.openId);
       } catch (error) {
   console.error("[Auth] Failed to sync user from OAuth:", error);
 

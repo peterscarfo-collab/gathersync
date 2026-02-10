@@ -141,10 +141,17 @@ export function getHeatmapColor(
 }
 
 /**
- * Generate a unique ID
+ * Generate a unique ID (UUID v4)
+ * InstantDB requires proper UUIDs for all entity IDs
  */
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+  console.log('[generateId] NEW UUID GENERATOR - Generated:', uuid);
+  return uuid;
 }
 
 /**

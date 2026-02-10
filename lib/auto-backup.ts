@@ -5,6 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { eventsStorage, snapshotsStorage, templatesStorage } from './hybrid-storage';
+import { generateId } from './generate-id';
 
 const AUTO_BACKUP_KEY = '@gathersync_auto_backups';
 const MAX_AUTO_BACKUPS = 10; // Keep last 10 automatic backups
@@ -33,7 +34,7 @@ export async function createAutoBackup(reason: string): Promise<string> {
     const templates = await templatesStorage.getAll();
     
     const backup: AutoBackup = {
-      id: `auto_${Date.now()}`,
+      id: `auto_${generateId()}`,
       timestamp: new Date().toISOString(),
       reason,
       data: {

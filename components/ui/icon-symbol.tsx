@@ -56,6 +56,8 @@ const MAPPING = {
   "arrow.up.doc": "upload",
   "wrench.and.screwdriver": "build",
   "arrow.clockwise": "refresh",
+  "gift.fill": "card-giftcard",
+  "cloud.fill": "cloud",
 } as IconMapping;
 
 /**

@@ -1,39 +1,40 @@
 // Server entry point - imports and starts the compiled server
-import express from 'express';
-import session from 'express-session';
+// All server configuration (Express app, session, CORS, etc.) is handled in server/_core/index.ts
 
-// Create Express app for session middleware
-const app = express();
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { pathToFileURL } from 'url';
 
-// Add this as the VERY FIRST line of middleware
-app.set('trust proxy', 1);
+// Get the directory of this file (server/)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Update your session config to this EXACT version
-app.use(session({
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  proxy: true, // Crucial for Fly.io
-  cookie: {
-    secure: true,      // Must be true for HTTPS
-    httpOnly: true,
-    sameSite: 'none',  // This allows the cookie to survive the Google redirect
-    maxAge: 24 * 60 * 60 * 1000
-  }
-}));
+// Resolve dist/index.js relative to the project root (one level up from server/)
+const distPath = join(__dirname, '..', 'dist', 'index.js');
+const distUrl = pathToFileURL(distPath).href;
 
-// Import compiled server code from dist
-import('../dist/index.js').then(({ default: startServer }) => {
-  if (typeof startServer === 'function') {
-    // startServer creates its own Express app, but we've already set up session middleware
-    // Pass the app instance if startServer accepts it, otherwise it will create its own
-    startServer();
-  } else {
-    console.error('startServer is not a function:', typeof startServer);
+console.log('[Server] Starting server from:', distPath);
+
+import(distUrl)
+  .then(({ default: startServer }) => {
+    if (typeof startServer === 'function') {
+      console.log('[Server] startServer function found, calling...');
+      startServer().catch((err) => {
+        console.error('[Server] Error starting server:', err);
+        process.exit(1);
+      });
+    } else {
+      console.error('[Server] startServer is not a function:', typeof startServer);
+      process.exit(1);
+    }
+  })
+  .catch((err) => {
+    console.error('[Server] Failed to import server from dist:', err);
+    console.error('[Server] Error details:', {
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+      path: distPath,
+    });
     process.exit(1);
-  }
-}).catch((err) => {
-  console.error('Failed to start server from dist:', err);
-  process.exit(1);
-});
-
+  });

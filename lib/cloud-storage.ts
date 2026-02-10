@@ -4,6 +4,15 @@ import superjson from 'superjson';
 import type { AppRouter } from '@/server/routers';
 import * as Auth from "@/lib/auth";
 
+/**
+ * Helper to safely convert dates to ISO strings
+ * InstantDB returns dates as strings, but local data may have Date objects
+ */
+function toISOString(date: string | Date | null | undefined): string | undefined {
+  if (!date) return undefined;
+  if (typeof date === 'string') return date;
+  return date.toISOString();
+}
 
 /**
  * Cloud storage adapter using tRPC client
@@ -57,8 +66,8 @@ export const eventsCloudStorage = {
               year: event.year,
               fixedDate: event.fixedDate,
               fixedTime: event.fixedTime,
-              createdAt: event.createdAt.toISOString(),
-              updatedAt: event.updatedAt.toISOString(),
+              createdAt: toISOString(event.createdAt)!,
+              updatedAt: toISOString(event.updatedAt)!,
               participants: participants.map((p) => ({
                 id: p.id,
                 name: p.name,
@@ -69,7 +78,7 @@ export const eventsCloudStorage = {
                 notes: p.notes,
                 source: p.source,
                 rsvpStatus: p.rsvpStatus,
-                deletedAt: p.deletedAt?.toISOString(),
+                deletedAt: toISOString(p.deletedAt),
               })),
               archived: event.archived,
               finalized: event.finalized,
@@ -86,7 +95,7 @@ export const eventsCloudStorage = {
               meetingNotes: event.meetingNotes,
               reminderDaysBefore: event.reminderDaysBefore,
               reminderScheduled: event.reminderScheduled,
-              deletedAt: event.deletedAt?.toISOString(),
+              deletedAt: toISOString(event.deletedAt),
             };
           })
         ),
@@ -143,8 +152,8 @@ export const eventsCloudStorage = {
         meetingLink: event.meetingLink || undefined,
         rsvpDeadline: event.rsvpDeadline || undefined,
         meetingNotes: event.meetingNotes || undefined,
-        createdAt: typeof event.createdAt === 'string' ? event.createdAt : event.createdAt.toISOString(),
-        updatedAt: typeof event.updatedAt === 'string' ? event.updatedAt : event.updatedAt.toISOString(),
+        createdAt: toISOString(event.createdAt)!,
+        updatedAt: toISOString(event.updatedAt)!,
         participants: participants.map((p) => ({
           id: p.id,
           name: p.name,
@@ -155,9 +164,9 @@ export const eventsCloudStorage = {
           notes: p.notes,
           source: p.source,
           rsvpStatus: p.rsvpStatus,
-          deletedAt: p.deletedAt ? (typeof p.deletedAt === 'string' ? p.deletedAt : p.deletedAt.toISOString()) : undefined,
+          deletedAt: toISOString(p.deletedAt),
         })),
-        deletedAt: event.deletedAt ? (typeof event.deletedAt === 'string' ? event.deletedAt : event.deletedAt.toISOString()) : undefined,
+        deletedAt: toISOString(event.deletedAt),
       };
       
       console.log('[CloudStorage] getById: Successfully mapped event with', participants.length, 'participants');
@@ -374,7 +383,7 @@ export const snapshotsCloudStorage = {
         id: s.id,
         eventId: s.eventId,
         name: s.name,
-        savedAt: s.savedAt.toISOString(),
+        savedAt: toISOString(s.savedAt)!,
         event: s.eventData,
       }));
     } catch (error) {
@@ -419,7 +428,7 @@ export const templatesCloudStorage = {
         id: t.id,
         name: t.name,
         participantNames: t.participantNames as string[],
-        createdAt: t.createdAt.toISOString(),
+        createdAt: toISOString(t.createdAt)!,
       }));
     } catch (error) {
       console.error('Failed to fetch templates:', error);

@@ -2,49 +2,74 @@ import { createTRPCReact } from "@trpc/react-query";
 import { httpBatchLink } from "@trpc/client";
 import superjson from "superjson";
 import type { AppRouter } from "@/server/routers";
-import * as Auth from "@/lib/auth";
+import { Platform } from "react-native";
 
 export const trpc = createTRPCReact<AppRouter>();
 
+// Global store for current user ID (updated by useAuth hook)
+let currentUserId: string | null = null;
+let currentUserEmail: string | null = null;
+
+export function setCurrentUser(userId: string | null, email: string | null) {
+  currentUserId = userId;
+  currentUserEmail = email;
+  console.log('[tRPC] User updated:', { userId, email });
+}
+
 export function createTRPCClient() {
-  // Use environment variable if set, otherwise detect from current origin
-  // For production (gathersync.fly.dev), use same-origin API
-  // For development, use localhost
   let url: string;
   
   if (typeof window !== "undefined") {
-    // Browser: use same-origin for production, or environment variable
+    const currentHost = window.location.hostname;
     const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
-    if (apiBaseUrl) {
+    
+    if (currentHost === 'gathersync.app' && !apiBaseUrl) {
+      url = "https://gathersync.fly.dev/api/trpc";
+      console.log("[tRPC] Cross-origin detected (gathersync.app), using:", url);
+    } else if (apiBaseUrl) {
       url = `${apiBaseUrl}/api/trpc`;
+      console.log("[tRPC] Using EXPO_PUBLIC_API_BASE_URL:", url);
     } else {
-      // Same-origin API (works for gathersync.fly.dev)
       url = "/api/trpc";
+      console.log("[tRPC] Same-origin API:", url);
     }
   } else {
-    // Server-side: use environment variable or fallback
     url = process.env.EXPO_PUBLIC_API_BASE_URL 
       ? `${process.env.EXPO_PUBLIC_API_BASE_URL}/api/trpc`
       : "http://127.0.0.1:8081/api/trpc";
   }
   
-  console.log("[tRPC] Client URL:", url);
+  console.log("[tRPC] Final Client URL:", url);
 
   return trpc.createClient({
     links: [
       httpBatchLink({
         url,
         transformer: superjson,
-        async headers() {
-          if (typeof window !== "undefined") return {};
-          const token = await Auth.getSessionToken();
-          return token ? { Authorization: `Bearer ${token}` } : {};
-        },
-        fetch(url, options) {
-          return fetch(url, {
+        fetch: async (url, options = {}) => {
+          const fetchOptions = {
             ...options,
-            credentials: "include",
-          });
+            credentials: "include" as RequestCredentials,
+          };
+          
+          return fetch(url, fetchOptions);
+        },
+        async headers() {
+          const headers: Record<string, string> = {};
+          
+          // Use the global user ID that's updated by the auth hook
+          if (currentUserId) {
+            headers['X-Instant-User-ID'] = currentUserId;
+            console.log('[tRPC] Sending user ID:', currentUserId);
+            
+            if (currentUserEmail) {
+              headers['X-Instant-User-Email'] = currentUserEmail;
+            }
+          } else {
+            console.log('[tRPC] No user ID available');
+          }
+          
+          return headers;
         },
       }),
     ],

@@ -67,16 +67,52 @@ export default function EditAvailabilityScreen() {
     setEmail(loadedParticipant.email || '');
   };
 
+  const applyParticipantUpdate = (updatedParticipant: Participant) => {
+    if (!event) return;
+
+    const updatedParticipants = event.participants.map(p =>
+      p.id === updatedParticipant.id ? updatedParticipant : p
+    );
+
+    const updatedEvent = {
+      ...event,
+      participants: updatedParticipants,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setParticipant(updatedParticipant);
+    setEvent(updatedEvent);
+    saveChanges(updatedEvent);
+  };
+
+  const cycleAvailability = (current: boolean | undefined) => {
+    if (current === true) return false;
+    if (current === false) return undefined;
+    return true;
+  };
+
   const handleDayPress = (day: number) => {
     if (!event || !participant) return;
 
     const dateStr = formatDate(event.year, event.month, day);
-    const currentStatus = participant.availability[dateStr];
-    
-    // Simple toggle - tap to mark available/unavailable
-    participant.availability[dateStr] = !currentStatus;
+    const currentStatus = participant.availability?.[dateStr];
+    const nextStatus = cycleAvailability(currentStatus);
+    const nextAvailability = {
+      ...(participant.availability ?? {}),
+    };
+    if (nextStatus === undefined) {
+      delete nextAvailability[dateStr];
+    } else {
+      nextAvailability[dateStr] = nextStatus;
+    }
+
+    const updatedParticipant = {
+      ...participant,
+      availability: nextAvailability,
+    };
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    saveChanges();
+    applyParticipantUpdate(updatedParticipant);
   };
 
   const handleSelectWeekends = (available: boolean) => {
@@ -84,6 +120,7 @@ export default function EditAvailabilityScreen() {
 
     const daysInMonth = getDaysInMonth(event.year, event.month);
     const firstDay = getFirstDayOfMonth(event.year, event.month);
+    const nextAvailability = { ...(participant.availability ?? {}) };
 
     for (let day = 1; day <= daysInMonth; day++) {
       // Calculate day of week (0 = Sunday, 6 = Saturday)
@@ -92,46 +129,67 @@ export default function EditAvailabilityScreen() {
       // Check if it's Saturday (6) or Sunday (0)
       if (dayOfWeek === 0 || dayOfWeek === 6) {
         const dateStr = formatDate(event.year, event.month, day);
-        participant.availability[dateStr] = available;
+        nextAvailability[dateStr] = available;
       }
     }
 
+    const updatedParticipant = {
+      ...participant,
+      availability: nextAvailability,
+    };
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    saveChanges();
+    applyParticipantUpdate(updatedParticipant);
   };
 
   const toggleDay = (day: number) => {
     if (!event || !participant) return;
 
     const dateStr = formatDate(event.year, event.month, day);
-    const currentStatus = participant.availability[dateStr];
-    
-    participant.availability[dateStr] = !currentStatus;
+    const currentStatus = participant.availability?.[dateStr];
+    const nextStatus = cycleAvailability(currentStatus);
+    const nextAvailability = {
+      ...(participant.availability ?? {}),
+    };
+    if (nextStatus === undefined) {
+      delete nextAvailability[dateStr];
+    } else {
+      nextAvailability[dateStr] = nextStatus;
+    }
+
+    const updatedParticipant = {
+      ...participant,
+      availability: nextAvailability,
+    };
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    saveChanges();
+    applyParticipantUpdate(updatedParticipant);
   };
 
   const handleUnavailableToggle = (value: boolean) => {
     if (!participant) return;
 
     setUnavailableAllMonth(value);
-    participant.unavailableAllMonth = value;
-    
-    if (value) {
-      // Clear all availability when marking unavailable
-      participant.availability = {};
-    }
+    const updatedParticipant = {
+      ...participant,
+      unavailableAllMonth: value,
+      availability: value ? {} : participant.availability ?? {},
+    };
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    saveChanges();
+    applyParticipantUpdate(updatedParticipant);
   };
 
   const handleRsvpChange = (status: 'attending' | 'not-attending') => {
     if (!participant) return;
 
-    participant.rsvpStatus = status;
+    const updatedParticipant = {
+      ...participant,
+      rsvpStatus: status,
+    };
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    saveChanges();
+    applyParticipantUpdate(updatedParticipant);
   };
 
   const handleDeleteParticipant = async () => {
@@ -187,41 +245,51 @@ export default function EditAvailabilityScreen() {
   const handleNotesChange = (text: string) => {
     setNotes(text);
     if (participant) {
-      participant.notes = text;
-      saveChanges();
+      const updatedParticipant = {
+        ...participant,
+        notes: text,
+      };
+      applyParticipantUpdate(updatedParticipant);
     }
   };
 
   const handlePhoneChange = (text: string) => {
     setPhone(text);
     if (participant) {
-      participant.phone = text || undefined;
-      saveChanges();
+      const updatedParticipant = {
+        ...participant,
+        phone: text || undefined,
+      };
+      applyParticipantUpdate(updatedParticipant);
     }
   };
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
     if (participant) {
-      participant.email = text || undefined;
-      saveChanges();
+      const updatedParticipant = {
+        ...participant,
+        email: text || undefined,
+      };
+      applyParticipantUpdate(updatedParticipant);
     }
   };
 
-  const saveChanges = async () => {
-    if (!event || !participant) return;
+  const saveChanges = async (eventOverride?: Event) => {
+    if (!eventId) return;
+    const eventToSave = eventOverride ?? event;
+    if (!eventToSave) return;
     
     const updatedEvent = {
-      ...event,
+      ...eventToSave,
       updatedAt: new Date().toISOString(),
     };
     
     // Update local state immediately (optimistic update)
     setEvent(updatedEvent);
-    setParticipant({ ...participant });
     
     // Save to local storage immediately
-    await eventsLocalStorage.update(eventId!, updatedEvent);
+    await eventsLocalStorage.update(eventId, updatedEvent);
     
     // If already saving, mark that another save is pending
     if (isSavingRef.current) {
@@ -235,7 +303,7 @@ export default function EditAvailabilityScreen() {
     if (isAuthenticated) {
       try {
         console.log('[EditAvailability] Pushing availability update to cloud');
-        await eventsCloudStorage.update(eventId!, updatedEvent);
+        await eventsCloudStorage.update(eventId, updatedEvent);
         console.log('[EditAvailability] Cloud update successful');
       } catch (error) {
         console.error('[EditAvailability] Failed to push to cloud:', error);
@@ -243,6 +311,9 @@ export default function EditAvailabilityScreen() {
     }
     
     isSavingRef.current = false;
+
+    // Refresh local state to ensure UI stays in sync
+    loadData();
     
     // If another save was requested while we were saving, do it now
     if (pendingSaveRef.current) {
@@ -482,7 +553,7 @@ export default function EditAvailabilityScreen() {
                   onPress={() => handleSelectWeekends(true)}
                 >
                   <ThemedText style={styles.quickActionButtonText}>
-                    ✓ All Weekends
+                    ✓ Weekends Available
                   </ThemedText>
                 </Pressable>
                 <Pressable
@@ -490,10 +561,28 @@ export default function EditAvailabilityScreen() {
                   onPress={() => handleSelectWeekends(false)}
                 >
                   <ThemedText style={styles.quickActionButtonText}>
-                    ✗ All Weekends
+                    ✗ Weekends Unavailable
                   </ThemedText>
                 </Pressable>
               </View>
+              <Pressable
+                style={[styles.quickActionButton, styles.clearButton, { backgroundColor: surfaceColor }]}
+                onPress={() => {
+                  if (!participant) return;
+                  const updatedParticipant = {
+                    ...participant,
+                    availability: {},
+                    unavailableAllMonth: false,
+                  };
+                  setUnavailableAllMonth(false);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  applyParticipantUpdate(updatedParticipant);
+                }}
+              >
+                <ThemedText style={[styles.clearButtonText, { color: textSecondaryColor }]}>
+                  Clear All Availability
+                </ThemedText>
+              </Pressable>
             </View>
 
             {/* Instructions */}
@@ -504,7 +593,7 @@ export default function EditAvailabilityScreen() {
               <ThemedText style={[styles.instructionsText, { color: textSecondaryColor }]}>
                 • Tap any day to toggle available/unavailable{'\n'}
                 • Use quick actions above for all weekends{'\n'}
-                • Green = Available, Gray = Unavailable
+                • Green = Available, Red = Unavailable, Gray = Not set
               </ThemedText>
             </View>
 
@@ -529,7 +618,9 @@ export default function EditAvailabilityScreen() {
                   }
 
                   const dateStr = formatDate(event.year, event.month, day);
-                  const isAvailable = participant.availability[dateStr] === true;
+                  const availabilityValue = participant.availability?.[dateStr];
+                  const isAvailable = availabilityValue === true;
+                  const isUnavailable = availabilityValue === false;
 
                   return (
                     <Pressable
@@ -537,9 +628,11 @@ export default function EditAvailabilityScreen() {
                       style={[
                         styles.dayCell,
                         {
-                          backgroundColor: isAvailable 
-                            ? successColor 
-                            : colorScheme === 'light' ? '#F1F5F9' : '#1E293B',
+                          backgroundColor: isAvailable
+                            ? successColor
+                            : isUnavailable
+                              ? errorColor
+                              : colorScheme === 'light' ? '#F1F5F9' : '#1E293B',
                         },
                       ]}
                       onPress={() => handleDayPress(day)}
@@ -547,13 +640,16 @@ export default function EditAvailabilityScreen() {
                       <ThemedText
                         style={[
                           styles.dayText,
-                          { color: isAvailable ? '#FFFFFF' : textColor },
+                          { color: isAvailable || isUnavailable ? '#FFFFFF' : textColor },
                         ]}
                       >
                         {day}
                       </ThemedText>
                       {isAvailable && (
                         <IconSymbol name="checkmark" size={12} color="#FFFFFF" />
+                      )}
+                      {isUnavailable && (
+                        <IconSymbol name="xmark" size={12} color="#FFFFFF" />
                       )}
                     </Pressable>
                   );
@@ -674,6 +770,16 @@ const styles = StyleSheet.create({
   quickActionsButtons: {
     flexDirection: 'row',
     gap: 12,
+  },
+  clearButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  clearButtonText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   quickActionButton: {
     flex: 1,

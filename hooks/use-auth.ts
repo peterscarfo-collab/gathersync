@@ -1,7 +1,6 @@
-import * as Api from "@/lib/api";
-import * as Auth from "@/lib/auth";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { db } from "@/lib/db";
+import { setCurrentUser } from "@/lib/trpc";
+import { useCallback, useEffect, useMemo } from "react";
 
 type UseAuthOptions = {
   autoFetch?: boolean;
@@ -9,201 +8,92 @@ type UseAuthOptions = {
 
 export function useAuthState(options?: UseAuthOptions) {
   const { autoFetch = true } = options ?? {};
-  const [user, setUser] = useState<Auth.User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const hasNoSessionCookieRef = useRef(false);
-  const hasInitializedRef = useRef(false);
+  void autoFetch;
+  
+  // Use InstantDB's auth hook
+  const { user: instantUser, isLoading, error: authError } = db.useAuth();
 
-  const fetchUser = useCallback(async (force = false) => {
-    // If we've already detected no session cookie and this isn't a forced refresh, skip
-    if (hasNoSessionCookieRef.current && !force) {
-      console.log("[useAuth] Skipping fetchUser - no session cookie detected and not forced");
-      return;
-    }
-
-    console.log("[useAuth] fetchUser called", { force, hasNoSessionCookie: hasNoSessionCookieRef.current });
-    try {
-      setLoading(true);
-      setError(null);
-      hasNoSessionCookieRef.current = false;
-
-      // Web platform: use cookie-based auth, fetch user from API
-      if (Platform.OS === "web") {
-        console.log("[useAuth] Web platform: fetching user from API...");
-        const apiUser = await Api.getMe();
-        console.log("[useAuth] API user response:", apiUser);
-
-        if (apiUser) {
-          const userInfo: Auth.User = {
-            id: apiUser.id,
-            openId: apiUser.openId,
-            name: apiUser.name,
-            email: apiUser.email,
-            loginMethod: apiUser.loginMethod,
-            lastSignedIn: new Date(apiUser.lastSignedIn),
-            // Include subscription fields from API
-            subscriptionTier: (apiUser as any).subscriptionTier,
-            subscriptionStatus: (apiUser as any).subscriptionStatus,
-            subscriptionSource: (apiUser as any).subscriptionSource,
-            isLifetimePro: (apiUser as any).isLifetimePro,
-            trialStartDate: (apiUser as any).trialStartDate,
-            trialEndDate: (apiUser as any).trialEndDate,
-            trialUsed: (apiUser as any).trialUsed,
-            eventsCreatedThisMonth: (apiUser as any).eventsCreatedThisMonth,
-          };
-          setUser(userInfo);
-          // Cache user info in localStorage for faster subsequent loads
-          await Auth.setUserInfo(userInfo);
-          console.log("[useAuth] Web user set from API:", userInfo);
-        } else {
-          console.log("[useAuth] Web: No authenticated user from API");
-          setUser(null);
-          await Auth.clearUserInfo();
-          hasNoSessionCookieRef.current = true;
+  // Pull the current user profile directly from InstantDB so subscription grants are
+  // reflected in real-time without relying on extra server auth headers.
+  const { data: profileData, isLoading: profileLoading } = db.useQuery(
+    instantUser?.id
+      ? {
+          $users: {
+            $: {
+              where: {
+                id: instantUser.id,
+              },
+            },
+          },
         }
-        return;
-      }
+      : null
+  );
 
-      // Native platform: use token-based auth
-      console.log("[useAuth] Native platform: checking for session token...");
-      const sessionToken = await Auth.getSessionToken();
-      console.log(
-        "[useAuth] Session token:",
-        sessionToken ? `present (${sessionToken.substring(0, 20)}...)` : "missing",
-      );
-      if (!sessionToken) {
-        console.log("[useAuth] No session token, setting user to null");
-        setUser(null);
-        return;
-      }
+  // Map authenticated user and merge profile fields from InstantDB ($users)
+  const user = useMemo(() => {
+    if (!instantUser) return null;
 
-      // Fetch fresh user data from API (includes subscription fields)
-      console.log("[useAuth] Native: fetching user from API...");
-      const apiUser = await Api.getMe();
-      console.log("[useAuth] API user response:", apiUser);
+    const profile = (profileData as any)?.$users?.[0] ?? null;
+    const base = {
+      id: instantUser.id,
+      email: instantUser.email || null,
+      name: instantUser.email || null, // fallback until profile is loaded
+      openId: instantUser.id,
+      loginMethod: 'email' as const,
+      lastSignedIn: new Date(),
+    };
 
-      if (apiUser) {
-        const userInfo: Auth.User = {
-          id: apiUser.id,
-          openId: apiUser.openId,
-          name: apiUser.name,
-          email: apiUser.email,
-          loginMethod: apiUser.loginMethod,
-          lastSignedIn: new Date(apiUser.lastSignedIn),
-          // Include subscription fields from API
-          subscriptionTier: (apiUser as any).subscriptionTier,
-          subscriptionStatus: (apiUser as any).subscriptionStatus,
-          subscriptionSource: (apiUser as any).subscriptionSource,
-          isLifetimePro: (apiUser as any).isLifetimePro,
-          trialStartDate: (apiUser as any).trialStartDate,
-          trialEndDate: (apiUser as any).trialEndDate,
-          trialUsed: (apiUser as any).trialUsed,
-          eventsCreatedThisMonth: (apiUser as any).eventsCreatedThisMonth,
-        };
-        setUser(userInfo);
-        // Update cache with fresh data
-        await Auth.setUserInfo(userInfo);
-        console.log("[useAuth] Native user set from API:", userInfo);
-      } else {
-        console.log("[useAuth] Native: No authenticated user from API");
-        setUser(null);
-        await Auth.clearUserInfo();
-        hasNoSessionCookieRef.current = true;
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error("Failed to fetch user");
-      console.error("[useAuth] fetchUser error:", error);
-      
-      setError(error);
-      setUser(null);
-    } finally {
-      setLoading(false);
-      console.log("[useAuth] fetchUser completed, loading:", false);
+    if (!profile || typeof profile !== 'object') return base;
+
+    const p = profile as Record<string, unknown>;
+    return {
+      ...base,
+      name: (p.name as string) ?? base.name,
+      role: p.role as string | undefined,
+      subscriptionTier: p.subscriptionTier as string | undefined,
+      subscriptionStatus: p.subscriptionStatus as string | undefined,
+      subscriptionSource: p.subscriptionSource as string | undefined,
+      isLifetimePro: p.isLifetimePro as boolean | undefined,
+      trialUsed: p.trialUsed as boolean | undefined,
+      trialStartDate: p.trialStartDate as Date | string | undefined,
+      trialEndDate: p.trialEndDate as Date | string | undefined,
+      subscriptionStartDate: p.subscriptionStartDate as Date | string | undefined,
+      subscriptionEndDate: p.subscriptionEndDate as Date | string | undefined,
+      eventsCreatedThisMonth: p.eventsCreatedThisMonth as number | undefined,
+      grantedBy: p.grantedBy as string | undefined,
+      grantedAt: p.grantedAt as Date | string | undefined,
+    };
+  }, [instantUser, profileData]);
+
+  // Keep tRPC user header in sync for server routes that still use it.
+  useEffect(() => {
+    if (instantUser?.id) {
+      setCurrentUser(instantUser.id, instantUser.email ?? null);
+    } else {
+      setCurrentUser(null, null);
     }
-  }, []);
+  }, [instantUser?.id, instantUser?.email]);
 
   const logout = useCallback(async () => {
     try {
-      await Api.logout();
+      await db.auth.signOut();
+      setCurrentUser(null, null);
     } catch (err) {
-      console.error("[Auth] Logout API call failed:", err);
-      // Continue with logout even if API call fails
-    } finally {
-      await Auth.removeSessionToken();
-      await Auth.clearUserInfo();
-      setUser(null);
-      setError(null);
-      hasNoSessionCookieRef.current = true; // Mark as no session after logout
+      console.error("[Auth] Logout failed:", err);
     }
   }, []);
 
   const refresh = useCallback(() => {
-    // Force refresh by resetting the no-session-cookie flag
-    hasNoSessionCookieRef.current = false;
-    hasInitializedRef.current = false; // Allow re-initialization
-    fetchUser(true);
-  }, [fetchUser]);
+    // InstantDB subscriptions are live. Kept for API compatibility.
+    console.log("[useAuth] Refresh called (InstantDB query is live)");
+  }, []);
 
   const isAuthenticated = useMemo(() => Boolean(user), [user]);
 
-  useEffect(() => {
-    // Only run once on mount or when autoFetch changes, not on every render
-    if (hasInitializedRef.current) {
-      return;
-    }
-
-    console.log("[useAuth] useEffect triggered, autoFetch:", autoFetch, "platform:", Platform.OS, "hasNoSessionCookie:", hasNoSessionCookieRef.current);
-    
-    // Don't auto-fetch if we've already detected no session cookie
-    if (hasNoSessionCookieRef.current && Platform.OS === "web") {
-      console.log("[useAuth] Skipping auto-fetch - no session cookie already detected");
-      setLoading(false);
-      hasInitializedRef.current = true;
-      return;
-    }
-    
-    if (autoFetch) {
-      hasInitializedRef.current = true;
-      if (Platform.OS === "web") {
-        // Web: fetch user from API directly (user will login manually if needed)
-        console.log("[useAuth] Web: fetching user from API...");
-        fetchUser();
-      } else {
-        // Native: check for cached user info first for faster initial load
-        Auth.getUserInfo().then((cachedUser) => {
-          console.log("[useAuth] Native cached user check:", cachedUser);
-          if (cachedUser) {
-            console.log("[useAuth] Native: setting cached user immediately");
-            setUser(cachedUser);
-            setLoading(false);
-          } else {
-            // No cached user, check session token
-            fetchUser();
-          }
-        });
-      }
-    } else {
-      console.log("[useAuth] autoFetch disabled, setting loading to false");
-      setLoading(false);
-      hasInitializedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoFetch]); // Only depend on autoFetch, fetchUser is stable
-
-  useEffect(() => {
-    console.log("[useAuth] State updated:", {
-      hasUser: !!user,
-      loading,
-      isAuthenticated,
-      error: error?.message,
-    });
-  }, [user, loading, isAuthenticated, error]);
-
   return {
     user,
-    loading,
-    error,
+    loading: isLoading || (Boolean(instantUser?.id) && profileLoading),
+    error: authError as Error | null,
     isAuthenticated,
     refresh,
     logout,

@@ -51,28 +51,56 @@ async function startServer() {
   // Add at the top: tells the app it's behind Fly.io's proxy
   app.set('trust proxy', 1);
 
-  // The specific session config that survives redirects
-  app.use(session({
-    name: 'connect.sid',  // Use the standard name
-    secret: process.env.SESSION_SECRET || 'gathersync_dev_secret',
-    resave: false,
-    saveUninitialized: false,
-    proxy: true,
-    cookie: {
-      secure: true,
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: 24 * 60 * 60 * 1000
-    }
-  }));
+  // Determine if we're in production
+  const isProduction = process.env.NODE_ENV === "production" || process.env.FLY_APP_NAME;
 
-  // The bridge that lets the browser send the cookie
+  // Log environment detection
+  console.log("[Server Config] Environment detection:", {
+    NODE_ENV: process.env.NODE_ENV || "(not set)",
+    FLY_APP_NAME: process.env.FLY_APP_NAME || "(not set)",
+    isProduction,
+  });
+
+  // The specific session config that survives redirects
+  // For cross-origin requests (app.gathersync.app -> gathersync.fly.dev), we need:
+  // - sameSite: 'none' (allows cross-site cookies)
+  // - secure: true (required for sameSite: 'none')
+  // - No domain (let browser set it automatically based on the Set-Cookie header origin)
+  const sessionCookieConfig = {
+    secure: isProduction, // true in production, false in dev
+    sameSite: (isProduction ? 'none' : 'lax') as const, 
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+    // Don't set domain - let browser handle it based on the response origin
+    // This ensures cookies work for both same-origin and cross-origin requests
+  };
+
+  console.log("[Server Config] Express-session cookie settings:", {
+    name: 'connect.sid',
+    secure: sessionCookieConfig.secure,
+    sameSite: sessionCookieConfig.sameSite,
+    httpOnly: sessionCookieConfig.httpOnly,
+    maxAge: `${sessionCookieConfig.maxAge / 1000 / 60 / 60}h`,
+  });
+
+  // CORS configuration - must use specific origins (not "*") when credentials: true
+  // The origin is the domain making the REQUEST, not the destination
+  // Allow both production web domains:
+  // - gathersync.app (actual app)
+  // - app.gathersync.app (marketing/landing)
+  const corsOrigin = isProduction 
+    ? ["https://gathersync.fly.dev", "https://gathersync.app", "https://app.gathersync.app"]
+    : true; // Allow all in development
+
   app.use(cors({
-    origin: 'https://gathersync.fly.dev',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['set-cookie']  // ← Add this
+    origin: corsOrigin, // Do not use "*"
+    credentials: true, // Required to receive cookies from the frontend
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Instant-User-ID',
+      'X-Instant-User-Email',
+    ],
   }));
   
   // Log critical environment variables at startup
@@ -85,8 +113,45 @@ async function startServer() {
     flyAppName: process.env.FLY_APP_NAME || "(not set)",
   });
 
-  /* ---------------- Cookies FIRST ------------------- */
+  /* ---------------- Cookies FIRST (before session) ------------------- */
   app.use(cookieParser());
+
+  // Configure express-session
+  // NOTE: Using default MemoryStore - sessions are lost on server restart
+  // This is OK because we have JWT cookie fallback (COOKIE_NAME)
+  app.use(session({
+    name: 'connect.sid',  // Use the standard name
+    secret: process.env.SESSION_SECRET || 'gathersync_dev_secret',
+    resave: false,
+    saveUninitialized: false, // Don't create session until something is stored
+    proxy: true, // Trust proxy headers (Fly.io)
+    cookie: sessionCookieConfig,
+    rolling: false, // Don't reset expiration on every request
+    // No store specified = MemoryStore (sessions lost on restart, but JWT cookie works)
+  }));
+  
+  // Middleware to log authentication issues (only for failed protected routes)
+  app.use((req, res, next) => {
+    // Only log for protected tRPC routes that might fail auth
+    if (req.path.startsWith('/api/trpc') && 
+        (req.path.includes('events.list') || req.path.includes('events.get'))) {
+      const cookieHeader = req.headers.cookie || '';
+      const hasConnectSid = cookieHeader.includes('connect.sid');
+      const hasCookieToken = cookieHeader.includes(COOKIE_NAME);
+      const sessionUser = (req.session as any)?.user;
+      
+      // Only log if we have cookies but no session user (potential issue)
+      if ((hasConnectSid || hasCookieToken) && !sessionUser) {
+        console.warn('[Session Middleware] Cookies present but no session user:', {
+          path: req.path,
+          hasConnectSid,
+          hasCookieToken,
+          sessionId: req.sessionID?.substring(0, 10),
+        });
+      }
+    }
+    next();
+  });
 
   /**
    * 🔑 CRITICAL: cookie → Authorization bridge
@@ -99,11 +164,35 @@ async function startServer() {
     next();
   });
 
-  const server = createServer(app);
-
   /* ---------------- Status route -------------------- */
   app.get("/api/status", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  /* ---------------- Debug route for authentication -------------------- */
+  app.get("/api/auth/debug", (req, res) => {
+    const cookieHeader = req.headers.cookie || '';
+    const sessionUser = (req.session as any)?.user;
+    const cookieToken = req.cookies?.[COOKIE_NAME];
+    
+    res.json({
+      hasCookieHeader: !!cookieHeader,
+      cookieHeaderLength: cookieHeader.length,
+      cookieHeaderPreview: cookieHeader.substring(0, 200),
+      hasConnectSid: cookieHeader.includes('connect.sid'),
+      hasCookieToken: cookieHeader.includes(COOKIE_NAME),
+      hasSession: !!req.session,
+      sessionId: req.sessionID?.substring(0, 15),
+      hasSessionUser: !!sessionUser,
+      sessionUserEmail: sessionUser?.email,
+      sessionUserOpenId: sessionUser?.openId?.substring(0, 10),
+      parsedCookies: req.cookies ? Object.keys(req.cookies) : [],
+      cookieTokenExists: !!cookieToken,
+      cookieTokenLength: cookieToken?.length,
+      origin: req.headers.origin,
+      host: req.headers.host,
+      referer: req.headers.referer,
+    });
   });
 
   /* ---------------- OAuth routes -------------------- */
@@ -190,6 +279,32 @@ async function startServer() {
         ok: false,
         error: e?.message ?? "unauthorized",
       });
+    }
+  });
+
+  // Debug: verify X-Instant-User-ID is received and which user the server loads (same path as auth.me)
+  app.get("/api/debug/instant-user", async (req, res) => {
+    const instantUserId = req.headers["x-instant-user-id"];
+    const instantUserEmail = req.headers["x-instant-user-email"];
+    try {
+      const dbModule = await import("../db");
+      const user = instantUserId ? await dbModule.getUserById(instantUserId) : null;
+      res.json({
+        hasHeader: Boolean(instantUserId),
+        headerUserId: instantUserId ?? null,
+        headerEmail: instantUserEmail ?? null,
+        user: user
+          ? {
+              id: user.id,
+              email: (user as any).email,
+              subscriptionTier: (user as any).subscriptionTier,
+              isLifetimePro: (user as any).isLifetimePro,
+              role: (user as any).role,
+            }
+          : null,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message });
     }
   });
 
@@ -305,14 +420,11 @@ async function startServer() {
   });
 
   /* ---------------- Listen -------------------------- */
-  const PORT = process.env.PORT || 3000;
-  const port = parseInt(String(PORT), 10);
+  const port = Number(process.env.PORT) || 3000;
+  const host = '0.0.0.0';
 
-  // Listen on 0.0.0.0 to accept connections from all interfaces (required for cloud deployment)
-  server.listen(port, '0.0.0.0', () => {
-    console.log('FORCE_START: Listening on 0.0.0.0:' + port);
-    console.log(`[api] server listening on port ${port}`);
-    console.log('Server is officially listening on port', port);
+  app.listen(port, host, () => {
+    console.log(`✅ Server reachable at http://${host}:${port}`);
   });
 }
 

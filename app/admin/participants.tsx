@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -15,6 +15,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAuth } from '@/hooks/auth-context';
+import { useEvents } from '@/hooks/use-instant-events';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import type { Event, Participant } from '@/types/models';
 
@@ -24,6 +26,7 @@ interface ParticipantWithEvents {
   email?: string;
   eventCount: number;
   events: string[]; // Event names
+  eventNameSet: Set<string>;
 }
 
 export default function AdminParticipantsScreen() {
@@ -32,6 +35,8 @@ export default function AdminParticipantsScreen() {
   const tintColor = useThemeColor({}, 'tint');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2a2a2a' }, 'background');
   const surfaceColor = useThemeColor({ light: '#fff', dark: '#1a1a1a' }, 'background');
+  const { isAuthenticated } = useAuth();
+  const { events: liveEvents, isLoading: liveEventsLoading } = useEvents();
   
   const [events, setEvents] = useState<Event[]>([]);
   const [participants, setParticipants] = useState<ParticipantWithEvents[]>([]);
@@ -39,28 +44,37 @@ export default function AdminParticipantsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const loadData = useCallback(async () => {
+    if (isAuthenticated && liveEventsLoading) {
+      setLoading(true);
+      return;
+    }
 
-  useEffect(() => {
-    applySearch();
-  }, [participants, searchQuery]);
-
-  const loadData = async () => {
     try {
-      const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      setLoading(true);
+      const sourceEvents = isAuthenticated ? liveEvents : await eventsLocalStorage.getAll();
+      const activeEvents = sourceEvents.filter(e => !e.deletedAt);
+      setEvents(activeEvents);
 
       // Build participant directory
       const participantMap = new Map<string, ParticipantWithEvents>();
       
-      allEvents.forEach(event => {
-        event.participants.forEach(participant => {
-          const existing = participantMap.get(participant.name);
+      activeEvents.forEach(event => {
+        event.participants
+          .filter(participant => !participant.deletedAt)
+          .forEach(participant => {
+          const normalizedEmail = participant.email?.toLowerCase();
+          const normalizedPhone = participant.phone?.replace(/\s+/g, '');
+          const normalizedName = participant.name.toLowerCase();
+          const key = normalizedEmail || normalizedPhone || normalizedName;
+
+          const existing = participantMap.get(key);
           if (existing) {
-            existing.eventCount += 1;
-            existing.events.push(event.name);
+            if (!existing.eventNameSet.has(event.name)) {
+              existing.eventNameSet.add(event.name);
+              existing.events.push(event.name);
+              existing.eventCount = existing.events.length;
+            }
             // Update contact info if available
             if (participant.phone && !existing.phone) {
               existing.phone = participant.phone;
@@ -69,18 +83,20 @@ export default function AdminParticipantsScreen() {
               existing.email = participant.email;
             }
           } else {
-            participantMap.set(participant.name, {
+            participantMap.set(key, {
               name: participant.name,
               phone: participant.phone,
               email: participant.email,
               eventCount: 1,
               events: [event.name],
+              eventNameSet: new Set([event.name]),
             });
           }
         });
       });
 
       const participantList = Array.from(participantMap.values())
+        .map(({ eventNameSet, ...rest }) => rest)
         .sort((a, b) => b.eventCount - a.eventCount);
       
       setParticipants(participantList);
@@ -89,7 +105,17 @@ export default function AdminParticipantsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated, liveEvents, liveEventsLoading]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    applySearch();
+  }, [participants, searchQuery]);
+
+  
 
   const applySearch = () => {
     if (!searchQuery.trim()) {

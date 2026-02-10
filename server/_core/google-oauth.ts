@@ -2,7 +2,7 @@ import { createOAuthState, verifyOAuthState } from "./oauthState";
 import { sdk, recentAuth, AUTH_GRACE_MS } from "./sdk";
 import type { Express, Request, Response } from "express";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const.js";
-import { getUserByOpenId, upsertUser } from "../db";
+import { getUserById, upsertUser } from "../db";
 import { getSessionCookieOptions } from "./cookies";
 
 // Get base URL - use BASE_URL, fallback to Fly.io app name, then EXPO_PUBLIC_API_BASE_URL
@@ -68,7 +68,7 @@ async function syncUser(userInfo: {
   });
 
   return (
-    (await getUserByOpenId(userInfo.openId)) ?? {
+    (await getUserById(userInfo.openId)) ?? {
       openId: userInfo.openId,
       name: userInfo.name,
       email: userInfo.email,
@@ -109,22 +109,17 @@ scope:
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
     
-    // Determine frontend URL - use BASE_URL with Fly.io fallback
+    // Determine frontend URL for post-login redirect.
+    // This should point to the web app domain, not the API base URL.
     const getFrontendUrl = () => {
-      // Use BASE_URL if available
-      if (process.env.BASE_URL) {
-        return process.env.BASE_URL;
-      }
-      
-      // Fallback to Fly.io app name if available
-      if (process.env.FLY_APP_NAME) {
-        return `https://${process.env.FLY_APP_NAME}.fly.dev`;
-      }
-      
-      // Development: use environment variable or fallback to localhost
-      return process.env.FRONTEND_URL || 
-             process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL || 
-             "http://127.0.0.1:8081";
+      // Explicit frontend URL is the source of truth
+      if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+      if (process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL) return process.env.EXPO_PUBLIC_OAUTH_REDIRECT_URL;
+
+      // Fallbacks
+      if (process.env.BASE_URL) return process.env.BASE_URL;
+      if (process.env.FLY_APP_NAME) return `https://${process.env.FLY_APP_NAME}.fly.dev`;
+      return "http://127.0.0.1:8081";
     };
     
     // Get frontend URL - use BASE_URL with Fly.io fallback
@@ -227,45 +222,61 @@ if (!code) {
           return redirectWithParams({ error: 'session_failed' });
         }
 
-        // TEMPORARILY SKIP DATABASE - store user info from Google directly in session
+        // Store user info in express-session (primary auth method)
         (req.session as any).user = {
           email: googleUser.email,
           name: googleUser.name,
           openId: googleUser.id,
-          // id: user.id,  // Skip database ID temporarily
+          loginMethod: "google",
         };
 
-        // Create session token for cookie-based auth (using Google user ID)
+        // Also create JWT token for fallback/cookie-based auth
         sdk.createSessionToken(googleUser.id, {
           name: googleUser.name || "",
           expiresInMs: ONE_YEAR_MS,
         }).then((sessionToken) => {
-          // Use getSessionCookieOptions for proper production cookie settings
+          // Set JWT cookie with same options as session cookie
           const cookieOptions = getSessionCookieOptions(req);
-          console.log("[OAuth Callback] Setting cookie with options:", JSON.stringify(cookieOptions, null, 2));
-          console.log("[OAuth Callback] Session token length:", sessionToken?.length || 0);
           res.cookie(COOKIE_NAME, sessionToken, cookieOptions);
 
+          // Store in recentAuth for grace period
           recentAuth.set(sessionToken, {
             token: sessionToken,
             expires: Date.now() + AUTH_GRACE_MS,
           });
 
-          // Force save session before redirect
+          // CRITICAL: Save express-session before redirect
+          // This ensures connect.sid cookie is set with user data
+          // Also verify session was saved correctly
           req.session.save((saveErr) => {
             if (saveErr) {
-              console.error('[Auth] Session save error:', saveErr);
+              console.error('[OAuth Callback] ❌ Session save error:', saveErr);
               return redirectWithParams({ error: 'session_failed' });
             }
 
-            console.log('[Auth] Session saved successfully, ID:', req.sessionID);
-            // Use BASE_URL with Fly.io fallback for production redirect
-            const finalRedirectUrl = process.env.BASE_URL || (process.env.FLY_APP_NAME ? `https://${process.env.FLY_APP_NAME}.fly.dev` : frontendUrl);
+            // Verify session was saved
+            const savedSessionUser = (req.session as any)?.user;
+            if (!savedSessionUser) {
+              console.error('[OAuth Callback] ❌ Session saved but user data missing!');
+              return redirectWithParams({ error: 'session_data_missing' });
+            }
+
+            console.log('[OAuth Callback] ✅ Session saved successfully');
+            console.log('[OAuth Callback] ✅ Session ID:', req.sessionID?.substring(0, 15));
+            console.log('[OAuth Callback] ✅ User:', savedSessionUser.email);
+            console.log('[OAuth Callback] ✅ User OpenID:', savedSessionUser.openId?.substring(0, 10));
+            console.log('[OAuth Callback] ✅ Both cookies set: connect.sid +', COOKIE_NAME);
+            
+            // Log cookie options for debugging
+            console.log('[OAuth Callback] Cookie options:', JSON.stringify(cookieOptions, null, 2));
+            
+            // Always redirect users back to the configured frontend app URL.
+            const finalRedirectUrl = frontendUrl;
             console.log("[OAuth Callback] Redirecting to:", finalRedirectUrl);
             return res.redirect(finalRedirectUrl);
           });
         }).catch((tokenErr) => {
-          console.error('[Auth] Session token creation error:', tokenErr);
+          console.error('[OAuth Callback] Session token creation error:', tokenErr);
           return redirectWithParams({ error: 'token_failed' });
         });
       });

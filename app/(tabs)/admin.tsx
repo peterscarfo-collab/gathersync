@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { StyleSheet, ScrollView, View, Pressable, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -9,9 +9,10 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { DesktopLayout } from '@/components/desktop-layout';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/auth-context';
+import { useEvents } from '@/hooks/use-instant-events';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { trpc } from '@/lib/trpc';
 import type { Event } from '@/types/models';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';
 
@@ -19,7 +20,10 @@ export default function AdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
-  
+  const { events: liveEvents, isLoading: liveEventsLoading } = useEvents();
+  const { data: sessionUser } = trpc.auth.me.useQuery(undefined, { enabled: isAuthenticated });
+  const isAdmin = (sessionUser as { role?: string } | null)?.role === 'admin';
+
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -29,9 +33,78 @@ export default function AdminScreen() {
     avgResponseRate: 0,
   });
 
+  const liveEventsRef = useRef(liveEvents);
+  liveEventsRef.current = liveEvents;
+
+  const refreshData = useCallback(async () => {
+    if (isAuthenticated && liveEventsLoading) {
+      setLoading(true);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const sourceEvents = isAuthenticated ? liveEventsRef.current : await eventsLocalStorage.getAll();
+      const activeEvents = sourceEvents.filter(e => !e.deletedAt);
+      setEvents(activeEvents);
+      
+      // Calculate statistics
+      const now = new Date();
+      const upcoming = activeEvents.filter(e => {
+        if (e.eventType === 'fixed' && e.fixedDate) {
+          return new Date(e.fixedDate).getTime() > now.getTime();
+        }
+        return true; // Flexible events are always "upcoming" until finalized
+      });
+      
+      const participantMap = new Map<string, boolean>();
+      activeEvents.forEach(event => {
+        event.participants
+          .filter(p => !p.deletedAt)
+          .forEach(p => {
+            const normalizedEmail = p.email?.toLowerCase();
+            const normalizedPhone = p.phone?.replace(/\s+/g, '');
+            const normalizedName = p.name.toLowerCase();
+            const key = normalizedEmail || normalizedPhone || normalizedName;
+            participantMap.set(key, true);
+          });
+      });
+      const totalParticipants = participantMap.size;
+      
+      // Calculate average response rate
+      const responseCounts = activeEvents.map(e => {
+        const activeParticipants = e.participants.filter(p => !p.deletedAt);
+        const responded = activeParticipants.filter(p => 
+          (e.eventType === 'flexible' && p.availability && Object.keys(p.availability).length > 0) ||
+          (e.eventType === 'fixed' && p.rsvpStatus && p.rsvpStatus !== 'no-response')
+        ).length;
+        return activeParticipants.length > 0 ? (responded / activeParticipants.length) * 100 : 0;
+      });
+      const avgResponseRate = responseCounts.length > 0
+        ? responseCounts.reduce((sum, rate) => sum + rate, 0) / responseCounts.length
+        : 0;
+      
+      setStats({
+        totalEvents: activeEvents.length,
+        upcomingEvents: upcoming.length,
+        totalParticipants,
+        avgResponseRate: Math.round(avgResponseRate),
+      });
+    } catch (error) {
+      console.error('Failed to load admin data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, liveEventsLoading]);
+
+  const eventsSignature = useMemo(
+    () => (liveEvents?.map((e) => e.id).join(',') ?? ''),
+    [liveEvents]
+  );
+
   useEffect(() => {
-    loadData();
-  }, []);
+    refreshData();
+  }, [isAuthenticated, liveEventsLoading, eventsSignature]);
 
   const handleResetAllData = async () => {
     if (Platform.OS === 'web') {
@@ -85,7 +158,7 @@ export default function AdminScreen() {
       }
       
       // Reload data
-      await loadData();
+      await refreshData();
       
       // Haptic feedback
       if (Platform.OS !== 'web') {
@@ -109,46 +182,54 @@ export default function AdminScreen() {
     }
   };
 
-  const loadData = async () => {
+  const handleBulkDeleteFromCloud = () => {
+    if (!isAuthenticated) return;
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Delete all events from cloud? Your local data will not be changed. This cannot be undone.'
+      );
+      if (!confirmed) return;
+      performBulkDeleteFromCloud();
+    } else {
+      Alert.alert(
+        'Bulk delete from cloud',
+        'Delete all your events from the cloud? Your local data will not be changed. This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete from cloud', style: 'destructive', onPress: performBulkDeleteFromCloud },
+        ]
+      );
+    }
+  };
+
+  const performBulkDeleteFromCloud = async () => {
     try {
-      const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
-      
-      // Calculate statistics
-      const now = new Date();
-      const upcoming = allEvents.filter(e => {
-        if (e.eventType === 'fixed' && e.fixedDate) {
-          return new Date(e.fixedDate).getTime() > now.getTime();
-        }
-        return true; // Flexible events are always "upcoming" until finalized
-      });
-      
-      const totalParticipants = allEvents.reduce((sum, e) => sum + e.participants.length, 0);
-      
-      // Calculate average response rate
-      const responseCounts = allEvents.map(e => {
-        const responded = e.participants.filter(p => 
-          (e.eventType === 'flexible' && p.availability && Object.keys(p.availability).length > 0) ||
-          (e.eventType === 'fixed' && p.rsvpStatus && p.rsvpStatus !== 'no-response')
-        ).length;
-        return e.participants.length > 0 ? (responded / e.participants.length) * 100 : 0;
-      });
-      const avgResponseRate = responseCounts.length > 0
-        ? responseCounts.reduce((sum, rate) => sum + rate, 0) / responseCounts.length
-        : 0;
-      
-      setStats({
-        totalEvents: allEvents.length,
-        upcomingEvents: upcoming.length,
-        totalParticipants,
-        avgResponseRate: Math.round(avgResponseRate),
-      });
+      setLoading(true);
+      const { eventsCloudStorage } = await import('@/lib/cloud-storage');
+      const cloudEvents = await eventsCloudStorage.getAll();
+      await Promise.all(cloudEvents.map(e => eventsCloudStorage.delete(e.id)));
+      await refreshData();
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      if (Platform.OS === 'web') {
+        alert('All cloud data has been deleted.');
+      } else {
+        Alert.alert('Done', 'All cloud data has been deleted.');
+      }
     } catch (error) {
-      console.error('Failed to load admin data:', error);
+      console.error('[Admin] Bulk delete from cloud failed:', error);
+      if (Platform.OS === 'web') {
+        alert('Failed to delete cloud data. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to delete cloud data. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  
 
   const handleNavigation = (screen: string) => {
     if (Platform.OS !== 'web') {
@@ -315,6 +396,27 @@ export default function AdminScreen() {
             </View>
             <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
           </Pressable>
+
+          {isAdmin && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionCard,
+                pressed && styles.actionCardPressed,
+              ]}
+              onPress={() => handleNavigation('/admin/promotions')}
+            >
+              <View style={[styles.actionIconContainer, { backgroundColor: '#EDE9FE' }]}>
+                <IconSymbol name="gift.fill" size={28} color="#7c3aed" />
+              </View>
+              <View style={styles.actionContent}>
+                <ThemedText style={styles.actionTitle}>Promotions & access</ThemedText>
+                <ThemedText style={styles.actionDescription}>
+                  Grant lifetime or gift trials (1 / 6 / 12 months)
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -334,6 +436,25 @@ export default function AdminScreen() {
         >
           <IconSymbol name="trash.fill" size={20} color="#fff" />
           <ThemedText style={styles.resetButtonText}>Reset All Data</ThemedText>
+        </Pressable>
+      </View>
+
+      {/* Cloud & data */}
+      <View style={styles.cloudSection}>
+        <ThemedText style={styles.sectionTitle}>Cloud & data</ThemedText>
+        <ThemedText style={styles.cloudDescription}>
+          Delete all your events from the cloud. Local data is not changed.
+        </ThemedText>
+        <Pressable
+          style={({ pressed }) => [
+            styles.secondaryDangerButton,
+            pressed && styles.resetButtonPressed,
+          ]}
+          onPress={handleBulkDeleteFromCloud}
+          disabled={!isAuthenticated}
+        >
+          <IconSymbol name="cloud.fill" size={20} color="#b91c1c" />
+          <ThemedText style={styles.secondaryDangerButtonText}>Bulk delete from cloud</ThemedText>
         </Pressable>
       </View>
     </ScrollView>
@@ -529,6 +650,36 @@ const styles = StyleSheet.create({
     fontSize: AdminTypography.sm,
     color: AdminColors.gray600,
     lineHeight: AdminTypography.normal * AdminTypography.sm,
+  },
+
+  // Cloud & data
+  cloudSection: {
+    paddingHorizontal: AdminSpacing['4xl'],
+    paddingTop: AdminSpacing['2xl'],
+    paddingBottom: AdminSpacing.xl,
+  },
+  cloudDescription: {
+    fontSize: AdminTypography.sm,
+    color: AdminColors.gray600,
+    lineHeight: AdminTypography.relaxed * AdminTypography.sm,
+    marginBottom: AdminSpacing.lg,
+  },
+  secondaryDangerButton: {
+    backgroundColor: AdminColors.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: AdminSpacing.sm,
+    paddingVertical: AdminSpacing.lg,
+    paddingHorizontal: AdminSpacing['2xl'],
+    borderRadius: AdminBorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  secondaryDangerButtonText: {
+    color: '#b91c1c',
+    fontSize: AdminTypography.base,
+    fontWeight: '600' as any,
   },
   
   // Danger Zone

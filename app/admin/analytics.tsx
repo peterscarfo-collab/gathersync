@@ -14,6 +14,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAuth } from '@/hooks/auth-context';
+import { trpc } from '@/lib/trpc';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import type { Event } from '@/types/models';
 
@@ -32,11 +34,49 @@ interface AnalyticsData {
   mostPopularMonth: { month: string; count: number } | null;
 }
 
+interface BusinessReport {
+  generatedAt: string;
+  categories: {
+    totalUsers: number;
+    freeUsers: number;
+    trialingUsers: number;
+    lifetimeUsers: number;
+    giftedActiveUsers: number;
+    giftedExpiredUsers: number;
+    stripeLiteActiveUsers: number;
+    stripeProActiveUsers: number;
+    cancelledUsers: number;
+  };
+  revenue: {
+    currency: string;
+    monthToDate: number;
+    yearToDate: number;
+    monthToDateInvoiceCount: number;
+    yearToDateInvoiceCount: number;
+    monthlyBreakdown: Array<{
+      month: string;
+      cash: number;
+      invoiceCount: number;
+    }>;
+  };
+}
+
 export default function AdminAnalyticsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const tintColor = useThemeColor({}, 'tint');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2a2a2a' }, 'background');
+  const { isAuthenticated } = useAuth();
+  const {
+    data: businessReportData,
+    isLoading: businessLoading,
+    error: businessError,
+    refetch: refetchBusinessReport,
+  } = trpc.admin.getBusinessReport.useQuery(undefined, {
+    enabled: isAuthenticated,
+    refetchOnWindowFocus: true,
+  });
+  const businessReport = businessReportData as BusinessReport | undefined;
   
   const [events, setEvents] = useState<Event[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsData>({
@@ -54,6 +94,13 @@ export default function AdminAnalyticsScreen() {
     mostPopularMonth: null,
   });
   const [loading, setLoading] = useState(true);
+
+  const formatMoney = (amount: number, currency: string = 'usd') =>
+    new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+      maximumFractionDigits: 2,
+    }).format(amount);
 
   useEffect(() => {
     loadData();
@@ -175,6 +222,29 @@ export default function AdminAnalyticsScreen() {
     report += `Events with 100% Response: ${analytics.eventsWithFullResponse}\n`;
     report += `Most Popular Month: ${analytics.mostPopularMonth?.month || 'N/A'} (${analytics.mostPopularMonth?.count || 0} events)\n`;
 
+    if (businessReport) {
+      report += '\n\nBUSINESS / SUBSCRIPTION REPORT\n';
+      report += `Users (Total): ${businessReport.categories.totalUsers}\n`;
+      report += `Free: ${businessReport.categories.freeUsers}\n`;
+      report += `Trialing: ${businessReport.categories.trialingUsers}\n`;
+      report += `Lifetime: ${businessReport.categories.lifetimeUsers}\n`;
+      report += `Gifted Active: ${businessReport.categories.giftedActiveUsers}\n`;
+      report += `Gifted Expired: ${businessReport.categories.giftedExpiredUsers}\n`;
+      report += `Stripe Lite Active: ${businessReport.categories.stripeLiteActiveUsers}\n`;
+      report += `Stripe Pro Active: ${businessReport.categories.stripeProActiveUsers}\n`;
+      report += `Cancelled: ${businessReport.categories.cancelledUsers}\n\n`;
+
+      report += `Cash MTD: ${formatMoney(businessReport.revenue.monthToDate, businessReport.revenue.currency)} `;
+      report += `(${businessReport.revenue.monthToDateInvoiceCount} invoices)\n`;
+      report += `Cash YTD: ${formatMoney(businessReport.revenue.yearToDate, businessReport.revenue.currency)} `;
+      report += `(${businessReport.revenue.yearToDateInvoiceCount} invoices)\n\n`;
+
+      report += 'Monthly Cash (YTD)\n';
+      businessReport.revenue.monthlyBreakdown.forEach((m) => {
+        report += `${m.month}: ${formatMoney(m.cash, businessReport.revenue.currency)} (${m.invoiceCount} invoices)\n`;
+      });
+    }
+
     if (Platform.OS === 'web') {
       if (navigator.clipboard) {
         navigator.clipboard.writeText(report);
@@ -218,6 +288,111 @@ export default function AdminAnalyticsScreen() {
           <IconSymbol name="square.and.arrow.up" size={20} color="#fff" />
           <ThemedText style={styles.exportButtonText}>Export Report</ThemedText>
         </Pressable>
+
+        {/* Business / Subscription Analytics */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <ThemedText type="subtitle">Business & Revenue</ThemedText>
+            <Pressable
+              onPress={() => refetchBusinessReport()}
+              style={[styles.inlineRefreshButton, { borderColor: tintColor }]}
+            >
+              <IconSymbol name="arrow.clockwise" size={16} color={tintColor} />
+              <ThemedText style={[styles.inlineRefreshText, { color: tintColor }]}>Refresh</ThemedText>
+            </Pressable>
+          </View>
+
+          {!isAuthenticated && (
+            <View style={[styles.insightCard, { backgroundColor: cardBg }]}>
+              <ThemedText style={styles.insightDesc}>
+                Log in as admin to view subscriber and revenue analytics.
+              </ThemedText>
+            </View>
+          )}
+
+          {isAuthenticated && businessLoading && (
+            <View style={[styles.insightCard, { backgroundColor: cardBg }]}>
+              <ThemedText style={styles.insightDesc}>Loading business report...</ThemedText>
+            </View>
+          )}
+
+          {isAuthenticated && businessError && (
+            <View style={[styles.insightCard, { backgroundColor: '#ff3b3020' }]}>
+              <ThemedText style={styles.insightDesc}>
+                Could not load business report. Make sure this account has admin access and Stripe is configured.
+              </ThemedText>
+            </View>
+          )}
+
+          {isAuthenticated && businessReport && (
+            <>
+              <View style={styles.statsGrid}>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.totalUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Total Users</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.freeUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Free</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.trialingUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Trialing</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.lifetimeUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Lifetime</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.giftedActiveUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Gifted Active</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.giftedExpiredUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Gifted Expired</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.stripeLiteActiveUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Stripe Lite</ThemedText>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.statValue}>{businessReport.categories.stripeProActiveUsers}</ThemedText>
+                  <ThemedText style={styles.statLabel}>Stripe Pro</ThemedText>
+                </View>
+              </View>
+
+              <View style={[styles.insightCard, { backgroundColor: cardBg }]}>
+                <ThemedText type="defaultSemiBold">Cash Received</ThemedText>
+                <View style={styles.infoRow}>
+                  <ThemedText style={styles.insightDesc}>Month to Date</ThemedText>
+                  <ThemedText style={styles.insightValueSmall}>
+                    {formatMoney(businessReport.revenue.monthToDate, businessReport.revenue.currency)}
+                  </ThemedText>
+                </View>
+                <View style={styles.infoRow}>
+                  <ThemedText style={styles.insightDesc}>Year to Date</ThemedText>
+                  <ThemedText style={styles.insightValueSmall}>
+                    {formatMoney(businessReport.revenue.yearToDate, businessReport.revenue.currency)}
+                  </ThemedText>
+                </View>
+              </View>
+
+              <View style={[styles.insightCard, { backgroundColor: cardBg }]}>
+                <ThemedText type="defaultSemiBold">Monthly Cash (YTD)</ThemedText>
+                <View style={styles.monthlyTable}>
+                  {businessReport.revenue.monthlyBreakdown.map((row) => (
+                    <View key={row.month} style={styles.monthlyRow}>
+                      <ThemedText>{row.month}</ThemedText>
+                      <ThemedText>
+                        {formatMoney(row.cash, businessReport.revenue.currency)} ({row.invoiceCount})
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </>
+          )}
+        </View>
 
         {/* Event Statistics */}
         <View style={styles.section}>
@@ -380,6 +555,24 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 32,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inlineRefreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  inlineRefreshText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -422,5 +615,24 @@ const styles = StyleSheet.create({
   insightDesc: {
     fontSize: 14,
     opacity: 0.7,
+  },
+  insightValueSmall: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  monthlyTable: {
+    marginTop: 8,
+    gap: 6,
+  },
+  monthlyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
 });

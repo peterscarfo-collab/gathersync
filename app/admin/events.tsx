@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -15,6 +15,8 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { useAuth } from '@/hooks/auth-context';
+import { useEvents } from '@/hooks/use-instant-events';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import type { Event } from '@/types/models';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';
@@ -24,6 +26,8 @@ type FilterType = 'all' | 'upcoming' | 'past' | 'flexible' | 'fixed';
 export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { isAuthenticated } = useAuth();
+  const { events: liveEvents, isLoading: liveEventsLoading } = useEvents();
   
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
@@ -32,24 +36,33 @@ export default function AdminEventsScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+  const loadEvents = useCallback(async () => {
+    if (isAuthenticated && liveEventsLoading) {
+      setLoading(true);
+      return;
+    }
 
-  useEffect(() => {
-    applyFilters();
-  }, [events, searchQuery, filter]);
-
-  const loadEvents = async () => {
     try {
-      const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      setLoading(true);
+      const sourceEvents = isAuthenticated ? liveEvents : await eventsLocalStorage.getAll();
+      const activeEvents = sourceEvents.filter(e => !e.deletedAt);
+      setEvents(activeEvents);
     } catch (error) {
       console.error('Failed to load events:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAuthenticated, liveEvents, liveEventsLoading]);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [events, searchQuery, filter]);
+
+  
 
   const applyFilters = () => {
     let filtered = [...events];
@@ -265,7 +278,7 @@ export default function AdminEventsScreen() {
                     styles.eventCard,
                     isSelected && styles.eventCardSelected,
                   ]}
-                  onPress={() => router.push(`/event-detail?id=${event.id}` as any)}
+                  onPress={() => router.push(`/event-detail?eventId=${event.id}` as any)}
                   onLongPress={() => toggleEventSelection(event.id)}
                 >
                   <View style={styles.eventCardHeader}>

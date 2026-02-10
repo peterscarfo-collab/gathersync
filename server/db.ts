@@ -1,328 +1,615 @@
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "../drizzle/schema";
-import {
-  InsertUser,
-  users,
-  events,
-  participants,
-  eventSnapshots,
-  groupTemplates,
-  pushTokens,
-  type InsertEvent,
-  type InsertParticipant,
-  type InsertEventSnapshot,
-  type InsertGroupTemplate,
-  type InsertPushToken,
-} from "../drizzle/schema";
-import { ENV } from "./_core/env";
+import { adminDb, tx, id } from '../lib/admin-db';
 
-let _db: ReturnType<typeof drizzle> | undefined;
-let _queryClient: ReturnType<typeof postgres> | undefined;
+/**
+ * InstantDB-based database operations
+ * Note: InstantDB uses optimistic updates and real-time sync
+ * For server-side operations, we use the admin client
+ */
 
-// Fixed configuration for Fly.io Postgres
-function createQueryClient() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is not set");
-  }
+// Helper to generate unique IDs
+export const generateId = () => id();
 
-  // Ensure DATABASE_URL has sslmode=require for Fly.io Postgres
-  const dbUrl = url.includes('?') 
-    ? (url.includes('sslmode=') ? url : `${url}&sslmode=require`)
-    : `${url}?sslmode=require`;
-
-  console.log("[Database] Initialising DB connection (PostgreSQL + SSL)");
-  return postgres(dbUrl, { 
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    max: 10,  // Increase connection pool
-    idle_timeout: 20,
-    connect_timeout: 10,
-    // Add this to handle TLS issues
-    connection: {
-      application_name: 'gathersync'
-    }
-  });
-}
-
-// Lazily create the drizzle instance (retryable)
-export async function getDb() {
-  if (_db) return _db;
-
-  if (!process.env.DATABASE_URL) {
-    console.warn("[Database] DATABASE_URL not set");
-    return null;
+/**
+ * Users
+ */
+export async function upsertUser(user: {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  loginMethod?: string | null;
+  role?: string | null;
+  lastSignedIn?: Date;
+}) {
+  if (!user.id) {
+    throw new Error("User id is required for upsert");
   }
 
   try {
-    if (!_queryClient) {
-      _queryClient = createQueryClient();
-    }
-    _db = drizzle(_queryClient, { schema });
-    return _db;
-  } catch (error) {
-    console.error("[Database] Failed to initialise DB:", error);
-    // IMPORTANT: do NOT cache failure
-    _db = undefined;
-    _queryClient = undefined;
-    return null;
-  }
-}
-
-
-export async function upsertUser(user: InsertUser): Promise<void> {
-  if (!user.openId) {
-    throw new Error("User openId is required for upsert");
-  }
-
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    return;
-  }
-
-  try {
-    const values: InsertUser = {
-      openId: user.openId,
-    };
-    const updateSet: Record<string, unknown> = {};
-
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
-
-    if (user.lastSignedIn !== undefined) {
-      values.lastSignedIn = user.lastSignedIn;
-      updateSet.lastSignedIn = user.lastSignedIn;
-    }
-    if (user.role !== undefined) {
-      values.role = user.role;
-      updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
-      values.role = "admin";
-      updateSet.role = "admin";
-    }
-
-    if (!values.lastSignedIn) {
-      values.lastSignedIn = new Date();
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      updateSet.lastSignedIn = new Date();
-    }
-
-    await db.insert(users).values(values).onConflictDoUpdate({
-      target: users.openId,
-      set: updateSet,
+    // Check if user exists
+    const existingUsers = await adminDb.query({
+      $users: {
+        $: {
+          where: {
+            id: user.id,
+          },
+        },
+      },
     });
+
+    const userData: any = {
+      email: user.email,
+      name: user.name,
+      loginMethod: user.loginMethod,
+      role: user.role || 'user',
+      lastSignedIn: user.lastSignedIn || new Date(),
+    };
+
+    if (existingUsers.$users && existingUsers.$users.length > 0) {
+      // Update existing user
+      await adminDb.transact([
+        tx.$users[user.id].update(userData),
+      ]);
+    } else {
+      // Create new user
+      userData.createdAt = new Date();
+      userData.subscriptionTier = 'free';
+      userData.subscriptionStatus = 'active';
+      userData.subscriptionSource = 'free';
+      userData.eventsCreatedThisMonth = 0;
+      userData.lastMonthReset = new Date();
+      userData.trialUsed = false;
+      userData.isLifetimePro = false;
+      
+      await adminDb.transact([
+        tx.$users[user.id].update(userData),
+      ]);
+    }
   } catch (error) {
     console.error("[Database] Failed to upsert user:", error);
     throw error;
   }
 }
 
-export async function getUserByOpenId(openId: string) {
-  const db = await getDb();
-  if (!db) {
-    console.warn("[Database] Cannot get user: database not available");
+export async function getUserById(userId: string) {
+  try {
+    const result = await adminDb.query({
+      $users: {
+        $: {
+          where: {
+            id: userId,
+          },
+        },
+      },
+    });
+
+    // AdminDB returns data directly, not nested in .data
+    if (!result || !result.$users || result.$users.length === 0) {
+      return undefined;
+    }
+
+    return result.$users[0];
+  } catch (error) {
+    console.error("[Database] Failed to get user:", error);
     return undefined;
   }
+}
 
-  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+export async function getUserByEmail(email: string) {
+  try {
+    const result = await adminDb.query({
+      $users: {
+        $: {
+          where: {
+            email,
+          },
+        },
+      },
+    });
 
-  return result.length > 0 ? result[0] : undefined;
+    if (!result || !result.$users || result.$users.length === 0) {
+      return undefined;
+    }
+
+    return result.$users[0];
+  } catch (error) {
+    console.error("[Database] Failed to get user by email:", error);
+    return undefined;
+  }
 }
 
 /**
  * Events
  */
-export async function getUserEvents(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
+export async function getUserEvents(userId: string) {
+  try {
+    // Query events WITHOUT participants
+    const eventsResult = await adminDb.query({
+      events: {
+        $: {
+          where: {
+            'creator.id': userId,
+          },
+        },
+      },
+    });
 
-  return db.select().from(events).where(eq(events.userId, userId));
+    const events = eventsResult.events || [];
+    if (events.length === 0) return [];
+
+    // Query participants separately for all events
+    const participantsResult = await adminDb.query({
+      participants: {
+        $: {
+          where: {
+            'event.id': {
+              in: events.map((e: any) => e.id),
+            },
+          },
+        },
+      },
+    });
+
+    const participants = participantsResult.participants || [];
+
+    // Manually attach participants to events (without circular refs)
+    const eventsWithParticipants = events.map((event: any) => ({
+      ...event,
+      participants: participants
+        .filter((p: any) => p.event?.id === event.id)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          phone: p.phone,
+          email: p.email,
+          availability: p.availability,
+          unavailableAllMonth: p.unavailableAllMonth,
+          notes: p.notes,
+          source: p.source,
+          rsvpStatus: p.rsvpStatus,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+          deletedAt: p.deletedAt,
+        })),
+    }));
+
+    return eventsWithParticipants;
+  } catch (error) {
+    console.error("[Database] Failed to get user events:", error);
+    return [];
+  }
 }
 
 export async function getAllEvents() {
-  const db = await getDb();
-  if (!db) return [];
+  try {
+    const result = await adminDb.query({
+      events: {},
+    });
 
-  return db.select().from(events);
+    return result.events || [];
+  } catch (error) {
+    console.error("[Database] Failed to get all events:", error);
+    return [];
+  }
 }
 
 export async function getEventById(eventId: string) {
-  const db = await getDb();
-  if (!db) return null;
+  try {
+    // Query event WITHOUT participants
+    const eventsResult = await adminDb.query({
+      events: {
+        $: {
+          where: {
+            id: eventId,
+          },
+        },
+      },
+    });
 
-  const result = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
-  return result[0] || null;
+    const event = eventsResult.events[0];
+    if (!event) return null;
+
+    // Query participants separately
+    const participantsResult = await adminDb.query({
+      participants: {
+        $: {
+          where: {
+            'event.id': eventId,
+          },
+        },
+      },
+    });
+
+    const participants = (participantsResult.participants || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      phone: p.phone,
+      email: p.email,
+      availability: p.availability,
+      unavailableAllMonth: p.unavailableAllMonth,
+      notes: p.notes,
+      source: p.source,
+      rsvpStatus: p.rsvpStatus,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      deletedAt: p.deletedAt,
+    }));
+
+    return {
+      ...event,
+      participants,
+    };
+  } catch (error) {
+    console.error("[Database] Failed to get event:", error);
+    return null;
+  }
 }
 
-export async function createEvent(data: InsertEvent) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function createEvent(eventData: {
+  id: string;
+  userId: string;
+  name: string;
+  eventType: string;
+  month: number;
+  year: number;
+  [key: string]: any;
+}) {
+  try {
+    // Separate userId from event attributes
+    const { userId, id, ...eventAttributes } = eventData;
+    
+    const event: any = {
+      ...eventAttributes,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      archived: false,
+      finalized: false,
+    };
 
-  await db.insert(events).values(data);
-  return data.id;
+    await adminDb.transact([
+      tx.events[id].update(event).link({ creator: userId }),
+    ]);
+
+    return id;
+  } catch (error) {
+    console.error("[Database] Failed to create event:", error);
+    throw error;
+  }
 }
 
-export async function updateEvent(eventId: string, data: Partial<InsertEvent>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.update(events).set(data).where(eq(events.id, eventId));
+export async function updateEvent(eventId: string, data: any) {
+  try {
+    data.updatedAt = new Date();
+    
+    await adminDb.transact([
+      tx.events[eventId].update(data),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to update event:", error);
+    throw error;
+  }
 }
 
 export async function deleteEvent(eventId: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  try {
+    // Get participants to delete them
+    const result = await adminDb.query({
+      participants: {
+        $: {
+          where: {
+            'event.id': eventId,
+          },
+        },
+      },
+    });
 
-  // Delete participants first
-  await db.delete(participants).where(eq(participants.eventId, eventId));
-  // Then delete event
-  await db.delete(events).where(eq(events.id, eventId));
+    const deleteTransactions = result.participants.map((p: any) => 
+      tx.participants[p.id].delete()
+    );
+
+    // Delete participants and event
+    await adminDb.transact([
+      ...deleteTransactions,
+      tx.events[eventId].delete(),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to delete event:", error);
+    throw error;
+  }
 }
 
 /**
  * Participants
  */
 export async function getEventParticipants(eventId: string) {
-  const db = await getDb();
-  if (!db) return [];
+  try {
+    const result = await adminDb.query({
+      participants: {
+        $: {
+          where: {
+            'event.id': eventId,
+          },
+        },
+      },
+    });
 
-  return db.select().from(participants).where(eq(participants.eventId, eventId));
+    // Explicitly create new objects with only the fields we need
+    const participants = (result.participants || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      phone: p.phone,
+      email: p.email,
+      availability: p.availability,
+      unavailableAllMonth: p.unavailableAllMonth,
+      notes: p.notes,
+      source: p.source,
+      rsvpStatus: p.rsvpStatus,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+      deletedAt: p.deletedAt,
+    }));
+
+    return participants;
+  } catch (error) {
+    console.error("[Database] Failed to get participants:", error);
+    return [];
+  }
 }
 
-export async function createParticipant(data: InsertParticipant) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function createParticipant(participantData: {
+  id: string;
+  eventId: string;
+  name: string;
+  availability: any;
+  [key: string]: any;
+}) {
+  try {
+    const participant: any = {
+      ...participantData,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      unavailableAllMonth: participantData.unavailableAllMonth || false,
+    };
 
-  await db.insert(participants).values(data);
-  return data.id;
+    // Remove eventId from the data (it's used for linking)
+    const { eventId, ...participantWithoutEventId } = participant;
+
+    await adminDb.transact([
+      tx.participants[participantData.id].update(participantWithoutEventId).link({ event: eventId }),
+    ]);
+
+    return participantData.id;
+  } catch (error) {
+    console.error("[Database] Failed to create participant:", error);
+    throw error;
+  }
 }
 
-export async function updateParticipant(participantId: string, data: Partial<InsertParticipant>) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.update(participants).set(data).where(eq(participants.id, participantId));
+export async function updateParticipant(participantId: string, data: any) {
+  try {
+    data.updatedAt = new Date();
+    
+    await adminDb.transact([
+      tx.participants[participantId].update(data),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to update participant:", error);
+    throw error;
+  }
 }
 
 export async function deleteParticipant(participantId: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.delete(participants).where(eq(participants.id, participantId));
+  try {
+    await adminDb.transact([
+      tx.participants[participantId].delete(),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to delete participant:", error);
+    throw error;
+  }
 }
 
 /**
  * Event Snapshots
  */
-export async function getUserSnapshots(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
+export async function getUserSnapshots(userId: string) {
+  try {
+    const result = await adminDb.query({
+      eventSnapshots: {
+        $: {
+          where: {
+            'creator.id': userId,
+          },
+        },
+      },
+    });
 
-  return db.select().from(eventSnapshots).where(eq(eventSnapshots.userId, userId));
+    return result.eventSnapshots || [];
+  } catch (error) {
+    console.error("[Database] Failed to get snapshots:", error);
+    return [];
+  }
 }
 
-export async function createSnapshot(data: InsertEventSnapshot) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function createSnapshot(snapshotData: {
+  id: string;
+  userId: string;
+  eventId: string;
+  name: string;
+  eventData: any;
+}) {
+  try {
+    const snapshot: any = {
+      name: snapshotData.name,
+      eventData: snapshotData.eventData,
+      savedAt: new Date(),
+    };
 
-  await db.insert(eventSnapshots).values(data);
-  return data.id;
+    await adminDb.transact([
+      tx.eventSnapshots[snapshotData.id].update(snapshot)
+        .link({ creator: snapshotData.userId })
+        .link({ event: snapshotData.eventId }),
+    ]);
+
+    return snapshotData.id;
+  } catch (error) {
+    console.error("[Database] Failed to create snapshot:", error);
+    throw error;
+  }
 }
 
 export async function deleteSnapshot(snapshotId: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.delete(eventSnapshots).where(eq(eventSnapshots.id, snapshotId));
+  try {
+    await adminDb.transact([
+      tx.eventSnapshots[snapshotId].delete(),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to delete snapshot:", error);
+    throw error;
+  }
 }
 
 /**
  * Group Templates
  */
-export async function getUserTemplates(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
+export async function getUserTemplates(userId: string) {
+  try {
+    const result = await adminDb.query({
+      groupTemplates: {
+        $: {
+          where: {
+            'creator.id': userId,
+          },
+        },
+      },
+    });
 
-  return db.select().from(groupTemplates).where(eq(groupTemplates.userId, userId));
+    return result.groupTemplates || [];
+  } catch (error) {
+    console.error("[Database] Failed to get templates:", error);
+    return [];
+  }
 }
 
-export async function createTemplate(data: InsertGroupTemplate) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+export async function createTemplate(templateData: {
+  id: string;
+  userId: string;
+  name: string;
+  participantNames: any;
+}) {
+  try {
+    const template: any = {
+      name: templateData.name,
+      participantNames: templateData.participantNames,
+      createdAt: new Date(),
+    };
 
-  await db.insert(groupTemplates).values(data);
-  return data.id;
+    await adminDb.transact([
+      tx.groupTemplates[templateData.id].update(template).link({ creator: templateData.userId }),
+    ]);
+
+    return templateData.id;
+  } catch (error) {
+    console.error("[Database] Failed to create template:", error);
+    throw error;
+  }
 }
 
 export async function deleteTemplate(templateId: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.delete(groupTemplates).where(eq(groupTemplates.id, templateId));
+  try {
+    await adminDb.transact([
+      tx.groupTemplates[templateId].delete(),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to delete template:", error);
+    throw error;
+  }
 }
 
 /**
  * Push Tokens
  */
-export async function registerPushToken(data: InsertPushToken) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  // Upsert: update if exists, insert if not
-  await db.insert(pushTokens).values(data).onConflictDoUpdate({
-    target: pushTokens.token,
-    set: {
-      deviceId: data.deviceId,
+export async function registerPushToken(tokenData: {
+  id: string;
+  userId: string;
+  token: string;
+  deviceId?: string;
+}) {
+  try {
+    const pushToken: any = {
+      token: tokenData.token,
+      deviceId: tokenData.deviceId,
+      createdAt: new Date(),
       updatedAt: new Date(),
-    },
-  });
+    };
+
+    await adminDb.transact([
+      tx.pushTokens[tokenData.id].update(pushToken).link({ user: tokenData.userId }),
+    ]);
+  } catch (error) {
+    console.error("[Database] Failed to register push token:", error);
+    throw error;
+  }
 }
 
 export async function unregisterPushToken(token: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
+  try {
+    // Find the token first
+    const result = await adminDb.query({
+      pushTokens: {
+        $: {
+          where: {
+            token,
+          },
+        },
+      },
+    });
 
-  await db.delete(pushTokens).where(eq(pushTokens.token, token));
-}
-
-export async function getUserPushTokens(userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-
-  return db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
-}
-
-export async function getEventParticipantTokens(eventId: string, excludeUserId?: number) {
-  const db = await getDb();
-  if (!db) return [];
-
-  // Get the event to find the owner
-  const event = await getEventById(eventId);
-  if (!event) return [];
-
-  // Get push tokens for the event owner (excluding the user who made the change)
-  const tokens = await db
-    .select()
-    .from(pushTokens)
-    .where(eq(pushTokens.userId, event.userId));
-
-  if (excludeUserId) {
-    return tokens.filter((t) => t.userId !== excludeUserId);
+    if (result.pushTokens.length > 0) {
+      await adminDb.transact([
+        tx.pushTokens[result.pushTokens[0].id].delete(),
+      ]);
+    }
+  } catch (error) {
+    console.error("[Database] Failed to unregister push token:", error);
+    throw error;
   }
+}
 
-  return tokens;
+export async function getUserPushTokens(userId: string) {
+  try {
+    const result = await adminDb.query({
+      pushTokens: {
+        $: {
+          where: {
+            'user.id': userId,
+          },
+        },
+      },
+    });
+
+    return result.pushTokens || [];
+  } catch (error) {
+    console.error("[Database] Failed to get user push tokens:", error);
+    return [];
+  }
+}
+
+export async function getEventParticipantTokens(eventId: string, excludeUserId?: string) {
+  try {
+    // Get the event to find the owner
+    const event = await getEventById(eventId);
+    if (!event) return [];
+
+    // Get push tokens for the event owner
+    const tokens = await getUserPushTokens(event.creator.id);
+
+    if (excludeUserId) {
+      return tokens.filter((t: any) => t.user.id !== excludeUserId);
+    }
+
+    return tokens;
+  } catch (error) {
+    console.error("[Database] Failed to get event participant tokens:", error);
+    return [];
+  }
 }

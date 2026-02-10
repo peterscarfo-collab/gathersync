@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, TextInput, View } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { GOOGLE_PLACES_API_KEY } from '@/constants/google-maps';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -14,6 +14,27 @@ export function VenueAddressInput({ value, onPlaceSelect, placeholder = 'Search 
   const textColor = useThemeColor({}, 'text');
   const backgroundColor = useThemeColor({}, 'background');
   const borderColor = '#e0e0e0'; // Light gray border
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.container}>
+        <TextInput
+          style={[
+            styles.webInput,
+            {
+              backgroundColor,
+              borderColor,
+              color: textColor,
+            },
+          ]}
+          placeholder={placeholder}
+          placeholderTextColor="#999"
+          value={value}
+          onChangeText={(text) => onPlaceSelect(text, '')}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -87,5 +108,13 @@ export function VenueAddressInput({ value, onPlaceSelect, placeholder = 'Search 
 const styles = StyleSheet.create({
   container: {
     zIndex: 1,
+  },
+  webInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    height: 48,
   },
 });

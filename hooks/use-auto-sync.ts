@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
 import { useAuth } from './auth-context';
@@ -119,6 +120,7 @@ export function useAutoSync() {
       }
 
       lastSyncRef.current = Date.now();
+      await AsyncStorage.setItem('@gathersync_last_sync', new Date().toISOString());
       setSyncStatus('synced');
       console.log('[AutoSync] Pull completed:', cloudEvents.length, 'events');
     } catch (error) {
@@ -176,6 +178,7 @@ export function useAutoSync() {
           break;
       }
 
+      await AsyncStorage.setItem('@gathersync_last_sync', new Date().toISOString());
       setSyncStatus('synced');
     } catch (error) {
       console.error('[AutoSync] Push failed:', error);

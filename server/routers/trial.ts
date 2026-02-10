@@ -1,9 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getDb } from "../db";
-import { users } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { adminDb, tx } from "../../lib/admin-db";
 
 const TRIAL_DURATION_DAYS = 14;
 
@@ -15,14 +13,6 @@ export const trialRouter = router({
    * Start a free trial for the current user
    */
   startTrial: protectedProcedure.mutation(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Database not available",
-      });
-    }
-
     const user = ctx.user;
 
     // Check if user has already used trial
@@ -53,24 +43,29 @@ export const trialRouter = router({
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + TRIAL_DURATION_DAYS);
 
-    await db
-      .update(users)
-      .set({
-        subscriptionTier: "pro",
-        subscriptionStatus: "trialing",
-        subscriptionSource: "trial",
-        trialStartDate: now,
-        trialEndDate: trialEndDate,
-        trialUsed: true,
-        updatedAt: now,
-      })
-      .where(eq(users.id, user.id));
+    try {
+      await adminDb.transact([
+        tx.$users[user.id].update({
+          subscriptionTier: "pro",
+          subscriptionStatus: "trialing",
+          subscriptionSource: "trial",
+          trialStartDate: now,
+          trialEndDate: trialEndDate,
+          trialUsed: true,
+        }),
+      ]);
 
-    return {
-      success: true,
-      trialEndDate: trialEndDate.toISOString(),
-      daysRemaining: TRIAL_DURATION_DAYS,
-    };
+      return {
+        success: true,
+        trialEndDate: trialEndDate.toISOString(),
+        daysRemaining: TRIAL_DURATION_DAYS,
+      };
+    } catch (error) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to start trial",
+      });
+    }
   }),
 
   /**
@@ -111,14 +106,6 @@ export const trialRouter = router({
    * Check and expire trials (called on app launch)
    */
   checkExpiredTrials: protectedProcedure.mutation(async ({ ctx }) => {
-    const db = await getDb();
-    if (!db) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Database not available",
-      });
-    }
-
     const user = ctx.user;
 
     // Only check if user is currently trialing
@@ -131,18 +118,23 @@ export const trialRouter = router({
 
     // Check if trial has expired
     if (now > endDate) {
-      // Downgrade to free tier
-      await db
-        .update(users)
-        .set({
-          subscriptionTier: "free",
-          subscriptionStatus: "expired",
-          subscriptionSource: "free",
-          updatedAt: now,
-        })
-        .where(eq(users.id, user.id));
+      try {
+        // Downgrade to free tier
+        await adminDb.transact([
+          tx.$users[user.id].update({
+            subscriptionTier: "free",
+            subscriptionStatus: "expired",
+            subscriptionSource: "free",
+          }),
+        ]);
 
-      return { expired: true };
+        return { expired: true };
+      } catch (error) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to expire trial",
+        });
+      }
     }
 
     return { expired: false };

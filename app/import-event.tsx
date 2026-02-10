@@ -10,6 +10,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import type { Event } from '@/types/models';
+import { generateId } from '@/lib/generate-id';
 
 export default function ImportEventScreen() {
   const router = useRouter();
@@ -60,7 +61,7 @@ export default function ImportEventScreen() {
       // Create a new event with a new ID (don't use the original ID)
       const newEvent: Event = {
         ...event,
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: generateId(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

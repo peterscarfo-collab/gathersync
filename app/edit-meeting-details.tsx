@@ -1,3 +1,32 @@
+/**
+ * Meeting Details Screen
+ * 
+ * This section manages all aspects of creating and editing the Meeting Details for an event.
+ * 
+ * Features:
+ * - Date & Time: For fixed events, allows setting and editing the specific date and time
+ * - Team Leader: Person responsible for organizing the event (with contact picker integration)
+ * - Meeting Type: Toggle between "In-Person" and "Virtual" meeting types
+ * 
+ * For In-Person Meetings:
+ * - Venue Name: Search and select venue using Google Places autocomplete
+ * - Venue Address: Auto-filled from venue selection or manually entered
+ * - Venue Contact: Contact person at the venue (with contact picker integration)
+ * - Venue Phone: Phone number for the venue
+ * 
+ * For Virtual Meetings:
+ * - Meeting Link: URL for virtual meeting (Zoom, Google Meet, etc.)
+ * 
+ * Additional Fields:
+ * - RSVP Deadline: Text field for deadline information (e.g., "Monday before")
+ * - Meeting Notes: Multi-line text area for additional details and notes
+ * 
+ * Data Persistence:
+ * - Saves to both local storage and cloud storage (when authenticated)
+ * - Uses auto-sync for proper event updates across devices
+ * - Handles both authenticated and unauthenticated states
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -498,7 +527,9 @@ export default function EditMeetingDetailsScreen() {
                 value={venueName}
                 onPlaceSelect={(name, address) => {
                   setVenueName(name);
-                  setVenueAddress(address);
+                  if (address) {
+                    setVenueAddress(address);
+                  }
                 }}
                 placeholder="Search for venue (e.g., Kiss the Barista)"
               />

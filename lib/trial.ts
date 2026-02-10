@@ -79,6 +79,7 @@ export function getTrialInfo(user: any): TrialInfo {
  */
 export function getSubscriptionInfo(user: any): SubscriptionInfo {
   const trialInfo = getTrialInfo(user);
+  const now = new Date();
   
   // Lifetime Pro granted by admin
   if (user.isLifetimePro) {
@@ -105,7 +106,6 @@ export function getSubscriptionInfo(user: any): SubscriptionInfo {
   // Promo code
   if (user.appliedPromoCode && user.promoExpiry) {
     const promoExpiry = new Date(user.promoExpiry);
-    const now = new Date();
     
     if (now <= promoExpiry) {
       return {
@@ -127,6 +127,20 @@ export function getSubscriptionInfo(user: any): SubscriptionInfo {
       expiryDate: user.subscriptionEndDate ? new Date(user.subscriptionEndDate) : null,
       trialInfo: null,
     };
+  }
+
+  // Admin gifted temporary Pro access
+  if (user.subscriptionSource === 'admin' && user.subscriptionEndDate) {
+    const giftedExpiry = new Date(user.subscriptionEndDate);
+    if (now <= giftedExpiry) {
+      return {
+        tier: user.subscriptionTier || 'pro',
+        source: 'admin',
+        isLifetime: false,
+        expiryDate: giftedExpiry,
+        trialInfo: null,
+      };
+    }
   }
   
   // Default: Free tier
@@ -184,6 +198,13 @@ export function getSubscriptionDisplayText(info: SubscriptionInfo): string {
   
   if (info.source === 'stripe') {
     return info.tier.charAt(0).toUpperCase() + info.tier.slice(1);
+  }
+
+  if (info.source === 'admin' && info.expiryDate) {
+    const now = new Date();
+    const ms = info.expiryDate.getTime() - now.getTime();
+    const days = Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+    return `Pro (Gifted - ${days} day${days !== 1 ? 's' : ''} remaining)`;
   }
   
   return 'Free';

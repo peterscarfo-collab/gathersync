@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, Share, Linking, Modal } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { WEB_BASE_URL } from '@/constants/urls';
@@ -11,9 +11,11 @@ import { ThemedView } from '@/components/themed-view';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { CalendarGrid } from '@/components/calendar-grid';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { SyncStatusBadge } from '@/components/sync-status-badge';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
-import { eventsLocalStorage as eventsLocalStorage, snapshotsLocalStorage as snapshotsLocalStorage } from '@/lib/local-storage';
+import { useEvent } from '@/hooks/use-instant-events';
+import { snapshotsLocalStorage as snapshotsLocalStorage } from '@/lib/local-storage';
 import { getMonthName, generateId, getBestDays } from '@/lib/calendar-utils';
 import { exportToCalendar } from '@/lib/calendar-export';
 import { getParticipantStatus, getStatusBadge } from '@/lib/participant-status';
@@ -24,6 +26,7 @@ export default function EventDetailScreen() {
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const { updateEvent: autoUpdateEvent } = useAutoSync();
+  const { event: liveEvent, isLoading: isEventLoading } = useEvent(eventId ?? null);
 
   const [event, setEvent] = useState<Event | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -39,35 +42,14 @@ export default function EventDetailScreen() {
   const successColor = useThemeColor({}, 'success');
   const errorColor = useThemeColor({}, 'error');
 
-  const loadEvent = async (retryCount = 0) => {
-    if (!eventId) return;
-    const loadedEvent = await eventsLocalStorage.getById(eventId);
-    if (loadedEvent) {
-      setEvent(loadedEvent);
-      setEditedName(loadedEvent.name);
-    } else if (retryCount < 10) {
-      // Event not found - might be AsyncStorage write delay
-      // Retry up to 10 times with 300ms delay (total 3 seconds)
-      console.log(`[EventDetail] Event not found, retrying (${retryCount + 1}/10)...`);
-      setTimeout(() => loadEvent(retryCount + 1), 300);
-    } else {
-      // All retries failed - event truly doesn't exist
-      console.error('[EventDetail] Event not found after 10 retries:', eventId);
-      Alert.alert(
-        'Event Not Found',
-        'Could not load event. It may have been deleted or failed to save.',
-        [
-          { text: 'OK', onPress: () => router.back() }
-        ]
-      );
-    }
-  };
+  const participantSignature = liveEvent?.participants?.map(p => p.id).join('|') ?? '';
 
-  useFocusEffect(
-    useCallback(() => {
-      loadEvent();
-    }, [eventId])
-  );
+  useEffect(() => {
+    if (liveEvent) {
+      setEvent(liveEvent);
+      setEditedName(liveEvent.name);
+    }
+  }, [liveEvent?.id, liveEvent?.updatedAt, participantSignature]);
 
   const updateEvent = async (updatedEvent: Event) => {
     const updated = {
@@ -369,7 +351,11 @@ export default function EventDetailScreen() {
 
   const confirmDelete = async () => {
     setShowDeleteConfirm(false);
-    await eventsLocalStorage.delete(eventId!);
+    await autoUpdateEvent(eventId!, {
+      ...event,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   };
@@ -377,7 +363,7 @@ export default function EventDetailScreen() {
   if (!event) {
     return (
       <ThemedView style={[styles.container, { backgroundColor }]}>
-        <ThemedText>Loading...</ThemedText>
+        <ThemedText>{isEventLoading ? 'Loading...' : 'Event not found'}</ThemedText>
       </ThemedView>
     );
   }
@@ -613,6 +599,9 @@ export default function EventDetailScreen() {
             </View>
           </Pressable>
         </Modal>
+      </View>
+      <View style={styles.syncBadgeRow}>
+        <SyncStatusBadge />
       </View>
 
       <ScrollView
@@ -1081,6 +1070,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  syncBadgeRow: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   nameInput: {
     flex: 1,

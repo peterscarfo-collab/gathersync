@@ -94,10 +94,16 @@ export default function PricingScreen() {
 
   const currentTier = (user?.subscriptionTier || 'free') as 'free' | 'lite' | 'pro' | 'enterprise';
   const isLite = currentTier === 'lite';
-  const isPro = currentTier === 'pro' || user?.isLifetimePro;
+  const hasLifetimePro = Boolean(user?.isLifetimePro);
+  const isPro = currentTier === 'pro' || hasLifetimePro;
   const hasUsedTrial = user?.trialUsed || false;
   const isTrialing = user?.subscriptionStatus === 'trialing';
   const canStartTrial = currentTier === 'free' && !hasUsedTrial && !isTrialing;
+  const isGiftedPro =
+    !hasLifetimePro &&
+    user?.subscriptionSource === 'admin' &&
+    Boolean(user?.subscriptionEndDate) &&
+    currentTier === 'pro';
 
   return (
     <ScrollView
@@ -118,6 +124,12 @@ export default function PricingScreen() {
       <ThemedText style={[styles.subtitle, { color: textSecondaryColor }]}>
         Start with Free, upgrade anytime to unlock more events
       </ThemedText>
+      {isGiftedPro && user?.subscriptionEndDate && (
+        <ThemedText style={[styles.savingsText, { color: tintColor }]}>
+          Your gifted Pro access ends on {new Date(user.subscriptionEndDate as any).toLocaleDateString()}.
+          Renew now to keep Pro features without interruption.
+        </ThemedText>
+      )}
 
       {/* Billing interval toggle */}
       <View style={styles.toggleContainer}>
@@ -237,11 +249,13 @@ export default function PricingScreen() {
             {SUBSCRIPTION_PLANS.pro.name}
           </ThemedText>
           <ThemedText type="title" style={styles.planPrice}>
-            {billingInterval === 'monthly' 
-              ? SUBSCRIPTION_PLANS.pro.monthlyPriceDisplay 
-              : SUBSCRIPTION_PLANS.pro.annualPriceDisplay}
+            {hasLifetimePro
+              ? 'Included (Lifetime)'
+              : billingInterval === 'monthly'
+                ? SUBSCRIPTION_PLANS.pro.monthlyPriceDisplay
+                : SUBSCRIPTION_PLANS.pro.annualPriceDisplay}
           </ThemedText>
-          {billingInterval === 'annual' && (
+          {billingInterval === 'annual' && !hasLifetimePro && (
             <ThemedText style={[styles.savings, { color: tintColor }]}>
               {SUBSCRIPTION_PLANS.pro.annualSavings}
             </ThemedText>
@@ -256,7 +270,9 @@ export default function PricingScreen() {
           </View>
           {isPro ? (
             <View style={[styles.currentBadge, { backgroundColor: tintColor + '20' }]}>
-              <ThemedText style={[styles.currentBadgeText, { color: tintColor }]}>Current Plan</ThemedText>
+              <ThemedText style={[styles.currentBadgeText, { color: tintColor }]}>
+                {hasLifetimePro ? 'Lifetime Access Active' : 'Current Plan'}
+              </ThemedText>
             </View>
           ) : (
             <Pressable

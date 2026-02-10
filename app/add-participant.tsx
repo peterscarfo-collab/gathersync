@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -8,7 +8,7 @@ import {
   View,
   ActivityIndicator,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as Contacts from 'expo-contacts';
@@ -17,18 +17,28 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { eventsLocalStorage as eventsLocalStorage } from '@/lib/local-storage';
-import { generateId } from '@/lib/calendar-utils';
-import type { Participant } from '@/types/models';
-import { useAutoSync } from '@/hooks/use-auto-sync';
+import { useAuth } from '@/hooks/auth-context';
+import { useEvents } from '@/hooks/use-instant-events';
+import { eventsLocalStorage as eventsLocalStorage, templatesLocalStorage } from '@/lib/local-storage';
+import type { Event, GroupTemplate, Participant } from '@/types/models';
+import { eventMutations } from '@/lib/instant-mutations';
 
-type TabType = 'manual' | 'contacts' | 'ai';
+type TabType = 'manual' | 'contacts' | 'ai' | 'groups' | 'directory';
+
+type DirectoryEntry = {
+  key: string;
+  name: string;
+  phone?: string;
+  email?: string;
+};
 
 export default function AddParticipantScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
-  const { updateEvent } = useAutoSync();
+  const { isAuthenticated } = useAuth();
+  const { events: liveEvents, isLoading: liveEventsLoading } = useEvents();
+  const [eventName, setEventName] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<TabType>('manual');
   const [manualName, setManualName] = useState('');
@@ -39,6 +49,35 @@ export default function AddParticipantScreen() {
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const [isExtracting, setIsExtracting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [groupTemplates, setGroupTemplates] = useState<GroupTemplate[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [selectedGroupMembers, setSelectedGroupMembers] = useState<Set<string>>(new Set());
+  const [groupName, setGroupName] = useState('');
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [directoryEntries, setDirectoryEntries] = useState<DirectoryEntry[]>([]);
+  const [selectedDirectoryKeys, setSelectedDirectoryKeys] = useState<Set<string>>(new Set());
+  const [directorySearch, setDirectorySearch] = useState('');
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+
+  const appendParticipantsToLocal = async (participants: Participant[]) => {
+    if (!eventId) return;
+    const event = await eventsLocalStorage.getById(eventId);
+    if (!event) return;
+    event.participants.push(...participants);
+    await eventsLocalStorage.update(eventId, {
+      ...event,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+  useEffect(() => {
+    const loadEventName = async () => {
+      if (!eventId) return;
+      const event = await eventsLocalStorage.getById(eventId);
+      setEventName(event?.name ?? '');
+    };
+    loadEventName();
+  }, [eventId]);
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -46,6 +85,96 @@ export default function AddParticipantScreen() {
   const textColor = useThemeColor({}, 'text');
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
   const successColor = useThemeColor({}, 'success');
+
+  const loadGroupTemplates = useCallback(async () => {
+    setGroupsLoading(true);
+    try {
+      const templates = await templatesLocalStorage.getAll();
+      setGroupTemplates(templates);
+    } catch (error) {
+      console.error('[AddParticipant] Failed to load group templates:', error);
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeTab !== 'groups') return;
+      loadGroupTemplates();
+    }, [activeTab, loadGroupTemplates])
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'groups') {
+      setSelectedGroupIds(new Set());
+      setExpandedGroupId(null);
+      setSelectedGroupMembers(new Set());
+    }
+  }, [activeTab]);
+
+  const buildDirectoryEntries = (sourceEvents: Event[]) => {
+    const entryMap = new Map<string, DirectoryEntry>();
+
+    sourceEvents.forEach(event => {
+      event.participants
+        .filter(p => !p.deletedAt)
+        .forEach(p => {
+          const emailKey = p.email?.toLowerCase();
+          const nameKey = p.name.toLowerCase();
+          const key = emailKey || nameKey;
+
+          if (!entryMap.has(key)) {
+            entryMap.set(key, {
+              key,
+              name: p.name,
+              phone: p.phone,
+              email: p.email,
+            });
+          }
+        });
+    });
+
+    setDirectoryEntries(Array.from(entryMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  };
+
+  const loadDirectoryEntries = useCallback(async () => {
+    if (isAuthenticated && liveEventsLoading) {
+      setDirectoryLoading(true);
+      return;
+    }
+
+    setDirectoryLoading(true);
+    try {
+      if (isAuthenticated) {
+        buildDirectoryEntries(liveEvents);
+      } else {
+        const allEvents = await eventsLocalStorage.getAll();
+        buildDirectoryEntries(allEvents);
+      }
+    } catch (error) {
+      console.error('[AddParticipant] Failed to load directory entries:', error);
+    } finally {
+      setDirectoryLoading(false);
+    }
+  }, [isAuthenticated, liveEvents, liveEventsLoading]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDirectoryEntries();
+    }, [loadDirectoryEntries])
+  );
+
+  useEffect(() => {
+    loadDirectoryEntries();
+  }, [loadDirectoryEntries]);
+
+  useEffect(() => {
+    if (activeTab !== 'directory') {
+      setSelectedDirectoryKeys(new Set());
+      setDirectorySearch('');
+    }
+  }, [activeTab]);
 
   const handleAddManual = async () => {
     if (!manualName.trim()) {
@@ -71,27 +200,23 @@ export default function AddParticipantScreen() {
         return;
       }
 
-      const newParticipant: Participant = {
-        id: generateId(),
+      const participantInput = {
         name: manualName.trim(),
         phone: manualPhone.trim() || undefined,
         email: manualEmail.trim() || undefined,
         availability: {},
         unavailableAllMonth: false,
-        source: 'manual',
+        source: 'manual' as const,
       };
 
-      event.participants.push(newParticipant);
-      await updateEvent(eventId!, {
-        ...event,
-        updatedAt: new Date().toISOString(),
-      });
+      const participantId = await eventMutations.addParticipant(eventId!, participantInput);
+      await appendParticipantsToLocal([{ id: participantId, ...participantInput }]);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setManualName('');
       setManualPhone('');
       setManualEmail('');
-      Alert.alert('Success', `${newParticipant.name} has been added`, [
+      Alert.alert('Success', `${participantInput.name} has been added`, [
         {
           text: 'Add Another',
           onPress: () => {},
@@ -229,9 +354,59 @@ export default function AddParticipantScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const handleAddSelected = async () => {
-    if (selectedNames.size === 0) {
-      Alert.alert('Error', 'Please select at least one name');
+  const toggleGroupSelection = (groupId: string) => {
+    const nextSelected = new Set(selectedGroupIds);
+    if (nextSelected.has(groupId)) {
+      nextSelected.delete(groupId);
+    } else {
+      nextSelected.add(groupId);
+    }
+    setSelectedGroupIds(nextSelected);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const toggleGroupExpansion = (groupId: string) => {
+    setExpandedGroupId(prev => (prev === groupId ? null : groupId));
+  };
+
+  const toggleGroupMemberSelection = (groupId: string, name: string) => {
+    const key = `${groupId}:${name}`;
+    const nextSelected = new Set(selectedGroupMembers);
+    if (nextSelected.has(key)) {
+      nextSelected.delete(key);
+    } else {
+      nextSelected.add(key);
+    }
+    setSelectedGroupMembers(nextSelected);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const selectAllGroupMembers = (groupId: string, names: string[]) => {
+    const nextSelected = new Set(selectedGroupMembers);
+    names.forEach(name => nextSelected.add(`${groupId}:${name}`));
+    setSelectedGroupMembers(nextSelected);
+  };
+
+  const clearAllGroupMembers = (groupId: string, names: string[]) => {
+    const nextSelected = new Set(selectedGroupMembers);
+    names.forEach(name => nextSelected.delete(`${groupId}:${name}`));
+    setSelectedGroupMembers(nextSelected);
+  };
+
+  const toggleDirectorySelection = (entryKey: string) => {
+    const nextSelected = new Set(selectedDirectoryKeys);
+    if (nextSelected.has(entryKey)) {
+      nextSelected.delete(entryKey);
+    } else {
+      nextSelected.add(entryKey);
+    }
+    setSelectedDirectoryKeys(nextSelected);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleSaveGroupTemplate = async () => {
+    if (!groupName.trim()) {
+      Alert.alert('Error', 'Please enter a group name');
       return;
     }
 
@@ -239,7 +414,151 @@ export default function AddParticipantScreen() {
       const event = await eventsLocalStorage.getById(eventId!);
       if (!event) return;
 
-      const newParticipants: Participant[] = Array.from(selectedNames).map(nameData => {
+      const participantNames = event.participants
+        .filter(p => !p.deletedAt)
+        .map(p => p.name)
+        .filter(Boolean);
+
+      if (participantNames.length === 0) {
+        Alert.alert('No Participants', 'Add participants to this event first.');
+        return;
+      }
+
+      await templatesLocalStorage.add({
+        name: groupName.trim(),
+        participantNames,
+      } as any);
+
+      setGroupName('');
+      await loadGroupTemplates();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('[AddParticipant] Failed to save group template:', error);
+      Alert.alert('Error', 'Failed to save group. Please try again.');
+    }
+  };
+
+  const handleAddGroups = async () => {
+    if (selectedGroupMembers.size === 0) {
+      Alert.alert('Error', 'Please select at least one person');
+      return;
+    }
+
+    try {
+      const event = await eventsLocalStorage.getById(eventId!);
+      if (!event) return;
+
+      const selectedTemplates = groupTemplates.filter(t => t.id === expandedGroupId || selectedGroupIds.has(t.id));
+      const selectedNames = Array.from(selectedGroupMembers).map(key => key.split(':')[1]);
+      const namesFromGroups = selectedNames.length > 0 ? selectedNames : selectedTemplates.flatMap(t => t.participantNames || []);
+      const existingEmails = new Set(
+        event.participants
+          .map(p => p.email?.toLowerCase())
+          .filter(Boolean) as string[]
+      );
+      const existingPhones = new Set(
+        event.participants
+          .map(p => p.phone?.replace(/\s+/g, ''))
+          .filter(Boolean) as string[]
+      );
+      const existingNames = new Set(event.participants.map(p => p.name.toLowerCase()));
+
+      const newParticipants: Omit<Participant, 'id' | 'createdAt' | 'updatedAt'>[] = namesFromGroups
+        .filter(name => name && !existingNames.has(name.toLowerCase()))
+        .map(name => ({
+          name,
+          availability: {},
+          unavailableAllMonth: false,
+          source: 'manual',
+        }))
+        .filter(p => {
+          if (p.email && existingEmails.has(p.email.toLowerCase())) return false;
+          if (p.phone && existingPhones.has(p.phone.replace(/\s+/g, ''))) return false;
+          if (existingNames.has(p.name.toLowerCase())) return false;
+          return true;
+        });
+
+      if (newParticipants.length === 0) {
+        Alert.alert('No New Participants', 'All group members are already in this event.');
+        return;
+      }
+
+      const savedParticipants: Participant[] = [];
+      for (const participant of newParticipants) {
+        const participantId = await eventMutations.addParticipant(eventId!, participant);
+        savedParticipants.push({ id: participantId, ...participant });
+      }
+      await appendParticipantsToLocal(savedParticipants);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (error) {
+      console.error('[AddParticipant] Failed to add group participants:', error);
+      Alert.alert('Error', 'Failed to add group participants. Please try again.');
+    }
+  };
+
+  const handleAddFromDirectory = async () => {
+    if (selectedDirectoryKeys.size === 0) {
+      Alert.alert('Error', 'Please select at least one participant');
+      return;
+    }
+
+    try {
+      const event = await eventsLocalStorage.getById(eventId!);
+      if (!event) return;
+
+      const existingEmails = new Set(
+        event.participants
+          .map(p => p.email?.toLowerCase())
+          .filter(Boolean) as string[]
+      );
+      const existingNames = new Set(event.participants.map(p => p.name.toLowerCase()));
+
+      const selectedEntries = directoryEntries.filter(entry => selectedDirectoryKeys.has(entry.key));
+      const newParticipants: Omit<Participant, 'id' | 'createdAt' | 'updatedAt'>[] = selectedEntries
+        .filter(entry => {
+          if (entry.email && existingEmails.has(entry.email.toLowerCase())) return false;
+          if (existingNames.has(entry.name.toLowerCase())) return false;
+          return true;
+        })
+        .map(entry => ({
+          name: entry.name,
+          phone: entry.phone,
+          email: entry.email,
+          availability: {},
+          unavailableAllMonth: false,
+          source: 'manual',
+        }));
+
+      if (newParticipants.length === 0) {
+        Alert.alert('No New Participants', 'All selected participants are already in this event.');
+        return;
+      }
+
+      const savedParticipants: Participant[] = [];
+      for (const participant of newParticipants) {
+        const participantId = await eventMutations.addParticipant(eventId!, participant);
+        savedParticipants.push({ id: participantId, ...participant });
+      }
+      await appendParticipantsToLocal(savedParticipants);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (error) {
+      console.error('[AddParticipant] Failed to add directory participants:', error);
+      Alert.alert('Error', 'Failed to add participants. Please try again.');
+    }
+  };
+
+  const handleAddSelected = async () => {
+    if (selectedNames.size === 0) {
+      Alert.alert('Error', 'Please select at least one name');
+      return;
+    }
+
+    try {
+      const newParticipants: Omit<Participant, 'id' | 'createdAt' | 'updatedAt'>[] = Array.from(selectedNames).map(nameData => {
         // Parse name, phone, and email if from contacts (format: "Name|Phone|Email")
         const parts = nameData.split('|');
         const name = parts[0];
@@ -249,7 +568,6 @@ export default function AddParticipantScreen() {
         console.log('[AddParticipant] Adding:', { name, phone, email });
         
         return {
-          id: generateId(),
           name,
           availability: {},
           unavailableAllMonth: false,
@@ -258,12 +576,12 @@ export default function AddParticipantScreen() {
           email,
         };
       });
-
-      event.participants.push(...newParticipants);
-      await updateEvent(eventId!, {
-        ...event,
-        updatedAt: new Date().toISOString(),
-      });
+      const savedParticipants: Participant[] = [];
+      for (const participant of newParticipants) {
+        const participantId = await eventMutations.addParticipant(eventId!, participant);
+        savedParticipants.push({ id: participantId, ...participant });
+      }
+      await appendParticipantsToLocal(savedParticipants);
 
       console.log(`[AddParticipant] Added ${newParticipants.length} participants`);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -295,68 +613,117 @@ export default function AddParticipantScreen() {
           <IconSymbol name="chevron.left" size={28} color={tintColor} />
         </Pressable>
         <ThemedText type="subtitle">Add Participants</ThemedText>
+        {eventName ? (
+          <ThemedText style={[styles.headerSubtitle, { color: textSecondaryColor }]}>
+            {eventName}
+          </ThemedText>
+        ) : null}
         <View style={{ width: 28 }} />
       </View>
 
       {/* Segmented Control */}
       <View style={[styles.segmentedControl, { backgroundColor: surfaceColor }]}>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'manual' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('manual');
-          }}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.segmentedControlContent}
         >
-          <ThemedText
+          <Pressable
             style={[
-              styles.segmentText,
-              activeTab === 'manual' && styles.segmentTextActive,
+              styles.segment,
+              activeTab === 'manual' && [styles.segmentActive, { backgroundColor: tintColor }],
             ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('manual');
+            }}
           >
-            Manual
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'contacts' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('contacts');
-          }}
-        >
-          <ThemedText
+            <ThemedText
+              style={[
+                styles.segmentText,
+                activeTab === 'manual' && styles.segmentTextActive,
+              ]}
+            >
+              Manual
+            </ThemedText>
+          </Pressable>
+          <Pressable
             style={[
-              styles.segmentText,
-              activeTab === 'contacts' && styles.segmentTextActive,
+              styles.segment,
+              activeTab === 'contacts' && [styles.segmentActive, { backgroundColor: tintColor }],
             ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('contacts');
+            }}
           >
-            Contacts
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'ai' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('ai');
-          }}
-        >
-          <ThemedText
+            <ThemedText
+              style={[
+                styles.segmentText,
+                activeTab === 'contacts' && styles.segmentTextActive,
+              ]}
+            >
+              Contacts
+            </ThemedText>
+          </Pressable>
+          <Pressable
             style={[
-              styles.segmentText,
-              activeTab === 'ai' && styles.segmentTextActive,
+              styles.segment,
+              activeTab === 'ai' && [styles.segmentActive, { backgroundColor: tintColor }],
             ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('ai');
+            }}
           >
-            AI Import
-          </ThemedText>
-        </Pressable>
+            <ThemedText
+              style={[
+                styles.segmentText,
+                activeTab === 'ai' && styles.segmentTextActive,
+              ]}
+            >
+              AI Import
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.segment,
+              activeTab === 'groups' && [styles.segmentActive, { backgroundColor: tintColor }],
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('groups');
+            }}
+          >
+            <ThemedText
+              style={[
+                styles.segmentText,
+                activeTab === 'groups' && styles.segmentTextActive,
+              ]}
+            >
+              Groups
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.segment,
+              activeTab === 'directory' && [styles.segmentActive, { backgroundColor: tintColor }],
+            ]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab('directory');
+            }}
+          >
+            <ThemedText
+              style={[
+                styles.segmentText,
+                activeTab === 'directory' && styles.segmentTextActive,
+              ]}
+            >
+              Directory
+            </ThemedText>
+          </Pressable>
+        </ScrollView>
       </View>
 
       <ScrollView
@@ -431,6 +798,80 @@ export default function AddParticipantScreen() {
                 Add Participant
               </ThemedText>
             </Pressable>
+
+            <View style={styles.directorySection}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Add from existing participants
+              </ThemedText>
+              <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
+                Pick people already used in other events
+              </ThemedText>
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  {
+                    backgroundColor: surfaceColor,
+                    color: textColor,
+                  },
+                ]}
+                placeholder="Search participant directory..."
+                placeholderTextColor={textSecondaryColor}
+                value={directorySearch}
+                onChangeText={setDirectorySearch}
+              />
+              {directoryLoading ? (
+                <ActivityIndicator color={tintColor} style={{ marginTop: 12 }} />
+              ) : directoryEntries.length === 0 ? (
+                <ThemedText style={[styles.hint, { color: textSecondaryColor, marginTop: 12 }]}>
+                  No participants found yet. Add someone to any event first.
+                </ThemedText>
+              ) : (
+                <>
+                  <View style={styles.namesList}>
+                    {directoryEntries
+                      .filter(entry =>
+                        entry.name.toLowerCase().includes(directorySearch.toLowerCase()) ||
+                        entry.email?.toLowerCase().includes(directorySearch.toLowerCase()) ||
+                        entry.phone?.toLowerCase().includes(directorySearch.toLowerCase())
+                      )
+                      .map(entry => {
+                        const isSelected = selectedDirectoryKeys.has(entry.key);
+                        return (
+                          <Pressable
+                            key={entry.key}
+                            style={[
+                              styles.nameChip,
+                              {
+                                backgroundColor: isSelected ? tintColor : surfaceColor,
+                              },
+                            ]}
+                            onPress={() => toggleDirectorySelection(entry.key)}
+                          >
+                            <ThemedText
+                              style={[
+                                styles.nameChipText,
+                                isSelected && styles.nameChipTextSelected,
+                              ]}
+                            >
+                              {entry.name}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                  </View>
+                  {selectedDirectoryKeys.size > 0 && (
+                    <Pressable
+                      style={[styles.actionButton, { backgroundColor: successColor }]}
+                      onPress={handleAddFromDirectory}
+                    >
+                      <ThemedText style={styles.actionButtonText}>
+                        Add {selectedDirectoryKeys.size} Selected
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
           </View>
         ) : activeTab === 'contacts' ? (
           <View style={styles.contactsTab}>
@@ -529,6 +970,209 @@ export default function AddParticipantScreen() {
                   >
                     <ThemedText style={styles.actionButtonText}>
                       Add {selectedNames.size} Selected
+                    </ThemedText>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
+        ) : activeTab === 'groups' ? (
+          <View style={styles.groupsTab}>
+            <ThemedText type="defaultSemiBold" style={styles.label}>
+              Save This Event as a Group
+            </ThemedText>
+            <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
+              Give this participant list a name so you can reuse it later
+            </ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                },
+              ]}
+              placeholder="e.g., Guru Breakfast"
+              placeholderTextColor={textSecondaryColor}
+              value={groupName}
+              onChangeText={setGroupName}
+            />
+            <Pressable
+              style={[styles.actionButton, { backgroundColor: tintColor }]}
+              onPress={handleSaveGroupTemplate}
+            >
+              <ThemedText style={styles.actionButtonText}>
+                Save Group
+              </ThemedText>
+            </Pressable>
+
+            <View style={{ marginTop: 24 }}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Add from Groups
+              </ThemedText>
+              <View style={{ height: 8 }} />
+              <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
+                Tap a group to select it, then add any or all Participants
+              </ThemedText>
+            </View>
+
+            {groupsLoading ? (
+              <ActivityIndicator color={tintColor} style={{ marginTop: 12 }} />
+            ) : groupTemplates.length === 0 ? (
+              <ThemedText style={[styles.hint, { color: textSecondaryColor, marginTop: 12 }]}>
+                No groups yet. Save one above to get started.
+              </ThemedText>
+            ) : (
+              <>
+                <View style={[styles.namesList, styles.groupsList]}>
+                  {groupTemplates.map(group => {
+                    const isSelected = selectedGroupIds.has(group.id);
+                    const isExpanded = expandedGroupId === group.id;
+                    return (
+                      <View key={group.id} style={styles.groupCard}>
+                        <Pressable
+                          style={[
+                            styles.groupRow,
+                            {
+                              backgroundColor: isSelected ? tintColor + '15' : surfaceColor,
+                            },
+                          ]}
+                          onPress={() => {
+                            toggleGroupSelection(group.id);
+                            toggleGroupExpansion(group.id);
+                          }}
+                        >
+                          <View style={styles.groupRowContent}>
+                            <ThemedText
+                              style={[
+                                styles.nameChipText,
+                                isSelected && styles.nameChipTextSelected,
+                              ]}
+                            >
+                              {group.name} ({group.participantNames?.length || 0})
+                            </ThemedText>
+                            <ThemedText style={[styles.groupRowHint, { color: textSecondaryColor }]}>
+                              Click to view participants
+                            </ThemedText>
+                          </View>
+                        </Pressable>
+                        {isExpanded && (
+                          <View style={styles.groupMembers}>
+                            <View style={styles.groupActions}>
+                              <Pressable
+                                onPress={() => selectAllGroupMembers(group.id, group.participantNames || [])}
+                              >
+                                <ThemedText style={{ color: tintColor }}>Select All</ThemedText>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => clearAllGroupMembers(group.id, group.participantNames || [])}
+                              >
+                                <ThemedText style={{ color: tintColor }}>Clear</ThemedText>
+                              </Pressable>
+                            </View>
+                            {(group.participantNames || []).map(name => {
+                              const key = `${group.id}:${name}`;
+                              const isMemberSelected = selectedGroupMembers.has(key);
+                              return (
+                                <Pressable
+                                  key={key}
+                                  style={[
+                                    styles.memberRow,
+                                    { backgroundColor: isMemberSelected ? tintColor + '20' : 'transparent' },
+                                  ]}
+                                  onPress={() => toggleGroupMemberSelection(group.id, name)}
+                                >
+                                  <View
+                                    style={[
+                                      styles.memberCheckbox,
+                                      isMemberSelected && { backgroundColor: tintColor, borderColor: tintColor },
+                                    ]}
+                                  />
+                                  <ThemedText>{name}</ThemedText>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+                {selectedGroupMembers.size > 0 && (
+                  <Pressable
+                    style={[styles.actionButton, { backgroundColor: successColor }]}
+                    onPress={handleAddGroups}
+                  >
+                    <ThemedText style={styles.actionButtonText}>
+                      Add {selectedGroupMembers.size} Selected
+                    </ThemedText>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
+        ) : activeTab === 'directory' ? (
+          <View style={styles.directoryTab}>
+            <TextInput
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                },
+              ]}
+              placeholder="Search participant directory..."
+              placeholderTextColor={textSecondaryColor}
+              value={directorySearch}
+              onChangeText={setDirectorySearch}
+            />
+            {directoryLoading ? (
+              <ActivityIndicator color={tintColor} style={{ marginTop: 12 }} />
+            ) : directoryEntries.length === 0 ? (
+              <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
+                No participants found yet. Add participants to events first.
+              </ThemedText>
+            ) : (
+              <>
+                <View style={styles.namesList}>
+                  {directoryEntries
+                    .filter(entry =>
+                      entry.name.toLowerCase().includes(directorySearch.toLowerCase()) ||
+                      entry.email?.toLowerCase().includes(directorySearch.toLowerCase()) ||
+                      entry.phone?.toLowerCase().includes(directorySearch.toLowerCase())
+                    )
+                    .map(entry => {
+                      const isSelected = selectedDirectoryKeys.has(entry.key);
+                      return (
+                        <Pressable
+                          key={entry.key}
+                          style={[
+                            styles.nameChip,
+                            {
+                              backgroundColor: isSelected ? tintColor : surfaceColor,
+                            },
+                          ]}
+                          onPress={() => toggleDirectorySelection(entry.key)}
+                        >
+                          <ThemedText
+                            style={[
+                              styles.nameChipText,
+                              isSelected && styles.nameChipTextSelected,
+                            ]}
+                          >
+                            {entry.name}
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+                {selectedDirectoryKeys.size > 0 && (
+                  <Pressable
+                    style={[styles.actionButton, { backgroundColor: successColor }]}
+                    onPress={handleAddFromDirectory}
+                  >
+                    <ThemedText style={styles.actionButtonText}>
+                      Add {selectedDirectoryKeys.size} Selected
                     </ThemedText>
                   </Pressable>
                 )}
@@ -636,15 +1280,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
+  headerSubtitle: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 48,
+    textAlign: 'center',
+    fontSize: 12,
+  },
   segmentedControl: {
     flexDirection: 'row',
     margin: 16,
     padding: 4,
     borderRadius: 12,
   },
+  segmentedControlContent: {
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
   segment: {
-    flex: 1,
+    minWidth: 90,
     paddingVertical: 10,
+    paddingHorizontal: 12,
     alignItems: 'center',
     borderRadius: 8,
   },
@@ -672,10 +1330,61 @@ const styles = StyleSheet.create({
   manualTab: {
     gap: 16,
   },
+  directorySection: {
+    marginTop: 24,
+    gap: 12,
+  },
   contactsTab: {
     gap: 16,
   },
   aiTab: {
+    gap: 16,
+  },
+  groupsTab: {
+    gap: 16,
+  },
+  groupCard: {
+    width: '100%',
+    gap: 8,
+  },
+  groupRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    width: '100%',
+  },
+  groupRowContent: {
+    gap: 2,
+  },
+  groupRowHint: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  groupMembers: {
+    paddingLeft: 8,
+    gap: 6,
+  },
+  groupActions: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 6,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+  },
+  memberCheckbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.2)',
+  },
+  directoryTab: {
     gap: 16,
   },
   label: {
@@ -728,6 +1437,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  groupsList: {
+    marginTop: 12,
   },
   nameChip: {
     flexDirection: 'row',

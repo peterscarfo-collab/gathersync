@@ -2,6 +2,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,7 +15,6 @@ import { useAutoSync } from '@/hooks/use-auto-sync';
 import { getTierDisplayName, formatPricing, getSubscriptionLimits } from '@/lib/subscription';
 import { getSubscriptionInfo, getSubscriptionDisplayText, isEligibleForTrial } from '@/lib/trial';
 import { trpc } from '@/lib/trpc';
-import { getLoginUrl } from '@/constants/oauth';
 import { Platform } from 'react-native';
 
 export default function ProfileScreen() {
@@ -21,6 +22,44 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, logout, loading, refresh } = useAuth();
   const { syncStatus } = useAutoSync();
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const handleClearLocalCache = async () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Clear local cache for events and participants on this device? Cloud data will stay intact.'
+      );
+      if (!confirmed) return;
+    } else {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Clear Local Cache',
+          'Clear local cache for events and participants on this device? Cloud data will stay intact.',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Clear', style: 'destructive', onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!confirmed) return;
+    }
+
+    await AsyncStorage.removeItem('@gathersync_events');
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    if (Platform.OS === 'web') {
+      window.location.reload();
+    } else {
+      Alert.alert('Cleared', 'Local cache cleared. Data will resync from cloud.');
+    }
+  };
+
+  useEffect(() => {
+    const loadLastSync = async () => {
+      const value = await AsyncStorage.getItem('@gathersync_last_sync');
+      setLastSyncAt(value);
+    };
+    loadLastSync();
+  }, [syncStatus]);
   const startTrialMutation = trpc.trial.startTrial.useMutation();
   
   const backgroundColor = useThemeColor({}, 'background');
@@ -74,6 +113,14 @@ export default function ProfileScreen() {
     if (syncStatus === 'synced') return '#34C759';
     return textSecondaryColor;
   };
+
+  const subscriptionInfo = user ? getSubscriptionInfo(user) : null;
+  const currentPlanText = subscriptionInfo ? getSubscriptionDisplayText(subscriptionInfo) : 'Free';
+  const isLifetimeDisplay =
+    currentPlanText.toLowerCase().includes('lifetime') ||
+    Boolean(subscriptionInfo?.isLifetime) ||
+    Boolean((user as any)?.isLifetimePro);
+
   return (
     <DesktopLayout>
     <ThemedView style={styles.container}>
@@ -155,6 +202,21 @@ export default function ProfileScreen() {
               {getSyncStatusText()}
             </ThemedText>
           </View>
+          <View style={styles.infoRow}>
+            <ThemedText style={{ color: textSecondaryColor }}>Last Sync</ThemedText>
+            <ThemedText style={{ color: textSecondaryColor }}>
+              {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : 'Not yet'}
+            </ThemedText>
+          </View>
+
+          <Pressable
+            style={[styles.manageButton, { borderColor: tintColor, marginTop: 12 }]}
+            onPress={handleClearLocalCache}
+          >
+            <ThemedText style={[styles.manageButtonText, { color: tintColor }]}>
+              Clear Local Cache
+            </ThemedText>
+          </Pressable>
           
 
         </View>
@@ -169,13 +231,21 @@ export default function ProfileScreen() {
             <View style={styles.infoRow}>
               <ThemedText style={{ color: textSecondaryColor }}>Current Plan</ThemedText>
               <ThemedText style={{ fontWeight: '600' }}>
-                {getSubscriptionDisplayText(getSubscriptionInfo(user))}
+                {currentPlanText}
               </ThemedText>
             </View>
             
             <View style={styles.infoRow}>
-              <ThemedText style={{ color: textSecondaryColor }}>Price</ThemedText>
-              <ThemedText>{formatPricing((user as any).subscriptionTier || 'free')}</ThemedText>
+              <ThemedText style={{ color: textSecondaryColor }}>
+                {isLifetimeDisplay ? 'Membership' : 'Price'}
+              </ThemedText>
+              <ThemedText>
+                {isLifetimeDisplay
+                  ? 'Included (Lifetime Membership)'
+                  : subscriptionInfo?.source === 'admin' && subscriptionInfo?.expiryDate
+                    ? `Gifted until ${new Date(subscriptionInfo.expiryDate).toLocaleDateString()}`
+                  : formatPricing((user as any).subscriptionTier || 'free')}
+              </ThemedText>
             </View>
             
             {/* Show event limits for Free and Lite tiers */}
@@ -278,12 +348,7 @@ export default function ProfileScreen() {
             style={[styles.loginButton, { backgroundColor: tintColor }]}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              const loginUrl = getLoginUrl();
-              if (Platform.OS === 'web') {
-                window.location.href = loginUrl;
-              } else {
-                Alert.alert('Login', 'Please use the Events screen to log in on mobile');
-              }
+              router.push('/login' as any);
             }}
           >
             <ThemedText style={styles.loginButtonText}>Log In</ThemedText>
