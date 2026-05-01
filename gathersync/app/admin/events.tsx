@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { useAutoSync } from '@/hooks/use-auto-sync';
 import type { Event } from '@/types/models';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';
 
@@ -24,6 +25,7 @@ type FilterType = 'all' | 'upcoming' | 'past' | 'flexible' | 'fixed';
 export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { deleteEvent } = useAutoSync();
   
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
@@ -130,7 +132,7 @@ export default function AdminEventsScreen() {
   const performBulkDelete = async () => {
     try {
       for (const eventId of selectedEvents) {
-        await eventsLocalStorage.delete(eventId);
+        await deleteEvent(eventId);
       }
       setSelectedEvents(new Set());
       await loadEvents();

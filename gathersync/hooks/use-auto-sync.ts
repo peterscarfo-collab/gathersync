@@ -16,6 +16,19 @@ interface SyncQueue {
   retries: number;
 }
 
+function normalizeEventId(eventId: unknown): string {
+  if (typeof eventId !== 'string') {
+    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
+  }
+
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    throw new Error('Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
 /**
  * Automatic background sync hook
  * Syncs data changes immediately to cloud without user intervention
@@ -130,10 +143,11 @@ export function useAutoSync() {
   }, [isAuthenticated, isOnline]);
 
   // Push single change to cloud
-  const pushToCloud = useCallback(async (operation: 'create' | 'update' | 'delete', eventId: string, data?: Event) => {
+  const pushToCloud = useCallback(async (operation: 'create' | 'update' | 'delete', eventId: string, data?: Event): Promise<boolean> => {
     if (!isAuthenticated) {
       console.log('[AutoSync] Not authenticated, skipping push');
-      return;
+      setSyncStatus('error');
+      return false;
     }
 
     if (!isOnline) {
@@ -147,7 +161,7 @@ export function useAutoSync() {
         retries: 0,
       });
       setSyncStatus('offline');
-      return;
+      return true;
     }
 
     try {
@@ -177,6 +191,7 @@ export function useAutoSync() {
       }
 
       setSyncStatus('synced');
+      return true;
     } catch (error) {
       console.error('[AutoSync] Push failed:', error);
       
@@ -190,6 +205,7 @@ export function useAutoSync() {
       });
       
       setSyncStatus('error');
+      return false;
     }
   }, [isAuthenticated, isOnline]);
 
@@ -252,11 +268,16 @@ export function useAutoSync() {
   }, [pushToCloud]);
 
   const deleteEvent = useCallback(async (eventId: string) => {
+    const normalizedEventId = normalizeEventId(eventId);
+
     // Optimistic update: delete locally first
-    await eventsLocalStorage.delete(eventId);
+    await eventsLocalStorage.delete(normalizedEventId);
     
-    // Then sync to cloud in background
-    pushToCloud('delete', eventId);
+    // Deletes must await cloud sync so permission/API failures are visible to callers.
+    const syncedOrQueued = await pushToCloud('delete', normalizedEventId);
+    if (!syncedOrQueued) {
+      throw new Error(`Event ${normalizedEventId} was deleted locally but could not be deleted from cloud`);
+    }
   }, [pushToCloud]);
 
   // Push all local events to cloud (full sync)
@@ -267,7 +288,9 @@ export function useAutoSync() {
       console.log('[AutoSync] Starting full push to cloud...');
       setSyncStatus('syncing');
 
-      const localEvents = await eventsLocalStorage.getAll();
+      const localEventsRaw = await eventsLocalStorage.getAllRaw();
+      const localEvents = localEventsRaw.filter((event) => !event.deletedAt);
+      const locallyDeletedEvents = localEventsRaw.filter((event) => event.deletedAt);
       const cloudEvents = await eventsCloudStorage.getAll();
       
       // Create a map of cloud events by ID
@@ -275,6 +298,31 @@ export function useAutoSync() {
 
       let successCount = 0;
       let errorCount = 0;
+
+      // Push local deletion tombstones first so cloud data cannot resurrect deleted events.
+      for (const deletedEvent of locallyDeletedEvents) {
+        const cloudEvent = cloudEventMap.get(deletedEvent.id);
+        if (!cloudEvent) {
+          continue;
+        }
+
+        try {
+          const localDeletedAt = new Date(deletedEvent.deletedAt!).getTime();
+          const localUpdatedAt = new Date(deletedEvent.updatedAt).getTime();
+          const cloudUpdatedAt = new Date(cloudEvent.updatedAt).getTime();
+          const deletionTime = Math.max(localDeletedAt, localUpdatedAt);
+
+          if (deletionTime >= cloudUpdatedAt) {
+            console.log('[AutoSync] Deleting tombstoned event from cloud:', deletedEvent.id, deletedEvent.name);
+            await eventsCloudStorage.delete(deletedEvent.id);
+            cloudEventMap.delete(deletedEvent.id);
+            successCount++;
+          }
+        } catch (eventError) {
+          console.error('[AutoSync] Failed to sync event deletion:', deletedEvent.id, deletedEvent.name, eventError);
+          errorCount++;
+        }
+      }
 
       // Push each local event to cloud (with individual error handling)
       for (const localEvent of localEvents) {
