@@ -21,7 +21,7 @@ interface SyncQueue {
  * Syncs data changes immediately to cloud without user intervention
  */
 export function useAutoSync() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [isOnline, setIsOnline] = useState(true);
   const syncQueueRef = useRef<SyncQueue[]>([]);
@@ -94,6 +94,12 @@ export function useAutoSync() {
           console.log('[AutoSync] Adding new event from cloud:', cloudEvent.id, cloudEvent.name);
           await eventsLocalStorage.addWithId(cloudEvent);
         } else {
+          if (localEvent.deletedAt) {
+            console.log('[AutoSync] Local deletion wins, deleting cloud copy:', cloudEvent.id, cloudEvent.name);
+            await eventsCloudStorage.delete(cloudEvent.id);
+            continue;
+          }
+
           // Event exists locally, compare timestamps
           const cloudTime = new Date(cloudEvent.updatedAt).getTime();
           const localTime = new Date(localEvent.updatedAt).getTime();
@@ -131,6 +137,23 @@ export function useAutoSync() {
 
   // Push single change to cloud
   const pushToCloud = useCallback(async (operation: 'create' | 'update' | 'delete', eventId: string, data?: Event) => {
+    if (!eventId || typeof eventId !== 'string') {
+      throw new Error(`Invalid event id for ${operation}: ${String(eventId)}`);
+    }
+
+    if (authLoading) {
+      console.log('[AutoSync] Auth still loading, queuing operation:', operation, eventId);
+      syncQueueRef.current.push({
+        operation,
+        eventId,
+        data,
+        timestamp: Date.now(),
+        retries: 0,
+      });
+      setSyncStatus('syncing');
+      return;
+    }
+
     if (!isAuthenticated) {
       console.log('[AutoSync] Not authenticated, skipping push');
       return;
@@ -191,11 +214,11 @@ export function useAutoSync() {
       
       setSyncStatus('error');
     }
-  }, [isAuthenticated, isOnline]);
+  }, [authLoading, isAuthenticated, isOnline]);
 
   // Process queued operations
   const processQueue = useCallback(async () => {
-    if (!isAuthenticated || !isOnline || syncQueueRef.current.length === 0) return;
+    if (authLoading || !isAuthenticated || !isOnline || syncQueueRef.current.length === 0) return;
 
     console.log('[AutoSync] Processing queue:', syncQueueRef.current.length, 'items');
     
@@ -217,7 +240,11 @@ export function useAutoSync() {
         }
       }
     }
-  }, [isAuthenticated, isOnline, pushToCloud]);
+  }, [authLoading, isAuthenticated, isOnline, pushToCloud]);
+
+  useEffect(() => {
+    processQueue();
+  }, [processQueue]);
 
   // Auto-syncing CRUD operations
   const createEvent = useCallback(async (event: Event) => {
@@ -252,11 +279,15 @@ export function useAutoSync() {
   }, [pushToCloud]);
 
   const deleteEvent = useCallback(async (eventId: string) => {
+    if (!eventId || typeof eventId !== 'string') {
+      throw new Error(`Invalid event id for delete: ${String(eventId)}`);
+    }
+
     // Optimistic update: delete locally first
     await eventsLocalStorage.delete(eventId);
     
-    // Then sync to cloud in background
-    pushToCloud('delete', eventId);
+    // Wait for the delete to be accepted, queued, or fail so callers do not silently drop it.
+    await pushToCloud('delete', eventId);
   }, [pushToCloud]);
 
   // Push all local events to cloud (full sync)

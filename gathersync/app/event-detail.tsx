@@ -22,7 +22,8 @@ export default function EventDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
-  const { updateEvent: autoUpdateEvent } = useAutoSync();
+  const normalizedEventId = Array.isArray(eventId) ? eventId[0] : eventId;
+  const { updateEvent: autoUpdateEvent, deleteEvent } = useAutoSync();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -39,8 +40,8 @@ export default function EventDetailScreen() {
   const errorColor = useThemeColor({}, 'error');
 
   const loadEvent = async (retryCount = 0) => {
-    if (!eventId) return;
-    const loadedEvent = await eventsLocalStorage.getById(eventId);
+    if (!normalizedEventId) return;
+    const loadedEvent = await eventsLocalStorage.getById(normalizedEventId);
     if (loadedEvent) {
       setEvent(loadedEvent);
       setEditedName(loadedEvent.name);
@@ -51,7 +52,7 @@ export default function EventDetailScreen() {
       setTimeout(() => loadEvent(retryCount + 1), 300);
     } else {
       // All retries failed - event truly doesn't exist
-      console.error('[EventDetail] Event not found after 10 retries:', eventId);
+      console.error('[EventDetail] Event not found after 10 retries:', normalizedEventId);
       Alert.alert(
         'Event Not Found',
         'Could not load event. It may have been deleted or failed to save.',
@@ -65,7 +66,7 @@ export default function EventDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       loadEvent();
-    }, [eventId])
+    }, [normalizedEventId])
   );
 
   const updateEvent = async (updatedEvent: Event) => {
@@ -74,7 +75,7 @@ export default function EventDetailScreen() {
       updatedAt: new Date().toISOString(),
     };
     // Use auto-sync to save and sync to cloud
-    await autoUpdateEvent(eventId!, updated);
+    await autoUpdateEvent(normalizedEventId!, updated);
     setEvent(updated);
   };
 
@@ -314,7 +315,7 @@ export default function EventDetailScreen() {
         {
           text: 'Finalize',
           onPress: async () => {
-            await autoUpdateEvent(eventId!, {
+            await autoUpdateEvent(normalizedEventId!, {
               ...event,
               finalized: true,
               finalizedDate: bestDay.date,
@@ -343,7 +344,7 @@ export default function EventDetailScreen() {
     if (!event) return;
     
     const isArchiving = !event.archived;
-    await autoUpdateEvent(eventId!, {
+    await autoUpdateEvent(normalizedEventId!, {
       ...event,
       archived: isArchiving,
       updatedAt: new Date().toISOString(),
@@ -368,7 +369,19 @@ export default function EventDetailScreen() {
 
   const confirmDelete = async () => {
     setShowDeleteConfirm(false);
-    await eventsLocalStorage.delete(eventId!);
+    if (!normalizedEventId) {
+      Alert.alert('Error', 'Missing event ID. Please reopen the event and try again.');
+      return;
+    }
+
+    try {
+      await deleteEvent(normalizedEventId);
+    } catch (error) {
+      console.error('[EventDetail] Failed to delete event:', error);
+      Alert.alert('Error', 'Failed to delete event. Please try again.');
+      return;
+    }
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   };

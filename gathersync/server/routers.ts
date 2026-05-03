@@ -193,7 +193,7 @@ export const appRouter = router({
 
     delete: protectedProcedure
       .input(z.object({ id: z.string() }))
-      .mutation(({ input }) => db.deleteEvent(input.id)),
+      .mutation(({ ctx, input }) => db.deleteEvent(input.id, ctx.user.id)),
   }),
 
   participants: router({
