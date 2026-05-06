@@ -7,9 +7,9 @@ import crypto from "crypto";
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/auth/google/callback";
+const GOOGLE_REDIRECT_URI = "https://gathersync-api.onrender.com/api/auth/google/callback";
 
-if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
   throw new Error("Google OAuth not configured");
 }
 
@@ -94,7 +94,7 @@ export function registerGoogleOAuthRoutes(app: Express) {
 
     if (error) {
       console.error("[Google OAuth] Error:", error);
-      const frontendUrl = process.env.FRONTEND_URL || process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:3000";
+      const frontendUrl = "https://app.gathersync.app";
       res.redirect(`${frontendUrl}?error=${error}`);
       return;
     }
@@ -160,7 +160,7 @@ export function registerGoogleOAuthRoutes(app: Express) {
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
       // Redirect to frontend with token in URL
-      const frontendUrl = process.env.FRONTEND_URL || process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:3000";
+      const frontendUrl = "https://app.gathersync.app";
       res.redirect(`${frontendUrl}?loginSuccess=true&token=${sessionToken}`);
     } catch (error) {
       console.error("[Google OAuth] Callback failed:", error);
