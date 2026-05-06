@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
+import { handleStripeWebhook } from "../webhooks/stripe";
 
 async function startServer() {
   const app = express();
@@ -20,7 +21,7 @@ async function startServer() {
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.header(
       "Access-Control-Allow-Headers",
-      "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization, stripe-signature",
     );
     res.header("Access-Control-Allow-Credentials", "true");
     if (req.method === "OPTIONS") {
@@ -29,6 +30,10 @@ async function startServer() {
     }
     next();
   });
+
+  // Stripe webhook MUST be before express.json() because it needs the raw body
+  app.post('/api/public/stripe/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
