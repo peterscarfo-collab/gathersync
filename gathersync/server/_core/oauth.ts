@@ -58,7 +58,7 @@ export function registerOAuthRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
       const frontendUrl = "https://app.gathersync.app";
-      res.redirect(`${frontendUrl}?loginSuccess=true`);
+      res.redirect(`${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`);
     } catch (error) {
       res.status(500).json({ error: "Callback failed" });
     }

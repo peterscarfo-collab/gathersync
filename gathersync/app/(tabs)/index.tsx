@@ -141,20 +141,6 @@ export default function EventsScreen() {
           setShowOnboarding(true);
         }
       });
-      
-      // Check for loginSuccess parameter (from OAuth redirect)
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('loginSuccess') === 'true') {
-          console.log('[EventsScreen] Login success detected, refreshing auth...');
-          // Remove the parameter from URL
-          window.history.replaceState({}, '', window.location.pathname);
-          // Force auth refresh
-          setTimeout(() => {
-            window.location.reload();
-          }, 500);
-        }
-      }
     }, [])
   );
 

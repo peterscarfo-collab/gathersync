@@ -161,7 +161,7 @@ export function registerGoogleOAuthRoutes(app: Express) {
 
       // Redirect to frontend with token in URL
       const frontendUrl = "https://app.gathersync.app";
-      res.redirect(`${frontendUrl}?loginSuccess=true&token=${sessionToken}`);
+      res.redirect(`${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`);
     } catch (error) {
       console.error("[Google OAuth] Callback failed:", error);
       res.status(500).json({ error: "OAuth callback failed" });
