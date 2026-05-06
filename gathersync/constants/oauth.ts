@@ -42,8 +42,9 @@ const encodeState = (value: string) => {
 export function getLoginUrl() {
   const redirectUri = Linking.createURL("api/oauth/callback", { scheme: env.deepLinkScheme });
   
-  // This points back to your local backend server
-  const url = new URL("http://localhost:3000/api/auth/google");
+  // Use the API_BASE_URL if available, otherwise fallback to localhost
+  const baseUrl = API_BASE_URL ? API_BASE_URL.replace(/\/$/, "") : "http://localhost:3000";
+  const url = new URL(`${baseUrl}/api/auth/google`);
   
   url.searchParams.set("appId", APP_ID);
   url.searchParams.set("redirectUri", redirectUri);
