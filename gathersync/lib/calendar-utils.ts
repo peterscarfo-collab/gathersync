@@ -59,7 +59,7 @@ export function getDayAvailability(
     
     if (p.unavailableAllMonth) {
       status = 'unavailable';
-    } else if (dateStr in p.availability) {
+    } else if (p.availability && dateStr in p.availability) {
       status = p.availability[dateStr] ? 'available' : 'unavailable';
     } else {
       status = 'no-response';

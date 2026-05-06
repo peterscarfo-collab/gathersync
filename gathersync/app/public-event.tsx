@@ -155,54 +155,6 @@ export default function PublicEventScreen() {
     }
   };
 
-  const handleImportToApp = async () => {
-    if (!event) return;
-
-    // Create deep link to import event
-    const scheme = "manus20251216190030"; // From app.config.ts
-    const importData = encodeURIComponent(JSON.stringify(event));
-    const deepLink = `${scheme}://import-event?data=${importData}`;
-
-    try {
-      const canOpen = await Linking.canOpenURL(deepLink);
-      if (canOpen) {
-        // App is installed - open it
-        await Linking.openURL(deepLink);
-      } else {
-        // App not installed - prompt to download
-        Alert.alert(
-          "App Not Installed",
-          "GatherSync app is required to import events. Would you like to download it?",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Download", onPress: handleDownloadApp },
-          ]
-        );
-      }
-    } catch (error) {
-      console.error("[PublicEvent] Error opening deep link:", error);
-      Alert.alert(
-        "Import Failed",
-        "Could not open GatherSync app. Please make sure it's installed."
-      );
-    }
-  };
-
-  const handleDownloadApp = () => {
-    // TODO: Replace with actual App Store/Play Store links
-    const appStoreUrl = "https://apps.apple.com/app/gathersync/id123456789";
-    const playStoreUrl = "https://play.google.com/store/apps/details?id=com.gathersync";
-
-    Alert.alert(
-      "Download GatherSync",
-      "Get the full app to create your own events and manage group scheduling.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "App Store", onPress: () => Linking.openURL(appStoreUrl) },
-        { text: "Play Store", onPress: () => Linking.openURL(playStoreUrl) },
-      ]
-    );
-  };
 
   if (loading) {
     return (
@@ -247,11 +199,32 @@ export default function PublicEventScreen() {
       {/* Event Card */}
       <View style={styles.eventCard}>
         <Text style={styles.eventName}>{event.name}</Text>
-        {event.eventType === "fixed" && event.fixedDate ? (
-          <Text style={styles.eventDate}>
-            {event.fixedDate}
-            {event.fixedTime ? ` at ${event.fixedTime}` : ""}
-          </Text>
+        {event.eventType === 'fixed' && event.fixedDate ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
+            <Text style={styles.eventDate}>
+              {new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </Text>
+            {event.fixedTime && (
+              <>
+                <Text style={[styles.eventDate, { marginHorizontal: 8 }]}>
+                  •
+                </Text>
+                <Text style={styles.eventDate}>
+                  {(() => {
+                    const [hours, minutes] = event.fixedTime.split(':').map(Number);
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    const displayHours = hours % 12 || 12;
+                    return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                  })()}
+                </Text>
+              </>
+            )}
+          </View>
         ) : (
           <Text style={styles.eventDate}>
             {getMonthName(event.month)} {event.year}
@@ -387,19 +360,6 @@ export default function PublicEventScreen() {
         </View>
       )}
 
-      {/* App Download CTA */}
-      <View style={styles.ctaSection}>
-        <Text style={styles.ctaTitle}>Get the GatherSync App</Text>
-        <Text style={styles.ctaText}>
-          Import this event to your app and manage your schedule with ease
-        </Text>
-        <Pressable style={styles.importButton} onPress={handleImportToApp}>
-          <Text style={styles.importButtonText}>📥 Import to My App</Text>
-        </Pressable>
-        <Pressable style={styles.downloadButton} onPress={handleDownloadApp}>
-          <Text style={styles.downloadButtonText}>Download App</Text>
-        </Pressable>
-      </View>
 
       {/* Footer */}
       <View style={styles.footer}>

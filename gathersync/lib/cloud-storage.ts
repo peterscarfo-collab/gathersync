@@ -110,10 +110,8 @@ export const eventsCloudStorage = {
       );
       
       console.log('[CloudStorage] Successfully fetched all events with participants');
-      // Filter out soft-deleted events
-      const activeEvents = (eventsWithParticipants as Event[]).filter(e => !e.deletedAt);
-      console.log(`[CloudStorage] Returning ${activeEvents.length} active events (${eventsWithParticipants.length - activeEvents.length} deleted)`);
-      return activeEvents;
+      console.log(`[CloudStorage] Returning ${eventsWithParticipants.length} total events (including deleted)`);
+      return eventsWithParticipants as Event[];
     } catch (error) {
       console.error('[CloudStorage] Failed to fetch events:', error);
       return [];
@@ -256,7 +254,9 @@ export const eventsCloudStorage = {
       if (updates.meetingLink !== undefined && updates.meetingLink !== null) eventUpdatePayload.meetingLink = updates.meetingLink;
       if (updates.rsvpDeadline !== undefined && updates.rsvpDeadline !== null) eventUpdatePayload.rsvpDeadline = updates.rsvpDeadline;
       if (updates.meetingNotes !== undefined && updates.meetingNotes !== null) eventUpdatePayload.meetingNotes = updates.meetingNotes;
-      if (updates.deletedAt !== undefined) eventUpdatePayload.deletedAt = updates.deletedAt ? new Date(updates.deletedAt) : null;
+      if ('deletedAt' in updates) eventUpdatePayload.deletedAt = updates.deletedAt ? new Date(updates.deletedAt) : null;
+
+      console.log('[CloudStorage] Event payload for update:', JSON.stringify(eventUpdatePayload, null, 2));
 
       // Only call update if there are fields to update beyond the ID
       if (Object.keys(eventUpdatePayload).length > 1) {
@@ -310,7 +310,7 @@ export const eventsCloudStorage = {
               if (participant.phone !== null && participant.phone !== undefined) payload.phone = participant.phone;
               if (participant.email !== null && participant.email !== undefined) payload.email = participant.email;
               if (participant.rsvpStatus !== null && participant.rsvpStatus !== undefined) payload.rsvpStatus = participant.rsvpStatus;
-              if (participant.deletedAt !== undefined) payload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
+              if ('deletedAt' in participant) payload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
 
               if (existingIds.has(participant.id)) {
                 // Update existing

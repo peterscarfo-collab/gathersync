@@ -19,6 +19,7 @@ export default function DayDetailScreen() {
 
   const [event, setEvent] = useState<Event | null>(null);
   const [dayAvailability, setDayAvailability] = useState<DayAvailability | null>(null);
+  const [filter, setFilter] = useState<'all' | 'available' | 'unavailable' | 'no-response'>('all');
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -51,12 +52,17 @@ export default function DayDetailScreen() {
     if (!participant) return;
 
     const dateStr = dayAvailability.date;
+    const hasStatus = dateStr in participant.availability;
     const currentStatus = participant.availability[dateStr];
     
-    // Toggle: undefined/false -> true, true -> false
-    const newStatus = currentStatus ? false : true;
-    
-    participant.availability[dateStr] = newStatus;
+    // Toggle: undefined -> true (Available), true -> false (Unavailable), false -> undefined (No Response)
+    if (!hasStatus) {
+      participant.availability[dateStr] = true;
+    } else if (currentStatus === true) {
+      participant.availability[dateStr] = false;
+    } else {
+      delete participant.availability[dateStr];
+    }
 
     await eventsLocalStorage.update(eventId!, {
       ...event,
@@ -83,7 +89,7 @@ export default function DayDetailScreen() {
     year: 'numeric',
   });
 
-  const totalParticipants = event.participants.length;
+  const totalParticipants = event.participants.filter(p => !p.deletedAt).length;
   const availabilityPercentage = totalParticipants > 0
     ? Math.round((dayAvailability.availableCount / totalParticipants) * 100)
     : 0;
@@ -125,30 +131,57 @@ export default function DayDetailScreen() {
             {dateDisplay}
           </ThemedText>
           <View style={styles.statsRow}>
-            <View style={styles.statItem}>
+            <Pressable 
+              style={[
+                styles.statItem, 
+                filter === 'available' && { backgroundColor: successColor + '10', borderRadius: 8, paddingVertical: 4 }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setFilter(filter === 'available' ? 'all' : 'available');
+              }}
+            >
               <ThemedText style={[styles.statValue, { color: successColor }]}>
                 {dayAvailability.availableCount}
               </ThemedText>
               <ThemedText style={[styles.statLabel, { color: textSecondaryColor }]}>
                 Available
               </ThemedText>
-            </View>
-            <View style={styles.statItem}>
+            </Pressable>
+            <Pressable 
+              style={[
+                styles.statItem, 
+                filter === 'unavailable' && { backgroundColor: errorColor + '10', borderRadius: 8, paddingVertical: 4 }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setFilter(filter === 'unavailable' ? 'all' : 'unavailable');
+              }}
+            >
               <ThemedText style={[styles.statValue, { color: errorColor }]}>
                 {dayAvailability.unavailableCount}
               </ThemedText>
               <ThemedText style={[styles.statLabel, { color: textSecondaryColor }]}>
                 Unavailable
               </ThemedText>
-            </View>
-            <View style={styles.statItem}>
+            </Pressable>
+            <Pressable 
+              style={[
+                styles.statItem, 
+                filter === 'no-response' && { backgroundColor: textSecondaryColor + '10', borderRadius: 8, paddingVertical: 4 }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setFilter(filter === 'no-response' ? 'all' : 'no-response');
+              }}
+            >
               <ThemedText style={[styles.statValue, { color: textSecondaryColor }]}>
                 {dayAvailability.noResponseCount}
               </ThemedText>
               <ThemedText style={[styles.statLabel, { color: textSecondaryColor }]}>
                 No Response
               </ThemedText>
-            </View>
+            </Pressable>
           </View>
           <View style={styles.percentageRow}>
             <ThemedText type="subtitle" style={{ color: tintColor }}>
@@ -159,7 +192,9 @@ export default function DayDetailScreen() {
 
         {/* Participants List */}
         <View style={styles.participantsList}>
-          {dayAvailability.participants.map((participant) => {
+          {dayAvailability.participants
+            .filter((p) => filter === 'all' || p.status === filter)
+            .map((participant) => {
             let statusIcon: any;
             let statusColor: string;
             

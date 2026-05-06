@@ -22,6 +22,7 @@ interface ParticipantStats {
   totalEvents: number;
   attended: number;
   percentage: number;
+  events: { id: string; name: string; date: string; attended: boolean }[];
 }
 
 export default function AdminAttendanceScreen() {
@@ -34,6 +35,7 @@ export default function AdminAttendanceScreen() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [participantStats, setParticipantStats] = useState<ParticipantStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedParticipant, setExpandedParticipant] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -42,11 +44,12 @@ export default function AdminAttendanceScreen() {
   const loadData = async () => {
     try {
       const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      const activeEvents = allEvents.filter(e => !e.archived);
+      setEvents(activeEvents);
 
       // Collect all attendance records
       const records: AttendanceRecord[] = [];
-      allEvents.forEach(event => {
+      activeEvents.forEach(event => {
         if (event.attendanceRecords) {
           records.push(...event.attendanceRecords);
         }
@@ -54,22 +57,34 @@ export default function AdminAttendanceScreen() {
       setAttendanceRecords(records);
 
       // Calculate participant statistics
-      const statsMap = new Map<string, { attended: number; total: number }>();
+      const statsMap = new Map<string, { attended: number; total: number; events: { id: string; name: string; date: string; attended: boolean }[] }>();
       
       allEvents.forEach(event => {
         event.participants.forEach(participant => {
-          const current = statsMap.get(participant.name) || { attended: 0, total: 0 };
+          const current = statsMap.get(participant.name) || { attended: 0, total: 0, events: [] };
           current.total += 1;
           
+          let attended = false;
           // Check if they attended
           if (event.attendanceRecords) {
-            const attended = event.attendanceRecords.some(
+            attended = event.attendanceRecords.some(
               record => record.attendees.includes(participant.name)
             );
             if (attended) {
               current.attended += 1;
             }
           }
+          
+          const eventDate = event.eventType === 'fixed' && event.fixedDate
+            ? new Date(event.fixedDate).toLocaleDateString()
+            : `${event.month}/${event.year}`;
+
+          current.events.push({
+            id: event.id,
+            name: event.name,
+            date: eventDate,
+            attended
+          });
           
           statsMap.set(participant.name, current);
         });
@@ -81,6 +96,7 @@ export default function AdminAttendanceScreen() {
           totalEvents: data.total,
           attended: data.attended,
           percentage: data.total > 0 ? Math.round((data.attended / data.total) * 100) : 0,
+          events: data.events,
         }))
         .sort((a, b) => b.percentage - a.percentage);
 
@@ -217,39 +233,59 @@ export default function AdminAttendanceScreen() {
 
               {/* Table Rows */}
               {participantStats.map((stat, index) => (
-                <View
-                  key={stat.name}
-                  style={[
-                    styles.tableRow,
-                    { backgroundColor: index % 2 === 0 ? 'transparent' : cardBg + '40' },
-                  ]}
-                >
-                  <ThemedText style={[styles.tableCell, styles.nameCell]}>
-                    {stat.name}
-                  </ThemedText>
-                  <ThemedText style={[styles.tableCell, styles.numberCell]}>
-                    {stat.totalEvents}
-                  </ThemedText>
-                  <ThemedText style={[styles.tableCell, styles.numberCell]}>
-                    {stat.attended}
-                  </ThemedText>
-                  <View style={[styles.tableCell, styles.numberCell]}>
-                    <View
-                      style={[
-                        styles.percentageBadge,
-                        {
-                          backgroundColor:
-                            stat.percentage >= 80
-                              ? '#34c759'
-                              : stat.percentage >= 50
-                              ? '#ff9500'
-                              : '#ff3b30',
-                        },
-                      ]}
-                    >
-                      <ThemedText style={styles.percentageText}>{stat.percentage}%</ThemedText>
+                <View key={stat.name}>
+                  <Pressable
+                    style={[
+                      styles.tableRow,
+                      { backgroundColor: index % 2 === 0 ? 'transparent' : cardBg + '40' },
+                    ]}
+                    onPress={() => setExpandedParticipant(expandedParticipant === stat.name ? null : stat.name)}
+                  >
+                    <ThemedText style={[styles.tableCell, styles.nameCell]}>
+                      {stat.name}
+                    </ThemedText>
+                    <ThemedText style={[styles.tableCell, styles.numberCell]}>
+                      {stat.totalEvents}
+                    </ThemedText>
+                    <ThemedText style={[styles.tableCell, styles.numberCell]}>
+                      {stat.attended}
+                    </ThemedText>
+                    <View style={[styles.tableCell, styles.numberCell]}>
+                      <View
+                        style={[
+                          styles.percentageBadge,
+                          {
+                            backgroundColor:
+                              stat.percentage >= 80
+                                ? '#34c759'
+                                : stat.percentage >= 50
+                                ? '#ff9500'
+                                : '#ff3b30',
+                          },
+                        ]}
+                      >
+                        <ThemedText style={styles.percentageText}>{stat.percentage}%</ThemedText>
+                      </View>
                     </View>
-                  </View>
+                  </Pressable>
+                  
+                  {expandedParticipant === stat.name && (
+                    <View style={[styles.expandedDetails, { backgroundColor: cardBg + '20' }]}>
+                      {stat.events.map(evt => (
+                        <View key={evt.id} style={styles.expandedEventRow}>
+                          <ThemedText style={styles.expandedEventName} numberOfLines={1}>{evt.name}</ThemedText>
+                          <ThemedText style={styles.expandedEventDate}>{evt.date}</ThemedText>
+                          <View style={styles.expandedEventStatus}>
+                            {evt.attended ? (
+                              <IconSymbol name="checkmark.circle.fill" color="#34c759" size={20} />
+                            ) : (
+                              <IconSymbol name="xmark.circle.fill" color="#ff3b30" size={20} />
+                            )}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
@@ -387,6 +423,31 @@ const styles = StyleSheet.create({
   tableHeader: {
     borderBottomWidth: 2,
     borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  expandedDetails: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  expandedEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  expandedEventName: {
+    flex: 2,
+    fontSize: 14,
+  },
+  expandedEventDate: {
+    flex: 1,
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  expandedEventStatus: {
+    width: 60,
+    alignItems: 'center',
   },
   tableCell: {
     justifyContent: 'center',

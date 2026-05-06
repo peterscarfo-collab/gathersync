@@ -9,6 +9,7 @@ export type User = {
   email: string | null;
   loginMethod: string | null;
   lastSignedIn: Date;
+  role?: string;
   // Subscription fields
   subscriptionTier?: 'free' | 'pro' | 'enterprise';
   subscriptionStatus?: 'active' | 'cancelled' | 'expired' | 'trialing';

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -135,14 +135,25 @@ export async function updateEvent(eventId: string, data: Partial<InsertEvent>) {
   await db.update(events).set(data).where(eq(events.id, eventId));
 }
 
-export async function deleteEvent(eventId: string) {
+export async function deleteEvent(eventId: string, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Delete participants first
-  await db.delete(participants).where(eq(participants.eventId, eventId));
-  // Then delete event
-  await db.delete(events).where(eq(events.id, eventId));
+  await db.transaction(async (tx) => {
+    const event = await tx
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.userId, userId)))
+      .limit(1);
+
+    if (event.length === 0) {
+      throw new Error(`Event ${eventId} not found for current user`);
+    }
+
+    // Keep participant and event deletion atomic so sync cannot observe a partial delete.
+    await tx.delete(participants).where(eq(participants.eventId, eventId));
+    await tx.delete(events).where(and(eq(events.id, eventId), eq(events.userId, userId)));
+  });
 }
 
 /**

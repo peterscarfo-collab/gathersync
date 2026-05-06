@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { FlatList, Pressable, StyleSheet, View, Alert } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View, Alert, Modal, ScrollView, Platform } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +24,7 @@ export default function SavesScreen() {
   const [templates, setTemplates] = useState<GroupTemplate[]>([]);
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringEventTemplate[]>([]);
   const [archivedEvents, setArchivedEvents] = useState<any[]>([]);
+  const [selectedRecurringTemplate, setSelectedRecurringTemplate] = useState<RecurringEventTemplate | null>(null);
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -102,39 +103,75 @@ export default function SavesScreen() {
   };
 
   const handleDeleteSnapshot = (snapshotId: string) => {
-    Alert.alert(
-      'Delete Snapshot',
-      'Are you sure you want to delete this saved event?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await snapshotsLocalStorage.delete(snapshotId);
-            loadData();
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this saved event?')) {
+        snapshotsLocalStorage.delete(snapshotId).then(() => loadData());
+      }
+    } else {
+      Alert.alert(
+        'Delete Snapshot',
+        'Are you sure you want to delete this saved event?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await snapshotsLocalStorage.delete(snapshotId);
+              loadData();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const handleDeleteTemplate = (templateId: string) => {
-    Alert.alert(
-      'Delete Template',
-      'Are you sure you want to delete this group template?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await templatesLocalStorage.delete(templateId);
-            loadData();
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this group template?')) {
+        templatesLocalStorage.delete(templateId).then(() => loadData());
+      }
+    } else {
+      Alert.alert(
+        'Delete Template',
+        'Are you sure you want to delete this group template?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await templatesLocalStorage.delete(templateId);
+              loadData();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
+  };
+
+  const handleDeleteRecurringTemplate = (templateId: string) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to delete this recurring template?')) {
+        recurringTemplatesStorage.delete(templateId).then(() => loadData());
+      }
+    } else {
+      Alert.alert(
+        'Delete Recurring Template',
+        'Are you sure you want to delete this recurring template?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await recurringTemplatesStorage.delete(templateId);
+              loadData();
+            },
+          },
+        ]
+      );
+    }
   };
 
   const renderSnapshot = ({ item }: { item: EventSnapshot }) => (
@@ -404,7 +441,10 @@ export default function SavesScreen() {
             data={recurringTemplates}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <View style={[styles.card, { backgroundColor: surfaceColor, marginHorizontal: 20, marginBottom: 12 }]}>
+              <Pressable 
+                style={[styles.card, { backgroundColor: surfaceColor, marginHorizontal: 20, marginBottom: 12 }]}
+                onPress={() => setSelectedRecurringTemplate(item)}
+              >
                 <View style={styles.cardHeader}>
                   <View style={styles.cardTitleRow}>
                     <IconSymbol name="arrow.clockwise" size={20} color={tintColor} />
@@ -412,6 +452,17 @@ export default function SavesScreen() {
                       {item.name}
                     </ThemedText>
                   </View>
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      handleDeleteRecurringTemplate(item.id);
+                    }}
+                    hitSlop={8}
+                    style={styles.deleteButton}
+                  >
+                    <IconSymbol name="trash.fill" size={20} color="#ef4444" />
+                  </Pressable>
                 </View>
                 <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
                   {item.pattern.charAt(0).toUpperCase() + item.pattern.slice(1)} • {item.participantNames.length} participants
@@ -419,7 +470,7 @@ export default function SavesScreen() {
                 <ThemedText style={[styles.detailText, { color: textSecondaryColor, marginTop: 4 }]}>
                   {item.active ? '✓ Active' : '○ Inactive'}
                 </ThemedText>
-              </View>
+              </Pressable>
             )}
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
@@ -444,6 +495,7 @@ export default function SavesScreen() {
               style={[styles.card, { backgroundColor: surfaceColor }]}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(`/event-detail?eventId=${item.id}` as any);
               }}
             >
               <View style={styles.cardHeader}>
@@ -455,7 +507,7 @@ export default function SavesScreen() {
                 </View>
               </View>
               <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
-                {getMonthName(item.month)} {item.year} • {item.participants.length} people
+                {item.eventType === 'fixed' ? item.fixedDate : `${getMonthName(item.month)} ${item.year}`} • {item.participants.length} people
               </ThemedText>
             </Pressable>
           )}
@@ -467,6 +519,79 @@ export default function SavesScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Recurring Template Details Modal */}
+      <Modal
+        visible={!!selectedRecurringTemplate}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedRecurringTemplate(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
+          onPress={() => setSelectedRecurringTemplate(null)}
+        >
+          <View style={{ backgroundColor: surfaceColor, borderRadius: 16, width: '100%', maxHeight: '80%', padding: 20 }} onStartShouldSetResponder={() => true}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <ThemedText type="subtitle">Template Details</ThemedText>
+              <Pressable onPress={() => setSelectedRecurringTemplate(null)} hitSlop={8}>
+                <IconSymbol name="xmark" size={24} color={tintColor} />
+              </Pressable>
+            </View>
+            <ScrollView>
+              {selectedRecurringTemplate && (
+                <View style={{ gap: 12 }}>
+                  <View>
+                    <ThemedText type="defaultSemiBold">Name</ThemedText>
+                    <ThemedText style={{ color: textSecondaryColor }}>{selectedRecurringTemplate.name}</ThemedText>
+                  </View>
+                  <View>
+                    <ThemedText type="defaultSemiBold">Pattern</ThemedText>
+                    <ThemedText style={{ color: textSecondaryColor }}>
+                      {selectedRecurringTemplate.pattern.charAt(0).toUpperCase() + selectedRecurringTemplate.pattern.slice(1)}
+                    </ThemedText>
+                  </View>
+                  <View>
+                    <ThemedText type="defaultSemiBold">Participants ({selectedRecurringTemplate.participantNames.length})</ThemedText>
+                    <ThemedText style={{ color: textSecondaryColor }}>
+                      {selectedRecurringTemplate.participantNames.join(', ')}
+                    </ThemedText>
+                  </View>
+                  {selectedRecurringTemplate.eventType && (
+                    <View>
+                      <ThemedText type="defaultSemiBold">Event Type</ThemedText>
+                      <ThemedText style={{ color: textSecondaryColor }}>
+                        {selectedRecurringTemplate.eventType === 'fixed' ? 'Fixed Time' : 'Flexible'}
+                        {selectedRecurringTemplate.fixedTime ? ` (${selectedRecurringTemplate.fixedTime})` : ''}
+                      </ThemedText>
+                    </View>
+                  )}
+                  {selectedRecurringTemplate.meetingType && (
+                    <View>
+                      <ThemedText type="defaultSemiBold">Meeting Type</ThemedText>
+                      <ThemedText style={{ color: textSecondaryColor }}>
+                        {selectedRecurringTemplate.meetingType === 'in-person' ? 'In-Person' : 'Virtual'}
+                      </ThemedText>
+                    </View>
+                  )}
+                  {selectedRecurringTemplate.meetingLink && (
+                    <View>
+                      <ThemedText type="defaultSemiBold">Meeting Link</ThemedText>
+                      <ThemedText style={{ color: textSecondaryColor }}>{selectedRecurringTemplate.meetingLink}</ThemedText>
+                    </View>
+                  )}
+                  {selectedRecurringTemplate.teamLeader && (
+                    <View>
+                      <ThemedText type="defaultSemiBold">Team Leader</ThemedText>
+                      <ThemedText style={{ color: textSecondaryColor }}>{selectedRecurringTemplate.teamLeader}</ThemedText>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </ThemedView>
     </DesktopLayout>
   );
@@ -547,6 +672,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     lineHeight: 24,
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardDetails: {
     flexDirection: 'row',

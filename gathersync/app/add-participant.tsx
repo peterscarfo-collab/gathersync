@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Alert,
   Pressable,
@@ -7,6 +7,9 @@ import {
   TextInput,
   View,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,28 +20,33 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { eventsLocalStorage as eventsLocalStorage } from '@/lib/local-storage';
+import { eventsLocalStorage } from '@/lib/local-storage';
 import { generateId } from '@/lib/calendar-utils';
 import type { Participant } from '@/types/models';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 
-type TabType = 'manual' | 'contacts' | 'ai';
+type ContactData = {
+  name: string;
+  phone?: string;
+  email?: string;
+  source: 'contacts';
+};
 
 export default function AddParticipantScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { eventId } = useLocalSearchParams<{ eventId: string }>();
   const { updateEvent } = useAutoSync();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
 
-  const [activeTab, setActiveTab] = useState<TabType>('manual');
-  const [manualName, setManualName] = useState('');
-  const [manualPhone, setManualPhone] = useState('');
-  const [manualEmail, setManualEmail] = useState('');
-  const [aiText, setAiText] = useState('');
-  const [extractedNames, setExtractedNames] = useState<string[]>([]);
-  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
-  const [isExtracting, setIsExtracting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [directory, setDirectory] = useState<Participant[]>([]);
+  const [contacts, setContacts] = useState<ContactData[]>([]);
+  const [hasLoadedContacts, setHasLoadedContacts] = useState(false);
+  const [isLoadingDirectory, setIsLoadingDirectory] = useState(true);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [currentEventParticipants, setCurrentEventParticipants] = useState<Set<string>>(new Set());
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -47,38 +55,102 @@ export default function AddParticipantScreen() {
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
   const successColor = useThemeColor({}, 'success');
 
-  const handleAddManual = async () => {
-    if (!manualName.trim()) {
-      Alert.alert('Error', 'Please enter a name');
-      return;
+  useEffect(() => {
+    async function loadDirectory() {
+      setIsLoadingDirectory(true);
+      try {
+        const allEvents = await eventsLocalStorage.getAll();
+        const currentEvent = allEvents.find(e => e.id === eventId);
+        
+        const currentParticipants = new Set<string>();
+        if (currentEvent) {
+          currentEvent.participants.forEach(p => {
+            currentParticipants.add(p.name.toLowerCase());
+            if (p.email) currentParticipants.add(p.email.toLowerCase());
+          });
+        }
+        setCurrentEventParticipants(currentParticipants);
+
+        const uniqueParticipants = new Map<string, Participant>();
+        for (const e of allEvents) {
+          for (const p of e.participants) {
+            const lowerName = p.name.toLowerCase();
+            // Prefer records with more info
+            const existing = uniqueParticipants.get(lowerName);
+            if (!existing || (!existing.phone && p.phone) || (!existing.email && p.email)) {
+              uniqueParticipants.set(lowerName, p);
+            }
+          }
+        }
+        setDirectory(Array.from(uniqueParticipants.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        console.error('Failed to load directory:', err);
+      } finally {
+        setIsLoadingDirectory(false);
+      }
     }
+    loadDirectory();
+  }, [eventId]);
+
+  const loadContacts = async () => {
+    setIsLoadingContacts(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Please allow access to contacts to use this feature.');
+        setIsLoadingContacts(false);
+        return;
+      }
+
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
+      });
+
+      if (data.length > 0) {
+        const contactList: ContactData[] = data
+          .filter(contact => contact.name)
+          .map(contact => ({
+            name: contact.name!,
+            phone: contact.phoneNumbers?.[0]?.number,
+            email: contact.emails?.[0]?.email,
+            source: 'contacts' as const,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        
+        setContacts(contactList);
+        setHasLoadedContacts(true);
+      }
+    } catch (err) {
+      console.error('Failed to load contacts:', err);
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  };
+
+  const handleAddParticipant = async (data: { name: string; phone?: string; email?: string; source: 'manual' | 'contacts' | 'directory' }) => {
+    if (!data.name.trim()) return;
 
     try {
       const event = await eventsLocalStorage.getById(eventId!);
       if (!event) return;
 
-      // Check for duplicates by email or name
-      const trimmedEmail = manualEmail.trim().toLowerCase();
-      const trimmedName = manualName.trim().toLowerCase();
-      const isDuplicate = event.participants.some(p => {
-        const matchesEmail = trimmedEmail && p.email?.toLowerCase() === trimmedEmail;
-        const matchesName = p.name.toLowerCase() === trimmedName;
-        return matchesEmail || matchesName;
-      });
-
-      if (isDuplicate) {
-        Alert.alert('Duplicate Participant', `${manualName.trim()} is already in this event`);
+      const trimmedName = data.name.trim();
+      const lowerName = trimmedName.toLowerCase();
+      
+      // Double check it's not already in the event
+      if (event.participants.some(p => p.name.toLowerCase() === lowerName)) {
+        Alert.alert('Already Added', `${trimmedName} is already in this event.`);
         return;
       }
 
       const newParticipant: Participant = {
         id: generateId(),
-        name: manualName.trim(),
-        phone: manualPhone.trim() || undefined,
-        email: manualEmail.trim() || undefined,
+        name: trimmedName,
+        phone: data.phone,
+        email: data.email,
         availability: {},
         unavailableAllMonth: false,
-        source: 'manual',
+        source: data.source === 'contacts' ? 'contacts' : 'manual',
       };
 
       event.participants.push(newParticipant);
@@ -88,18 +160,22 @@ export default function AddParticipantScreen() {
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setManualName('');
-      setManualPhone('');
-      setManualEmail('');
-      Alert.alert('Success', `${newParticipant.name} has been added`, [
-        {
-          text: 'Add Another',
-          onPress: () => {},
-        },
-        {
-          text: 'Done',
-          onPress: () => router.back(),
-        },
+      
+      // Update local state so it immediately disappears from the list
+      setCurrentEventParticipants(prev => {
+        const next = new Set(prev);
+        next.add(lowerName);
+        if (data.email) next.add(data.email.toLowerCase());
+        return next;
+      });
+      
+      // Clear search to prepare for next addition, or go back if preferred.
+      // Usually returning back after 1 addition is okay, but "Add Screen" might be used for multiple.
+      // Let's show a brief toast or alert, and clear search.
+      setSearchQuery('');
+      Alert.alert('Success', `${trimmedName} added!`, [
+        { text: 'Done', onPress: () => router.back() },
+        { text: 'Add Another', style: 'cancel' }
       ]);
     } catch (error) {
       console.error('Failed to add participant:', error);
@@ -107,172 +183,22 @@ export default function AddParticipantScreen() {
     }
   };
 
-  const handlePickContacts = async () => {
-    try {
-      console.log('[Contacts] Requesting permissions...');
-      const { status } = await Contacts.requestPermissionsAsync();
-      console.log('[Contacts] Permission status:', status);
-      
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Please allow access to contacts to use this feature.');
-        return;
-      }
+  const filteredDirectory = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return directory.filter(p => p.name.toLowerCase().includes(query));
+  }, [searchQuery, directory]);
 
-      console.log('[Contacts] Fetching contacts...');
-      const { data } = await Contacts.getContactsAsync({
-        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers, Contacts.Fields.Emails],
-      });
-      console.log(`[Contacts] Fetched ${data.length} contacts`);
+  const filteredContacts = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const query = searchQuery.toLowerCase();
+    return contacts.filter(c => c.name.toLowerCase().includes(query));
+  }, [searchQuery, contacts]);
 
-      if (data.length === 0) {
-        Alert.alert('No Contacts', 'No contacts found on your device.');
-        return;
-      }
-
-      // Extract and sort contact names with phone numbers
-      const contactNames = data
-        .filter(contact => contact.name)
-        .map(contact => {
-          const phone = contact.phoneNumbers && contact.phoneNumbers.length > 0
-            ? contact.phoneNumbers[0].number
-            : undefined;
-          const email = contact.emails && contact.emails.length > 0
-            ? contact.emails[0].email
-            : undefined;
-          
-          // Encode contact data: Name|Phone|Email
-          let encoded = contact.name!;
-          if (phone) encoded += `|${phone}`;
-          if (email) encoded += `|${email}`;
-          
-          return encoded;
-        })
-        .sort();
-
-      console.log(`[Contacts] Processed ${contactNames.length} contacts with names`);
-      console.log('[Contacts] First 5 contacts:', contactNames.slice(0, 5));
-
-      // Store contacts for the UI
-      setExtractedNames(contactNames);
-      setSelectedNames(new Set()); // Start with none selected
-      console.log('[Contacts] State updated, contacts should now be visible');
-      
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-    } catch (error) {
-      console.error('[Contacts] Failed to access contacts:', error);
-      Alert.alert('Error', 'Failed to access contacts. Please try again.');
-    }
-  };
-
-  const handleExtractNames = () => {
-    if (!aiText.trim()) {
-      Alert.alert('Error', 'Please paste some text to extract names from');
-      return;
-    }
-
-    setIsExtracting(true);
-    
-    // Simple name extraction logic
-    // Look for patterns like "John", "Mary", "Bob and Alice", etc.
-    const text = aiText.trim();
-    const names: string[] = [];
-    
-    // Split by common delimiters
-    const parts = text.split(/[,\n;]/);
-    
-    for (const part of parts) {
-      const trimmed = part.trim();
-      
-      // Extract names from patterns like "John is available" or "Mary can make it"
-      const nameMatch = trimmed.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/);
-      if (nameMatch) {
-        names.push(nameMatch[1]);
-      }
-      
-      // Handle "and" patterns like "Bob and Alice"
-      const andMatches = trimmed.matchAll(/([A-Z][a-z]+)(?:\s+and\s+([A-Z][a-z]+))?/g);
-      for (const match of andMatches) {
-        if (match[1] && !names.includes(match[1])) {
-          names.push(match[1]);
-        }
-        if (match[2] && !names.includes(match[2])) {
-          names.push(match[2]);
-        }
-      }
-    }
-
-    // Remove duplicates and filter out common words
-    const commonWords = new Set(['The', 'This', 'That', 'These', 'Those', 'Can', 'Will', 'Would', 'Should']);
-    const uniqueNames = [...new Set(names)].filter(name => !commonWords.has(name));
-
-    setIsExtracting(false);
-    
-    if (uniqueNames.length === 0) {
-      Alert.alert('No Names Found', 'Could not extract any names from the text. Try entering names manually.');
-      return;
-    }
-
-    setExtractedNames(uniqueNames);
-    setSelectedNames(new Set(uniqueNames)); // Select all by default
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const toggleNameSelection = (name: string) => {
-    const newSelected = new Set(selectedNames);
-    if (newSelected.has(name)) {
-      newSelected.delete(name);
-    } else {
-      newSelected.add(name);
-    }
-    setSelectedNames(newSelected);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const handleAddSelected = async () => {
-    if (selectedNames.size === 0) {
-      Alert.alert('Error', 'Please select at least one name');
-      return;
-    }
-
-    try {
-      const event = await eventsLocalStorage.getById(eventId!);
-      if (!event) return;
-
-      const newParticipants: Participant[] = Array.from(selectedNames).map(nameData => {
-        // Parse name, phone, and email if from contacts (format: "Name|Phone|Email")
-        const parts = nameData.split('|');
-        const name = parts[0];
-        const phone = parts.length > 1 ? parts[1] : undefined;
-        const email = parts.length > 2 ? parts[2] : undefined;
-        
-        console.log('[AddParticipant] Adding:', { name, phone, email });
-        
-        return {
-          id: generateId(),
-          name,
-          availability: {},
-          unavailableAllMonth: false,
-          source: activeTab === 'contacts' ? 'contacts' : 'ai',
-          phone,
-          email,
-        };
-      });
-
-      event.participants.push(...newParticipants);
-      await updateEvent(eventId!, {
-        ...event,
-        updatedAt: new Date().toISOString(),
-      });
-
-      console.log(`[AddParticipant] Added ${newParticipants.length} participants`);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } catch (error) {
-      console.error('[AddParticipant] Failed to add participants:', error);
-      Alert.alert('Error', 'Failed to add participants. Please try again.');
-    }
-  };
+  // Exact match check to decide whether to show the "Add New" button
+  const hasExactMatch = 
+    filteredDirectory.some(p => p.name.toLowerCase() === searchQuery.trim().toLowerCase()) ||
+    filteredContacts.some(c => c.name.toLowerCase() === searchQuery.trim().toLowerCase());
 
   return (
     <ThemedView style={[styles.container, { backgroundColor }]}>
@@ -294,332 +220,196 @@ export default function AddParticipantScreen() {
         >
           <IconSymbol name="chevron.left" size={28} color={tintColor} />
         </Pressable>
-        <ThemedText type="subtitle">Add Participants</ThemedText>
+        <ThemedText type="subtitle">Add Participant</ThemedText>
         <View style={{ width: 28 }} />
       </View>
 
-      {/* Segmented Control */}
-      <View style={[styles.segmentedControl, { backgroundColor: surfaceColor }]}>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'manual' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('manual');
-          }}
-        >
-          <ThemedText
-            style={[
-              styles.segmentText,
-              activeTab === 'manual' && styles.segmentTextActive,
-            ]}
-          >
-            Manual
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'contacts' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('contacts');
-          }}
-        >
-          <ThemedText
-            style={[
-              styles.segmentText,
-              activeTab === 'contacts' && styles.segmentTextActive,
-            ]}
-          >
-            Contacts
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.segment,
-            activeTab === 'ai' && [styles.segmentActive, { backgroundColor: tintColor }],
-          ]}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setActiveTab('ai');
-          }}
-        >
-          <ThemedText
-            style={[
-              styles.segmentText,
-              activeTab === 'ai' && styles.segmentTextActive,
-            ]}
-          >
-            AI Import
-          </ThemedText>
-        </Pressable>
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={[
-          styles.contentContainer,
-          { paddingBottom: Math.max(insets.bottom, 16) + 80 },
-        ]}
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {activeTab === 'manual' ? (
-          <View style={styles.manualTab}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Participant Name
-            </ThemedText>
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBox, { backgroundColor: surfaceColor }]}>
+            <IconSymbol name="magnifyingglass" size={20} color={textSecondaryColor} />
             <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: surfaceColor,
-                  color: textColor,
-                },
-              ]}
-              placeholder="e.g., John Smith"
+              style={[styles.searchInput, { color: textColor }]}
+              placeholder="Search or enter new name..."
               placeholderTextColor={textSecondaryColor}
-              value={manualName}
-              onChangeText={setManualName}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
               autoFocus
+              autoCapitalize="words"
             />
-            
-            <ThemedText type="defaultSemiBold" style={[styles.label, { marginTop: 16 }]}>
-              Phone Number (Optional)
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: surfaceColor,
-                  color: textColor,
-                },
-              ]}
-              placeholder="e.g., +1 234 567 8900"
-              placeholderTextColor={textSecondaryColor}
-              value={manualPhone}
-              onChangeText={setManualPhone}
-              keyboardType="phone-pad"
-            />
-            
-            <ThemedText type="defaultSemiBold" style={[styles.label, { marginTop: 16 }]}>
-              Email (Optional)
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: surfaceColor,
-                  color: textColor,
-                },
-              ]}
-              placeholder="e.g., john@example.com"
-              placeholderTextColor={textSecondaryColor}
-              value={manualEmail}
-              onChangeText={setManualEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              onSubmitEditing={handleAddManual}
-            />
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: tintColor }]}
-              onPress={handleAddManual}
-            >
-              <ThemedText style={styles.actionButtonText}>
-                Add Participant
-              </ThemedText>
-            </Pressable>
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                <IconSymbol name="xmark.circle.fill" size={20} color={textSecondaryColor} />
+              </Pressable>
+            )}
           </View>
-        ) : activeTab === 'contacts' ? (
-          <View style={styles.contactsTab}>
-            {extractedNames.length === 0 ? (
-              <>
-                <ThemedText type="defaultSemiBold" style={styles.label}>
-                  Select from Contacts
-                </ThemedText>
-                <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
-                  Load your phone's contacts to quickly add multiple participants
-                </ThemedText>
+        </View>
+
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={[
+            styles.contentContainer,
+            { paddingBottom: Math.max(insets.bottom, 16) + 20 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {isLoadingDirectory && !searchQuery ? (
+            <ActivityIndicator style={{ marginTop: 40 }} color={tintColor} />
+          ) : (
+            <>
+              {searchQuery.trim().length > 0 && !hasExactMatch && (
                 <Pressable
-                  style={[styles.actionButton, { backgroundColor: tintColor }]}
-                  onPress={handlePickContacts}
+                  style={[styles.addCard, { backgroundColor: tintColor + '10', borderColor: tintColor }]}
+                  onPress={() => handleAddParticipant({ name: searchQuery, source: 'manual' })}
                 >
-                  <IconSymbol name="person.2.fill" size={20} color="#fff" />
-                  <ThemedText style={styles.actionButtonText}>
-                    Load Contacts
-                  </ThemedText>
+                  <View style={[styles.iconBox, { backgroundColor: tintColor }]}>
+                    <IconSymbol name="person.badge.plus" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.addCardContent}>
+                    <ThemedText type="defaultSemiBold" style={{ color: tintColor }}>
+                      Add "{searchQuery.trim()}"
+                    </ThemedText>
+                    <ThemedText style={{ color: tintColor, fontSize: 13, marginTop: 2 }}>
+                      Create as new participant
+                    </ThemedText>
+                  </View>
                 </Pressable>
-              </>
-            ) : (
-              <>
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    {
-                      backgroundColor: surfaceColor,
-                      color: textColor,
-                    },
-                  ]}
-                  placeholder="Search contacts..."
-                  placeholderTextColor={textSecondaryColor}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoCapitalize="words"
-                />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <ThemedText type="defaultSemiBold" style={styles.label}>
-                    Contacts ({selectedNames.size} selected of {extractedNames.length} total)
-                  </ThemedText>
-                  {searchQuery.length > 0 && (
-                    <Pressable onPress={() => setSearchQuery('')}>
-                      <ThemedText style={{ color: tintColor, fontSize: 14 }}>Clear Search</ThemedText>
-                    </Pressable>
-                  )}
-                </View>
-                <View style={styles.namesList}>
-                  {(() => {
-                    const filtered = extractedNames.filter(nameData => {
-                      // Extract display name from encoded format (Name|Phone|Email)
-                      const displayName = nameData.includes('|') ? nameData.split('|')[0] : nameData;
-                      return displayName.toLowerCase().includes(searchQuery.toLowerCase());
-                    });
-                    
-                    if (filtered.length === 0) {
-                      return (
-                        <ThemedText style={{ color: textSecondaryColor, textAlign: 'center', marginTop: 20 }}>
-                          No contacts match "{searchQuery}". Try a different search or clear the search box.
-                        </ThemedText>
-                      );
-                    }
-                    
-                    return filtered.map((nameData) => {
-                      const isSelected = selectedNames.has(nameData);
-                      // Display only the name part (before the | separator)
-                      const displayName = nameData.includes('|') ? nameData.split('|')[0] : nameData;
+              )}
+
+              {searchQuery.trim().length > 0 && filteredDirectory.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>From Directory</ThemedText>
+                  <View style={[styles.gridContainer, isDesktop && styles.gridContainerDesktop]}>
+                    {filteredDirectory.map(p => {
+                      const isAdded = currentEventParticipants.has(p.name.toLowerCase());
                       return (
                         <Pressable
-                          key={nameData}
+                          key={`dir-${p.id}`}
                           style={[
-                            styles.nameChip,
-                            {
-                              backgroundColor: isSelected ? tintColor : surfaceColor,
-                            },
+                            styles.participantCard, 
+                            { backgroundColor: surfaceColor }, 
+                            isDesktop && styles.participantCardDesktop,
+                            isAdded && { opacity: 0.6 }
                           ]}
-                          onPress={() => toggleNameSelection(nameData)}
+                          onPress={() => !isAdded && handleAddParticipant({ name: p.name, phone: p.phone, email: p.email, source: 'directory' })}
                         >
-                          <ThemedText
-                            style={[
-                              styles.nameChipText,
-                              isSelected && styles.nameChipTextSelected,
-                            ]}
-                          >
-                            {displayName}
-                          </ThemedText>
+                          <View style={styles.participantInfo}>
+                            <ThemedText type="defaultSemiBold">{p.name}</ThemedText>
+                            {(p.phone || p.email) && (
+                              <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                                {[p.phone, p.email].filter(Boolean).join('\n')}
+                              </ThemedText>
+                            )}
+                          </View>
+                          {isAdded ? (
+                            <IconSymbol name="checkmark.circle.fill" size={24} color={successColor} />
+                          ) : (
+                            <IconSymbol name="plus.circle.fill" size={24} color={tintColor} />
+                          )}
                         </Pressable>
                       );
-                    });
-                  })()}
+                    })}
+                  </View>
                 </View>
-                {selectedNames.size > 0 && (
-                  <Pressable
-                    style={[styles.actionButton, { backgroundColor: successColor }]}
-                    onPress={handleAddSelected}
-                  >
-                    <ThemedText style={styles.actionButtonText}>
-                      Add {selectedNames.size} Selected
-                    </ThemedText>
-                  </Pressable>
-                )}
-              </>
-            )}
-          </View>
-        ) : (
-          <View style={styles.aiTab}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Paste Message or List
-            </ThemedText>
-            <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
-              Paste text from email, WhatsApp, or any message containing names
-            </ThemedText>
-            <TextInput
-              style={[
-                styles.textArea,
-                {
-                  backgroundColor: surfaceColor,
-                  color: textColor,
-                },
-              ]}
-              placeholder="e.g., 'John and Mary are available. Bob can make it too.'"
-              placeholderTextColor={textSecondaryColor}
-              value={aiText}
-              onChangeText={setAiText}
-              multiline
-              numberOfLines={6}
-              textAlignVertical="top"
-            />
-            <Pressable
-              style={[styles.actionButton, { backgroundColor: tintColor }]}
-              onPress={handleExtractNames}
-              disabled={isExtracting}
-            >
-              {isExtracting ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <ThemedText style={styles.actionButtonText}>
-                  Extract Names
-                </ThemedText>
               )}
-            </Pressable>
 
-            {extractedNames.length > 0 && (
-              <View style={styles.extractedSection}>
-                <ThemedText type="defaultSemiBold" style={styles.label}>
-                  Extracted Names ({selectedNames.size} selected)
-                </ThemedText>
-                <View style={styles.namesList}>
-                  {extractedNames.map((name) => {
-                    const isSelected = selectedNames.has(name);
-                    return (
-                      <Pressable
-                        key={name}
-                        style={[
-                          styles.nameChip,
-                          {
-                            backgroundColor: isSelected ? tintColor : surfaceColor,
-                          },
-                        ]}
-                        onPress={() => toggleNameSelection(name)}
-                      >
-                        {isSelected && (
-                          <IconSymbol name="checkmark" size={16} color="#FFFFFF" />
-                        )}
-                        <ThemedText
+              {searchQuery.trim().length > 0 && hasLoadedContacts && filteredContacts.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>From Contacts</ThemedText>
+                  <View style={[styles.gridContainer, isDesktop && styles.gridContainerDesktop]}>
+                    {filteredContacts.map((c, idx) => {
+                      const isAdded = currentEventParticipants.has(c.name.toLowerCase());
+                      return (
+                        <Pressable
+                          key={`contact-${idx}`}
                           style={[
-                            styles.nameChipText,
-                            isSelected && styles.nameChipTextSelected,
+                            styles.participantCard, 
+                            { backgroundColor: surfaceColor }, 
+                            isDesktop && styles.participantCardDesktop,
+                            isAdded && { opacity: 0.6 }
                           ]}
+                          onPress={() => !isAdded && handleAddParticipant({ name: c.name, phone: c.phone, email: c.email, source: 'contacts' })}
                         >
-                          {name}
-                        </ThemedText>
-                      </Pressable>
-                    );
-                  })}
+                          <View style={styles.participantInfo}>
+                            <ThemedText type="defaultSemiBold">{c.name}</ThemedText>
+                            {(c.phone || c.email) && (
+                              <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                                {[c.phone, c.email].filter(Boolean).join('\n')}
+                              </ThemedText>
+                            )}
+                          </View>
+                          {isAdded ? (
+                            <IconSymbol name="checkmark.circle.fill" size={24} color={successColor} />
+                          ) : (
+                            <IconSymbol name="plus.circle.fill" size={24} color={tintColor} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
+              )}
+
+              {/* Suggestions when empty */}
+              {!searchQuery.trim() && directory.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>Recent Participants</ThemedText>
+                  <View style={[styles.gridContainer, isDesktop && styles.gridContainerDesktop]}>
+                    {directory.slice(0, 15).map(p => {
+                      const isAdded = currentEventParticipants.has(p.name.toLowerCase());
+                      return (
+                        <Pressable
+                          key={`sug-${p.id}`}
+                          style={[
+                            styles.participantCard, 
+                            { backgroundColor: surfaceColor }, 
+                            isDesktop && styles.participantCardDesktop,
+                            isAdded && { opacity: 0.6 }
+                          ]}
+                          onPress={() => !isAdded && handleAddParticipant({ name: p.name, phone: p.phone, email: p.email, source: 'directory' })}
+                        >
+                          <View style={styles.participantInfo}>
+                            <ThemedText type="defaultSemiBold">{p.name}</ThemedText>
+                            {(p.phone || p.email) && (
+                              <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                                {[p.phone, p.email].filter(Boolean).join('\n')}
+                              </ThemedText>
+                            )}
+                          </View>
+                          {isAdded ? (
+                            <IconSymbol name="checkmark.circle.fill" size={24} color={successColor} />
+                          ) : (
+                            <IconSymbol name="plus.circle.fill" size={24} color={tintColor} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {!hasLoadedContacts && (
                 <Pressable
-                  style={[styles.actionButton, { backgroundColor: successColor }]}
-                  onPress={handleAddSelected}
+                  style={[styles.loadContactsCard, { backgroundColor: surfaceColor }]}
+                  onPress={loadContacts}
                 >
-                  <ThemedText style={styles.actionButtonText}>
-                    Add Selected ({selectedNames.size})
-                  </ThemedText>
+                  <IconSymbol name="person.crop.circle.badge.plus" size={32} color={tintColor} />
+                  <View style={styles.loadContactsContent}>
+                    <ThemedText type="defaultSemiBold">Search Phone Contacts</ThemedText>
+                    <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                      Allow access to easily add people from your address book.
+                    </ThemedText>
+                  </View>
+                  {isLoadingContacts && <ActivityIndicator color={tintColor} />}
                 </Pressable>
-              </View>
-            )}
-          </View>
-        )}
-      </ScrollView>
+              )}
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ThemedView>
   );
 }
@@ -636,113 +426,85 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
-  segmentedControl: {
+  searchContainer: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  searchBox: {
     flexDirection: 'row',
-    margin: 16,
-    padding: 4,
-    borderRadius: 12,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 48,
+    borderRadius: 12,
+    gap: 8,
   },
-  segmentActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  segmentText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    height: '100%',
   },
   content: {
     flex: 1,
   },
   contentContainer: {
     padding: 16,
+    gap: 20,
   },
-  manualTab: {
-    gap: 16,
-  },
-  contactsTab: {
-    gap: 16,
-  },
-  aiTab: {
-    gap: 16,
-  },
-  label: {
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  hint: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: -8,
-  },
-  input: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  searchInput: {
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    lineHeight: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  textArea: {
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 120,
-  },
-  actionButton: {
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    minHeight: 48,
-  },
-  actionButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '600',
-  },
-  extractedSection: {
-    marginTop: 16,
-    gap: 16,
-  },
-  namesList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  section: {
     gap: 8,
   },
-  nameChip: {
+  sectionTitle: {
+    fontSize: 14,
+    marginBottom: 4,
+    opacity: 0.8,
+  },
+  gridContainer: {
+    gap: 8,
+  },
+  gridContainerDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  participantCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    padding: 16,
+    borderRadius: 12,
+    justifyContent: 'space-between',
+  },
+  participantCardDesktop: {
+    width: '32%',
+  },
+  participantInfo: {
+    flex: 1,
+  },
+  addCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  nameChipText: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
+  addCardContent: {
+    flex: 1,
   },
-  nameChipTextSelected: {
-    color: '#FFFFFF',
+  loadContactsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 16,
+    marginTop: 16,
+  },
+  loadContactsContent: {
+    flex: 1,
   },
 });

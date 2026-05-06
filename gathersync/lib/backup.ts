@@ -2,10 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { eventsLocalStorage } from './local-storage';
 
 export interface BackupData {
   version: string;
   exportedAt: string;
+  type?: 'full' | 'single';
   events: any[];
   snapshots: any[];
   templates: any[];
@@ -24,6 +26,7 @@ export async function exportBackup(): Promise<BackupData> {
     const backup: BackupData = {
       version: '1.0',
       exportedAt: new Date().toISOString(),
+      type: 'full',
       events: eventsJson ? JSON.parse(eventsJson) : [],
       snapshots: snapshotsJson ? JSON.parse(snapshotsJson) : [],
       templates: templatesJson ? JSON.parse(templatesJson) : [],
@@ -37,6 +40,35 @@ export async function exportBackup(): Promise<BackupData> {
 }
 
 /**
+ * Export a single event to a JSON backup file
+ */
+export async function exportSingleEventBackup(eventId: string): Promise<BackupData> {
+  try {
+    const eventsJson = await AsyncStorage.getItem('@gathersync_events');
+    const events = eventsJson ? JSON.parse(eventsJson) : [];
+    
+    const eventToExport = events.find((e: any) => e.id === eventId);
+    if (!eventToExport) {
+      throw new Error('Event not found');
+    }
+
+    const backup: BackupData = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      type: 'single',
+      events: [eventToExport],
+      snapshots: [],
+      templates: [],
+    };
+
+    return backup;
+  } catch (error) {
+    console.error('[Backup] Single event export failed:', error);
+    throw new Error('Failed to export event backup');
+  }
+}
+
+/**
  * Import data from a backup file
  */
 export async function importBackup(backup: BackupData): Promise<void> {
@@ -46,9 +78,68 @@ export async function importBackup(backup: BackupData): Promise<void> {
       throw new Error('Invalid backup file format');
     }
 
+    const isSingleEvent = backup.type === 'single' || 
+      (backup.type === undefined && backup.events?.length === 1 && (!backup.snapshots || backup.snapshots.length === 0) && (!backup.templates || backup.templates.length === 0));
+
     // Import data to AsyncStorage using the correct keys from hybrid-storage.ts
     if (backup.events && backup.events.length > 0) {
-      await AsyncStorage.setItem('@gathersync_events', JSON.stringify(backup.events));
+      if (isSingleEvent) {
+        const importedEvent = backup.events[0];
+        
+        // Force the imported event to be the newest version so it overwrites any cloud data
+        // and clears any soft-deleted status
+        importedEvent.updatedAt = new Date().toISOString();
+        importedEvent.deletedAt = null;
+        
+        // Ensure all participants also have cleared deletedAt and updated timestamps
+        if (importedEvent.participants) {
+          importedEvent.participants = importedEvent.participants.map((p: any) => ({
+            ...p,
+            deletedAt: null,
+            updatedAt: new Date().toISOString()
+          }));
+        }
+        
+        // We MUST use direct AsyncStorage here instead of eventsLocalStorage.update()
+        // because update() uses object spreading which will NOT remove the deletedAt flag
+        // if it already exists on the soft-deleted local event.
+        const currentEvents = await eventsLocalStorage.getAllRaw();
+        const existingIndex = currentEvents.findIndex((e: any) => e.id === importedEvent.id);
+        
+        if (existingIndex !== -1) {
+          currentEvents[existingIndex] = importedEvent;
+          await AsyncStorage.setItem('@gathersync_events', JSON.stringify(currentEvents));
+        } else {
+          await eventsLocalStorage.addWithId(importedEvent);
+        }
+        
+        // Force push the restored event to the cloud database to ensure it's not immediately
+        // deleted again by auto-sync pulling a stale tombstone
+        try {
+          const { eventsCloudStorage } = await import('./cloud-storage');
+          // Check if event exists using getById since getAll() filters out soft-deleted events
+          const cloudEvent = await eventsCloudStorage.getById(importedEvent.id);
+          const existsInCloud = !!cloudEvent;
+          
+          if (existsInCloud) {
+            await eventsCloudStorage.update(importedEvent.id, importedEvent);
+            console.log('[Backup] Force updated single event in cloud');
+          } else {
+            await eventsCloudStorage.add(importedEvent);
+            console.log('[Backup] Force created single event in cloud');
+          }
+        } catch (cloudError) {
+          console.error('[Backup] Failed to force push to cloud (will rely on auto-sync):', cloudError);
+        }
+      } else {
+        // Force all imported events to be the newest version so they overwrite the cloud
+        const eventsToSave = backup.events.map(e => ({
+          ...e,
+          deletedAt: null,
+          updatedAt: new Date().toISOString()
+        }));
+        await AsyncStorage.setItem('@gathersync_events', JSON.stringify(eventsToSave));
+      }
     }
     
     if (backup.snapshots && backup.snapshots.length > 0) {
@@ -73,9 +164,9 @@ export async function importBackup(backup: BackupData): Promise<void> {
 /**
  * Download backup file (mobile and web)
  */
-export async function downloadBackup(backup: BackupData): Promise<void> {
+export async function downloadBackup(backup: BackupData, customFilename?: string): Promise<void> {
   const json = JSON.stringify(backup, null, 2);
-  const filename = `gathersync-backup-${new Date().toISOString().split('T')[0]}.json`;
+  const filename = customFilename || `gathersync-backup-${new Date().toISOString().split('T')[0]}.json`;
 
   if (Platform.OS === 'web') {
     // Web: trigger download

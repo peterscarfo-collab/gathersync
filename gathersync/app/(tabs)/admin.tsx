@@ -112,21 +112,28 @@ export default function AdminScreen() {
   const loadData = async () => {
     try {
       const allEvents = await eventsLocalStorage.getAll();
+      const activeEvents = allEvents.filter(e => !e.archived);
       setEvents(allEvents);
       
-      // Calculate statistics
+      // Calculate statistics based on active events to match the Events screen
       const now = new Date();
-      const upcoming = allEvents.filter(e => {
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+
+      const upcoming = activeEvents.filter(e => {
         if (e.eventType === 'fixed' && e.fixedDate) {
-          return new Date(e.fixedDate).getTime() > now.getTime();
+          return new Date(e.fixedDate + 'T12:00:00').getTime() >= now.getTime();
         }
-        return true; // Flexible events are always "upcoming" until finalized
+        if (e.eventType === 'flexible') {
+          return e.year > currentYear || (e.year === currentYear && e.month >= currentMonth);
+        }
+        return false;
       });
       
-      const totalParticipants = allEvents.reduce((sum, e) => sum + e.participants.length, 0);
+      const totalParticipants = activeEvents.reduce((sum, e) => sum + e.participants.length, 0);
       
       // Calculate average response rate
-      const responseCounts = allEvents.map(e => {
+      const responseCounts = activeEvents.map(e => {
         const responded = e.participants.filter(p => 
           (e.eventType === 'flexible' && p.availability && Object.keys(p.availability).length > 0) ||
           (e.eventType === 'fixed' && p.rsvpStatus && p.rsvpStatus !== 'no-response')
@@ -138,7 +145,7 @@ export default function AdminScreen() {
         : 0;
       
       setStats({
-        totalEvents: allEvents.length,
+        totalEvents: activeEvents.length,
         upcomingEvents: upcoming.length,
         totalParticipants,
         avgResponseRate: Math.round(avgResponseRate),
@@ -199,7 +206,7 @@ export default function AdminScreen() {
             </View>
             <View style={styles.statContent}>
               <ThemedText style={styles.statValue}>{stats.totalEvents}</ThemedText>
-              <ThemedText style={styles.statLabel}>Total Events</ThemedText>
+              <ThemedText style={styles.statLabel}>Active Events</ThemedText>
             </View>
           </View>
 
@@ -297,6 +304,27 @@ export default function AdminScreen() {
             <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
           </Pressable>
 
+          {user?.role === 'admin' && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionCard,
+                pressed && styles.actionCardPressed,
+              ]}
+              onPress={() => handleNavigation('/admin/users')}
+            >
+              <View style={[styles.actionIconContainer, { backgroundColor: AdminColors.primaryLight }]}>
+                <IconSymbol name="person.3.fill" size={28} color={AdminColors.primary} />
+              </View>
+              <View style={styles.actionContent}>
+                <ThemedText style={styles.actionTitle}>User Management</ThemedText>
+                <ThemedText style={styles.actionDescription}>
+                  Allocate memberships and roles
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
+            </Pressable>
+          )}
+
           <Pressable
             style={({ pressed }) => [
               styles.actionCard,
@@ -311,6 +339,25 @@ export default function AdminScreen() {
               <ThemedText style={styles.actionTitle}>Analytics & Insights</ThemedText>
               <ThemedText style={styles.actionDescription}>
                 View statistics and generate reports
+              </ThemedText>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.actionCard,
+              pressed && styles.actionCardPressed,
+            ]}
+            onPress={() => handleNavigation('/admin/help')}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: AdminColors.primaryLight }]}>
+              <IconSymbol name="book.fill" size={28} color={AdminColors.primary} />
+            </View>
+            <View style={styles.actionContent}>
+              <ThemedText style={styles.actionTitle}>Help & Tutorials</ThemedText>
+              <ThemedText style={styles.actionDescription}>
+                Learn how to master GatherSync
               </ThemedText>
             </View>
             <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />

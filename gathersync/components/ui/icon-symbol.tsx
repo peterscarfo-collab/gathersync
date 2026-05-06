@@ -2,7 +2,7 @@
 
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SymbolWeight, SymbolViewProps } from "expo-symbols";
-import { ComponentProps } from "react";
+import React, { ComponentProps } from "react";
 import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
 
 type IconMapping = Record<SymbolViewProps["name"], ComponentProps<typeof MaterialIcons>["name"]>;
@@ -23,6 +23,7 @@ const MAPPING = {
   "arrow.triangle.2.circlepath": "sync",
   "checkmark.circle.fill": "check-circle",
   "person.2.fill": "people",
+  "person.3.fill": "groups",
   "person.fill": "person",
   "mappin": "place",
   "map.fill": "map",
@@ -42,6 +43,8 @@ const MAPPING = {
   "plus": "add",
   "chevron.left": "chevron-left",
   "info.circle": "info",
+  "questionmark.circle.fill": "help",
+  "book.fill": "menu-book",
   "checkmark": "check",
   "xmark": "close",
   "ellipsis.circle": "more-horiz",

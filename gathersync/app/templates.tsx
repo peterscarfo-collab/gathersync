@@ -81,7 +81,7 @@ export default function TemplatesScreen() {
         <View style={styles.infoRow}>
           <IconSymbol name="person.2" size={16} color={textSecondaryColor} />
           <ThemedText style={[styles.infoText, { color: textSecondaryColor }]}>
-            {item.participants.length} participants
+            {item.participants.filter(p => !p.deletedAt).length} participants
           </ThemedText>
         </View>
         

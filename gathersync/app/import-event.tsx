@@ -76,7 +76,7 @@ export default function ImportEventScreen() {
           {
             text: 'View Event',
             onPress: () => {
-              router.replace(`/event-detail?id=${newEvent.id}` as any);
+              router.replace(`/event-detail?eventId=${newEvent.id}` as any);
             },
           },
           {

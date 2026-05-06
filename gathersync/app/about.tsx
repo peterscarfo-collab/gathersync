@@ -67,7 +67,7 @@ export default function AboutScreen() {
             Copyright & Legal
           </ThemedText>
           <ThemedText style={[styles.copyright, { color: textSecondaryColor }]}>
-            © 2025 Peter Scarfo. All rights reserved.
+            © 2026 Peter Scarfo. All rights reserved.
           </ThemedText>
           <ThemedText style={[styles.legalText, { color: textSecondaryColor }]}>
             This application and its contents are protected by copyright law. Unauthorized
