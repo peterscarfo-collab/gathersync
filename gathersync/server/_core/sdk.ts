@@ -251,32 +251,53 @@ class SDKServer {
     const signedInAt = new Date();
     let user = await db.getUserByOpenId(sessionUserId);
 
-    // If user not in DB, sync from OAuth server automatically
+    // If user not in DB, try to create a basic record from session
     if (!user) {
       try {
-        const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
+        console.log(`[SDK] User ${sessionUserId} not found in DB, creating from session...`);
         await db.upsertUser({
-          openId: userInfo.openId,
-          name: userInfo.name || null,
-          email: userInfo.email ?? null,
-          loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+          openId: sessionUserId,
+          name: session.name || null,
+          email: null,
+          loginMethod: "google",
           lastSignedIn: signedInAt,
         });
-        user = await db.getUserByOpenId(userInfo.openId);
+        user = await db.getUserByOpenId(sessionUserId);
       } catch (error) {
-        console.error("[Auth] Failed to sync user from OAuth:", error);
-        throw ForbiddenError("Failed to sync user info");
+        console.error("[Auth] Failed to create user in DB:", error);
       }
     }
 
+    // If still no user (e.g. DB is down), return a fallback user object
     if (!user) {
-      throw ForbiddenError("User not found");
+      console.warn("[Auth] Returning fallback user because DB is unavailable");
+      return {
+        id: 0,
+        openId: sessionUserId,
+        name: session.name || null,
+        email: null,
+        loginMethod: "google",
+        role: "user",
+        subscriptionTier: "free",
+        subscriptionStatus: "active",
+        subscriptionSource: "free",
+        isLifetimePro: false,
+        eventsCreatedThisMonth: 0,
+        lastMonthReset: signedInAt,
+        createdAt: signedInAt,
+        updatedAt: signedInAt,
+        lastSignedIn: signedInAt,
+      } as any;
     }
 
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
+    try {
+      await db.upsertUser({
+        openId: user.openId,
+        lastSignedIn: signedInAt,
+      });
+    } catch (e) {
+      // Ignore DB update errors for lastSignedIn
+    }
 
     return user;
   }
