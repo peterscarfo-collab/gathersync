@@ -36,7 +36,13 @@ export default function PricingScreen() {
       
       if (result.success) {
         alert(`Your ${tier === 'lite' ? 'Lite' : 'Pro'} trial has started! Enjoy 14 days of premium features.`);
-        router.back(); // Go back to previous screen
+        
+        // Refresh auth state to get updated user info
+        if (typeof window !== 'undefined') {
+          window.location.reload();
+        } else {
+          router.back();
+        }
       }
     } catch (error: any) {
       console.error('Failed to start trial:', error);
