@@ -34,9 +34,9 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Keep the rest of your original setup
-  // Register local direct Google OAuth flow
+  // Register local direct Google OAuth flow FIRST so it takes precedence
   registerGoogleOAuthRoutes(app);
-  // Keep original Manus proxy flow available
+  // Keep original Manus proxy flow available as fallback
   registerOAuthRoutes(app);
 
   app.get("/api/health", (_req, res) => {
