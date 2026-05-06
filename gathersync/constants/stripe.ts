@@ -8,12 +8,12 @@ export const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE
 // Price IDs from Stripe
 export const STRIPE_PRICE_IDS = {
   lite: {
-    monthly: 'price_1Si2LWQdyRdop1CxqsM4HvCL', // $4.99/month
-    annual: 'price_1Si2LXQdyRdop1CxoMKcEpKA', // $49/year
+    monthly: 'price_1TU0BTQdyRdop1CxRkDGC5R1', // $4.99/month
+    annual: 'price_1TU0GxQdyRdop1CxnVRKnHwg', // $49/year
   },
   pro: {
-    monthly: 'price_1Si2LXQdyRdop1CxPpvp9YpY', // $7.99/month
-    annual: 'price_1Si2LYQdyRdop1CxgXRNHP9L', // $79/year
+    monthly: 'price_1TU0KuQdyRdop1CxNlhhNVop', // $7.99/month
+    annual: 'price_1TU0LYQdyRdop1CxM8HQsU1m', // $79/year
   },
 } as const;
 

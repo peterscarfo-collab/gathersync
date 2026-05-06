@@ -24,7 +24,7 @@ function getStripe(): Stripe {
 }
 
 // Product and price configuration
-const GATHERSYNC_PRO_PRICE_ID = process.env.STRIPE_PRICE_ID || 'price_1Si0Q0QdyRdop1CxVOLbprOl';
+const GATHERSYNC_PRO_PRICE_ID = process.env.STRIPE_PRICE_ID || 'price_1TU0KuQdyRdop1CxNlhhNVop';
 
 /**
  * Create a Stripe customer for a user
