@@ -136,7 +136,8 @@ class SDKServer {
   }
 
   private getSessionSecret() {
-    const secret = ENV.cookieSecret;
+    // Fallback to a default secret if JWT_SECRET is not set in environment
+    const secret = ENV.cookieSecret || "default-secret-change-in-production";
     return new TextEncoder().encode(secret);
   }
 
@@ -193,14 +194,14 @@ class SDKServer {
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
-      if (!isNonEmptyString(openId) || !isNonEmptyString(appId)) {
-        console.warn("[Auth] Session payload missing required fields (openId or appId)");
+      if (!isNonEmptyString(openId)) {
+        console.warn("[Auth] Session payload missing required fields (openId)");
         return null;
       }
 
       return {
         openId,
-        appId,
+        appId: typeof appId === "string" ? appId : "",
         name: typeof name === "string" ? name : "",
       };
     } catch (error) {
@@ -249,7 +250,14 @@ class SDKServer {
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
+    let user: User | undefined;
+    
+    try {
+      user = await db.getUserByOpenId(sessionUserId);
+    } catch (error) {
+      console.error("[Auth] Database error when fetching user:", error);
+      // user remains undefined, will fall back to creating a temporary one
+    }
 
     // If user not in DB, try to create a basic record from session
     if (!user) {
