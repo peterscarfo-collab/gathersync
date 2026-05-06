@@ -14,6 +14,15 @@ import {
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
+import { useFonts } from "expo-font";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import * as SplashScreen from "expo-splash-screen";
+
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore error if splash screen is not configured
+});
+
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/manus-runtime";
@@ -35,6 +44,16 @@ export default function RootLayout() {
 
   // Initialize push notifications
   usePushNotifications();
+
+  const [fontsLoaded, fontError] = useFonts({
+    ...MaterialIcons.font,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
 
   const [insets, setInsets] = useState<EdgeInsets>(initialInsets);
   const [frame, setFrame] = useState<Rect>(initialFrame);
