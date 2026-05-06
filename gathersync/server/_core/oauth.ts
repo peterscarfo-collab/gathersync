@@ -34,7 +34,7 @@ export function registerOAuthRoutes(app: Express) {
   // Use a unique name to break the redirect loop
   app.get("/auth/google/start", (req: Request, res: Response) => {
     try {
-      const frontendUrl = process.env.FRONTEND_URL || process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:3000";
+      const frontendUrl = "https://app.gathersync.app";
       const state = btoa(`${frontendUrl}/profile`);
       const authUrl = `${ENV.oAuthServerUrl}/auth/google?clientId=${ENV.appId}&state=${state}`;
       console.log("[OAuth] Redirecting to external server:", authUrl);
@@ -57,7 +57,7 @@ export function registerOAuthRoutes(app: Express) {
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, { expiresInMs: ONE_YEAR_MS });
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      const frontendUrl = process.env.FRONTEND_URL || process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:3000";
+      const frontendUrl = "https://app.gathersync.app";
       res.redirect(`${frontendUrl}?loginSuccess=true`);
     } catch (error) {
       res.status(500).json({ error: "Callback failed" });
