@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -129,7 +129,9 @@ export default function EditMeetingDetailsScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
       keyboardVerticalOffset={0}
@@ -571,6 +573,7 @@ export default function EditMeetingDetailsScreen() {
       )}
       </ThemedView>
     </KeyboardAvoidingView>
+    </>
   );
 }
 

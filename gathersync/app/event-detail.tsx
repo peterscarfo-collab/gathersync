@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, Share, Linking, Modal, useWindowDimensions } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -843,7 +843,9 @@ export default function EventDetailScreen() {
   );
 
   return (
-    <DesktopLayout>
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <DesktopLayout>
     <ThemedView style={[styles.container, { backgroundColor }]}>
       <View
         style={[
@@ -1343,6 +1345,7 @@ export default function EventDetailScreen() {
       </Modal>
     </ThemedView>
     </DesktopLayout>
+    </>
   );
 }
 
