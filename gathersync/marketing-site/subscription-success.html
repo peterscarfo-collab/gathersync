@@ -125,11 +125,12 @@
     <script>
         // Get the app's deep link scheme from the URL or use default
         const urlParams = new URLSearchParams(window.location.search);
+        const isWeb = urlParams.get('platform') === 'web';
         const scheme = urlParams.get('scheme') || 'manus20251216190030://';
-        const deepLink = scheme + 'subscription-success';
+        const redirectUrl = isWeb ? 'https://app.gathersync.app/admin' : (scheme + 'subscription-success');
         
         // Set the button href
-        document.getElementById('returnButton').href = deepLink;
+        document.getElementById('returnButton').href = redirectUrl;
         
         // Countdown and auto-redirect
         let countdown = 5;
@@ -142,13 +143,15 @@
             if (countdown <= 0) {
                 clearInterval(timer);
                 // Try to open the app
-                window.location.href = deepLink;
+                window.location.href = redirectUrl;
                 
                 // Fallback: If app doesn't open after 2 seconds, show manual button
-                setTimeout(() => {
-                    document.querySelector('.redirect-message').innerHTML = 
-                        'If the app didn\'t open, <a href="' + deepLink + '" style="color: #007AFF;">tap here</a>';
-                }, 2000);
+                if (!isWeb) {
+                    setTimeout(() => {
+                        document.querySelector('.redirect-message').innerHTML = 
+                            'If the app didn\'t open, <a href="' + redirectUrl + '" style="color: #007AFF;">tap here</a>';
+                    }, 2000);
+                }
             }
         }, 1000);
         
@@ -156,7 +159,7 @@
         document.getElementById('returnButton').addEventListener('click', function(e) {
             e.preventDefault();
             clearInterval(timer);
-            window.location.href = deepLink;
+            window.location.href = redirectUrl;
         });
     </script>
 </body>

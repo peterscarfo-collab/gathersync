@@ -63,16 +63,16 @@ export default function PricingScreen() {
       
       // Create checkout session
       // Always use web URLs for Stripe redirect, then redirect to app from web page
-      const webBaseUrl = 'https://8081-ixeurgdbu2achb4x3woqe-5903680b.sg1.manus.computer';
+      const webBaseUrl = 'https://gathersync.app';
       const deepLinkScheme = 'manus20251216190030://';
       
       const result = await createCheckout.mutateAsync({
         priceId,
         successUrl: Platform.OS === 'web'
-          ? `${webBaseUrl}/subscription-success.html`
+          ? `${webBaseUrl}/subscription-success.html?platform=web`
           : `${webBaseUrl}/subscription-success.html?scheme=${encodeURIComponent(deepLinkScheme)}`,
         cancelUrl: Platform.OS === 'web'
-          ? `${webBaseUrl}/pricing.html`
+          ? `https://app.gathersync.app/admin`
           : `${webBaseUrl}/index.html`,
       });
 
