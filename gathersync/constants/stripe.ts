@@ -3,7 +3,7 @@
  */
 
 // TEMPORARY: Hardcoded for testing - TODO: Move to environment variables
-export const STRIPE_PUBLISHABLE_KEY = 'pk_test_51Jyi16QdyRdop1Cx3ov8dIntl5HSedDqXP78qddI0RNcn1aVcIcjCITRNGuLxHIyxdMOHkq9aIXjBeHwmoHdDcjh00fr33FA8Z';
+export const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || 'pk_test_51Jyi16QdyRdop1Cx3ov8dIntl5HSedDqXP78qddI0RNcn1aVcIcjCITRNGuLxHIyxdMOHkq9aIXjBeHwmoHdDcjh00fr33FA8Z';
 
 // Price IDs from Stripe
 export const STRIPE_PRICE_IDS = {
