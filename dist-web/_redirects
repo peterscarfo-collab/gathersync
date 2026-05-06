@@ -1,0 +1,4 @@
+/api/*  https://gathersync-api-deploy.fly.dev/api/:splat  200
+/contact  /contact.html  200
+/contact-success.html  /contact-success.html  200
+/*    /index.html   200

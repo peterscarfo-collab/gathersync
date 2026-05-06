@@ -59,7 +59,7 @@ export function CalendarGrid({ event, onDayPress }: CalendarGridProps) {
     const dateStr = formatDate(event.year, event.month, day);
     const isBestDay = bestDayDates.has(dateStr);
     const availability = getDayAvailability(event, event.year, event.month, day);
-    const totalParticipants = event.participants.length;
+    const totalParticipants = event.participants.filter(p => !p.deletedAt).length;
     const percentage = totalParticipants > 0 
       ? (availability.availableCount / totalParticipants) * 100 
       : 0;

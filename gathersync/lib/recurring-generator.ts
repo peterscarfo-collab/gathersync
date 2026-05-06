@@ -63,19 +63,34 @@ export function generateEventFromTemplate(
   month: number,
   year: number
 ): Event {
+  const occurrence = getNextOccurrence(template, new Date(year, month - 1, 1));
+  const isFixed = template.eventType === 'fixed' && occurrence !== null;
+
   const participants: Participant[] = template.participantNames.map(name => ({
     id: generateId(),
     name,
     availability: {},
     unavailableAllMonth: false,
+    rsvpStatus: isFixed ? 'no-response' : undefined,
   }));
 
   const event: Event = {
     id: generateId(),
     name: template.name,
-    eventType: 'flexible', // Recurring events are always flexible
+    eventType: isFixed ? 'fixed' : 'flexible',
     month,
     year,
+    fixedDate: isFixed ? `${year}-${String(month).padStart(2, '0')}-${String(occurrence!.day).padStart(2, '0')}` : undefined,
+    fixedTime: template.fixedTime,
+    meetingType: template.meetingType,
+    venueName: template.venueName,
+    venueAddress: template.venueAddress,
+    venueContact: template.venueContact,
+    venuePhone: template.venuePhone,
+    meetingLink: template.meetingLink,
+    teamLeader: template.teamLeader,
+    rsvpDeadline: template.rsvpDeadline,
+    meetingNotes: template.meetingNotes,
     participants,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -98,20 +113,33 @@ export function shouldGenerateForMonth(
 
   const monthKey = `${year}-${String(month).padStart(2, '0')}`;
   
-  // Check if already generated for this month
-  if (template.lastGeneratedMonth === monthKey) {
+  // Check if already generated for this month or later
+  if (template.lastGeneratedMonth && template.lastGeneratedMonth >= monthKey) {
     return false;
+  }
+
+  // Also skip if the occurrence for this month is in the past and we haven't generated it yet
+  // (e.g. creating a new template mid-month after the day has passed)
+  const occurrence = getNextOccurrence(template, new Date(year, month - 1, 1));
+  if (occurrence) {
+    const occurrenceDate = new Date(occurrence.year, occurrence.month - 1, occurrence.day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Only skip past occurrences if this is the very first time we're checking
+    // and the event date is firmly in the past
+    if (!template.lastGeneratedMonth && occurrenceDate < today) {
+      return false;
+    }
   }
 
   // For weekly/biweekly, generate if there's an occurrence in this month
   if (template.pattern === 'weekly' || template.pattern === 'biweekly') {
-    const occurrence = getNextOccurrence(template, new Date(year, month - 1, 1));
     return occurrence !== null && occurrence.month === month && occurrence.year === year;
   }
 
   // For monthly, always generate
   if (template.pattern === 'monthly') {
-    const occurrence = getNextOccurrence(template, new Date(year, month - 1, 1));
     return occurrence !== null && occurrence.month === month && occurrence.year === year;
   }
 

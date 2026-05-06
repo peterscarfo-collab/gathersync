@@ -11,6 +11,8 @@ export interface Participant {
   source?: 'manual' | 'contacts' | 'ai'; // How the participant was added
   phone?: string; // Phone number (from contacts or manual entry)
   email?: string; // Email address (from contacts or manual entry)
+  designation?: string; // Title or Designation (e.g. Director, Treasurer)
+  organization?: string; // Company or Organization
   rsvpStatus?: 'attending' | 'not-attending' | 'no-response'; // RSVP status for fixed events
   deletedAt?: string; // ISO date string when participant was soft-deleted
 }
@@ -28,6 +30,7 @@ export interface Event {
   updatedAt: string; // ISO date string
   reminderDaysBefore?: number; // Optional: days before best day to send reminder
   reminderScheduled?: boolean; // Whether reminder notification is scheduled
+  reminderMessage?: string; // Custom reminder message to send to participants
   archived?: boolean; // Whether event is archived
   finalized?: boolean; // Whether event date has been finalized
   finalizedDate?: string; // The finalized date (YYYY-MM-DD)
@@ -82,6 +85,8 @@ export interface RecurringEventTemplate {
   meetingLink?: string; // Zoom/virtual meeting link
   rsvpDeadline?: string; // When headcount needs to be confirmed
   meetingNotes?: string; // Additional meeting details
+  eventType?: 'flexible' | 'fixed'; // Inherited event type
+  fixedTime?: string; // Inherited fixed time HH:MM
 }
 
 export interface DayAvailability {

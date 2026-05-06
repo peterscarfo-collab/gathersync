@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, Share, Linking, Modal } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, Share, Linking, Modal, useWindowDimensions } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,26 +9,37 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { CalendarGrid } from '@/components/calendar-grid';
+import { DayDetailPane } from '@/components/day-detail-pane';
+import { ParticipantDetailPane } from '@/components/participant-detail-pane';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage as eventsLocalStorage, snapshotsLocalStorage as snapshotsLocalStorage } from '@/lib/local-storage';
 import { getMonthName, generateId, getBestDays } from '@/lib/calendar-utils';
 import { exportToCalendar } from '@/lib/calendar-export';
-import { getParticipantStatus, getStatusBadge } from '@/lib/participant-status';
+import { exportSingleEventBackup, downloadBackup } from '@/lib/backup';
+import { getEffectiveAttendanceStatus, getParticipantStatus, getRsvpCounts, getStatusBadge, hasRecordedAttendance, ParticipantStatus } from '@/lib/participant-status';
 import type { Event, Participant } from '@/types/models';
 
 export default function EventDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { eventId } = useLocalSearchParams<{ eventId: string }>();
-  const { updateEvent: autoUpdateEvent } = useAutoSync();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+  const params = useLocalSearchParams<{ eventId?: string; id?: string }>();
+  const eventId = params.eventId || params.id;
+  const { updateEvent: autoUpdateEvent, deleteEvent: autoDeleteEvent } = useAutoSync();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [showMenu, setShowMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
+  const [rsvpFilter, setRsvpFilter] = useState<'attending' | 'not-attending' | 'no-response' | null>(null);
+  const [isEditingReminder, setIsEditingReminder] = useState(false);
+  const [editedReminder, setEditedReminder] = useState('');
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -42,8 +53,34 @@ export default function EventDetailScreen() {
     if (!eventId) return;
     const loadedEvent = await eventsLocalStorage.getById(eventId);
     if (loadedEvent) {
+      // Enrich participants with global contact info across all events
+      try {
+        const allEvents = await eventsLocalStorage.getAll();
+        const globalInfo = new Map<string, {phone?: string, email?: string}>();
+        allEvents.forEach(e => e.participants.forEach(p => {
+          if (!globalInfo.has(p.name)) {
+            globalInfo.set(p.name, { phone: p.phone, email: p.email });
+          } else {
+            const current = globalInfo.get(p.name)!;
+            if (p.phone && !current.phone) current.phone = p.phone;
+            if (p.email && !current.email) current.email = p.email;
+          }
+        }));
+
+        loadedEvent.participants.forEach(p => {
+          const info = globalInfo.get(p.name);
+          if (info) {
+            if (!p.phone && info.phone) p.phone = info.phone;
+            if (!p.email && info.email) p.email = info.email;
+          }
+        });
+      } catch (err) {
+        console.error('Failed to enrich participants:', err);
+      }
+
       setEvent(loadedEvent);
       setEditedName(loadedEvent.name);
+      setEditedReminder(loadedEvent.reminderMessage || '');
     } else if (retryCount < 10) {
       // Event not found - might be AsyncStorage write delay
       // Retry up to 10 times with 300ms delay (total 3 seconds)
@@ -76,6 +113,9 @@ export default function EventDetailScreen() {
     // Use auto-sync to save and sync to cloud
     await autoUpdateEvent(eventId!, updated);
     setEvent(updated);
+    
+    // Check if attendance needs to be recalculated in event detail view
+    // (This ensures RSVP Summary on the event-detail screen matches)
   };
 
   const handleSaveName = async () => {
@@ -85,28 +125,45 @@ export default function EventDetailScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
+  const handleSaveReminder = async () => {
+    if (!event) return;
+    await updateEvent({ ...event, reminderMessage: editedReminder.trim() });
+    setIsEditingReminder(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   const handleDayPress = (day: number) => {
     if (!event) return;
-    router.push({
-      pathname: '/day-detail' as any,
-      params: { eventId: event.id, day: day.toString() },
-    });
+    if (isDesktop) {
+      setSelectedDay(day);
+      setSelectedParticipantId(null);
+    } else {
+      router.push({
+        pathname: '/day-detail' as any,
+        params: { eventId: event.id, day: day.toString() },
+      });
+    }
   };
 
   const handleAddParticipant = () => {
     if (!event) return;
     router.push({
-      pathname: '/add-participant' as any,
+      pathname: '/admin/participants' as any,
       params: { eventId: event.id },
     });
   };
 
   const handleParticipantPress = (participant: Participant) => {
     if (!event) return;
-    router.push({
-      pathname: '/edit-availability' as any,
-      params: { eventId: event.id, participantId: participant.id },
-    });
+    if (isDesktop) {
+      setSelectedParticipantId(participant.id);
+      setSelectedDay(null);
+    } else {
+      router.push({
+        pathname: '/edit-availability' as any,
+        params: { eventId: event.id, participantId: participant.id },
+      });
+    }
   };
 
   const handleShareEvent = async () => {
@@ -118,9 +175,15 @@ export default function EventDetailScreen() {
       : 'No availability data yet';
 
     // Create web link for event viewing and RSVP
-    const webUrl = `https://8081-ienb1rj930k0x92csc3x6-a41ba8ee.manus-asia.computer/public-event?eventId=${event.id}`;
+    const baseUrl = Platform.OS === 'web' 
+      ? window.location.origin
+      : 'https://app.gathersync.com'; // TODO: Update with actual production domain
+    const webUrl = `${baseUrl}/public-event?eventId=${event.id}`;
 
-    const message = `📅 ${event.name}\n${getMonthName(event.month)} ${event.year}\n\n${bestDayText}\n\nView and RSVP:\n${webUrl}`;
+    const baseMessage = `📅 ${event.name}\n${getMonthName(event.month)} ${event.year}\n\n${bestDayText}\n\nView and RSVP:\n${webUrl}`;
+    const message = event.reminderMessage 
+      ? `${event.reminderMessage}\n\n${baseMessage}`
+      : baseMessage;
 
     try {
       await Share.share({
@@ -154,9 +217,15 @@ export default function EventDetailScreen() {
     }
 
     // Create web link for event viewing and RSVP
-    const webUrl = `https://8081-ienb1rj930k0x92csc3x6-a41ba8ee.manus-asia.computer/public-event?eventId=${event.id}`;
+    const baseUrl = Platform.OS === 'web' 
+      ? window.location.origin
+      : 'https://app.gathersync.com'; // TODO: Update with actual production domain
+    const webUrl = `${baseUrl}/public-event?eventId=${event.id}`;
 
-    const message = `📅 ${event.name}\n\n${eventType}${bestDayText}${meetingDetails.length > 0 ? '\n\n' + meetingDetails.join('\n') : ''}\n\nView and RSVP:\n${webUrl}`;
+    const baseMessage = `📅 ${event.name}\n\n${eventType}${bestDayText}${meetingDetails.length > 0 ? '\n\n' + meetingDetails.join('\n') : ''}\n\nView and RSVP:\n${webUrl}`;
+    const message = event.reminderMessage
+      ? `${event.reminderMessage}\n\n${baseMessage}`
+      : baseMessage;
 
     try {
       await Share.share({
@@ -178,7 +247,10 @@ export default function EventDetailScreen() {
 
     // Create personalized messages for each participant
     const messages = event.participants.map(participant => {
-      const webUrl = `https://8081-ienb1rj930k0x92csc3x6-a41ba8ee.manus-asia.computer/public-event?eventId=${event.id}&name=${encodeURIComponent(participant.name)}`;
+      const baseUrl = Platform.OS === 'web' 
+        ? window.location.origin
+        : 'https://app.gathersync.com'; // TODO: Update with actual production domain
+      const webUrl = `${baseUrl}/public-event?eventId=${event.id}&name=${encodeURIComponent(participant.name)}`;
       
       const eventInfo = event.eventType === 'fixed'
         ? `${event.fixedDate}${event.fixedTime ? ' at ' + event.fixedTime : ''}`
@@ -202,32 +274,11 @@ export default function EventDetailScreen() {
 
   const handleCopyEventDetails = async () => {
     if (!event) return;
-
-    const bestDays = getBestDays(event);
-    const bestDayText = bestDays.length > 0
-      ? `Best day: ${bestDays[0].date} (${bestDays[0].availableCount} available)`
-      : 'No availability data yet';
-
-    const eventType = event.eventType === 'fixed' 
-      ? `Fixed Event: ${event.fixedDate}${event.fixedTime ? ' at ' + event.fixedTime : ''}`
-      : `Flexible Event: ${getMonthName(event.month)} ${event.year}`;
-
-    const participantsList = event.participants
-      .map(p => `  • ${p.name}${p.email ? ' (' + p.email + ')' : ''}${p.phone ? ' - ' + p.phone : ''}`)
-      .join('\n');
-
-    const details = `📅 ${event.name}\n\n${eventType}\n\n${bestDayText}\n\nParticipants (${event.participants.length}):\n${participantsList || '  No participants yet'}`;
-
-    try {
-      await Clipboard.setStringAsync(details);
-      if (Platform.OS === 'web') {
-        alert('Event details copied to clipboard!');
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (error) {
-      console.error('Error copying:', error);
-    }
+    router.push({
+      pathname: '/export-report' as any,
+      params: { eventId: event.id, mode: 'text' },
+    });
+    setShowMenu(false);
   };
 
   const handleEmailParticipants = () => {
@@ -237,6 +288,38 @@ export default function EventDetailScreen() {
       pathname: '/email-participants' as any,
       params: { eventId: event.id },
     });
+  };
+
+  const handleExportEventCSV = () => {
+    if (!event) return;
+    router.push({
+      pathname: '/export-report' as any,
+      params: { eventId: event.id },
+    });
+    setShowMenu(false);
+  };
+
+  const handleExportEventBackup = async () => {
+    if (!event) return;
+    
+    try {
+      console.log('[Backup] Starting single event export...');
+      setShowMenu(false);
+      
+      const backup = await exportSingleEventBackup(event.id);
+      
+      // Clean up event name to be file-system safe
+      const safeName = event.name.replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+      const filename = `gathersync-event-${safeName}-${new Date().toISOString().split('T')[0]}.json`;
+      
+      await downloadBackup(backup, filename);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Event backup exported successfully!');
+    } catch (error) {
+      console.error('[Backup] Export failed:', error);
+      Alert.alert('Export Failed', 'Failed to export event backup. Please try again.');
+    }
   };
 
   const handleExportToCalendar = async () => {
@@ -368,9 +451,15 @@ export default function EventDetailScreen() {
 
   const confirmDelete = async () => {
     setShowDeleteConfirm(false);
-    await eventsLocalStorage.delete(eventId!);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
+    try {
+      await autoDeleteEvent(eventId!);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (error) {
+      console.error('[EventDetail] Failed to delete event from cloud:', error);
+      Alert.alert('Notice', 'Event deleted locally but failed to sync to cloud. It will sync automatically later.');
+      router.back();
+    }
   };
 
   if (!event) {
@@ -381,372 +470,84 @@ export default function EventDetailScreen() {
     );
   }
 
-  return (
-    <DesktopLayout>
-    <ThemedView style={[styles.container, { backgroundColor }]}>
-      <View
-        style={[
-          styles.header,
-          {
-            paddingTop: Math.max(insets.top, 16),
-            paddingBottom: 16,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
-          hitSlop={8}
-        >
-          <IconSymbol name="chevron.left" size={28} color={tintColor} />
-        </Pressable>
-        
-        {isEditingName ? (
-          <TextInput
-            style={[
-              styles.nameInput,
-              { color: textColor },
-            ]}
-            value={editedName}
-            onChangeText={setEditedName}
-            onBlur={handleSaveName}
-            onSubmitEditing={handleSaveName}
-            autoFocus
-          />
-        ) : (
-          <Pressable
-            onPress={() => setIsEditingName(true)}
-            style={styles.nameButton}
-          >
-            <ThemedText type="subtitle" numberOfLines={1}>
-              {event.name}
-            </ThemedText>
-          </Pressable>
-        )}
+  const fixedEventRsvpCounts =
+    event.eventType === 'fixed' && event.fixedDate ? getRsvpCounts(event) : null;
+  const fixedEventHasAttendance =
+    event.eventType === 'fixed' && event.fixedDate ? hasRecordedAttendance(event) : false;
 
-        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          {/* Share Button */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              handleShareEvent();
-            }}
-            hitSlop={8}
-          >
-            <IconSymbol name="square.and.arrow.up" size={24} color={tintColor} />
-          </Pressable>
-          
-          {/* Forward Button */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              handleForwardEvent();
-            }}
-            hitSlop={8}
-          >
-            <IconSymbol name="paperplane.fill" size={24} color={tintColor} />
-          </Pressable>
-          
-          {/* Menu Button */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowMenu(true);
-            }}
-            hitSlop={8}
-          >
-            <IconSymbol name="ellipsis.circle" size={28} color={tintColor} />
-          </Pressable>
-        </View>
-        
-        {/* Web-compatible menu modal */}
-        <Modal
-          visible={showMenu}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowMenu(false)}
-        >
-          <Pressable 
-            style={styles.modalOverlay}
-            onPress={() => setShowMenu(false)}
-          >
-            <View style={[styles.menuContainer, { backgroundColor: surfaceColor }]}>
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  router.push({ pathname: '/edit-event' as any, params: { eventId: event.id } });
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Edit Event</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleExportToCalendar();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Export to Calendar</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  router.push({ pathname: '/bulk-import' as any, params: { eventId: event.id } });
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Bulk Import Availability</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  router.push({ pathname: '/invite-participants' as any, params: { eventId: event.id } });
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Invite Participants</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleCopyEvent();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Copy Event</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleShareEvent();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Share Event</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleShareWithParticipants();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Share with Participants</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleCopyEventDetails();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Copy Event Details</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleEmailParticipants();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Email All Participants</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleSaveSnapshot();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Save Snapshot</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleFinalizeDate();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>Finalize Date & Archive</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleArchiveEvent();
-                }}
-              >
-                <ThemedText style={styles.menuItemText}>{event.archived ? 'Unarchive Event' : 'Archive Event'}</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                onPress={() => {
-                  setShowMenu(false);
-                  handleDeleteEvent();
-                }}
-              >
-                <ThemedText style={[styles.menuItemText, { color: '#FF3B30' }]}>Delete Event</ThemedText>
-              </Pressable>
-              
-              <Pressable
-                style={styles.menuItem}
-                onPress={() => setShowMenu(false)}
-              >
-                <ThemedText style={[styles.menuItemText, { fontWeight: '600' }]}>Cancel</ThemedText>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
-      </View>
-
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={[
-          styles.contentContainer,
-          { paddingBottom: Math.max(insets.bottom, 16) + 80 },
-        ]}
-      >
-        {/* Fixed Event Date & RSVP Summary */}
-        {event.eventType === 'fixed' && event.fixedDate ? (
-          <>
-            <View style={[styles.fixedDateCard, { backgroundColor: surfaceColor }]}>
-              <View style={styles.fixedDateHeader}>
-                <IconSymbol name="calendar" size={24} color={tintColor} />
-                <ThemedText type="subtitle">
-                  {new Date(event.fixedDate + 'T00:00:00').toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </ThemedText>
-              </View>
-              {event.fixedTime && (
-                <View style={styles.fixedTimeRow}>
-                  <IconSymbol name="clock" size={20} color={textSecondaryColor} />
-                  <ThemedText style={{ color: textSecondaryColor, fontSize: 16 }}>
-                    {event.fixedTime}
-                  </ThemedText>
-                </View>
-              )}
-            </View>
-
-            {/* RSVP Summary */}
-            <View style={styles.section}>
-              <ThemedText type="subtitle" style={styles.sectionTitle}>RSVP Summary</ThemedText>
-              <View style={[styles.rsvpSummaryCard, { backgroundColor: surfaceColor }]}>
-                <View style={styles.rsvpSummaryRow}>
-                  <View style={styles.rsvpSummaryItem}>
-                    <ThemedText style={[styles.rsvpSummaryCount, { color: successColor }]}>
-                      {event.participants.filter(p => p.rsvpStatus === 'attending').length}
-                    </ThemedText>
-                    <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
-                      Attending
-                    </ThemedText>
-                  </View>
-                  <View style={styles.rsvpSummaryItem}>
-                    <ThemedText style={[styles.rsvpSummaryCount, { color: errorColor }]}>
-                      {event.participants.filter(p => p.rsvpStatus === 'not-attending').length}
-                    </ThemedText>
-                    <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
-                      Not Attending
-                    </ThemedText>
-                  </View>
-                  <View style={styles.rsvpSummaryItem}>
-                    <ThemedText style={[styles.rsvpSummaryCount, { color: textSecondaryColor }]}>
-                      {event.participants.filter(p => !p.rsvpStatus || p.rsvpStatus === 'no-response').length}
-                    </ThemedText>
-                    <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
-                      No Response
-                    </ThemedText>
-                  </View>
-                </View>
-              </View>
-            </View>
-          </>
-        ) : (
-          <>
-            {/* Month/Year Display */}
-            <View style={styles.monthHeader}>
-              <ThemedText type="title">
-                {getMonthName(event.month)} {event.year}
-              </ThemedText>
-            </View>
-
-            {/* Calendar Grid */}
-            <CalendarGrid event={event} onDayPress={handleDayPress} />
-          </>
-        )}
-
-        {/* Reminder Section */}
+  const renderMeetingAndReminderSections = () => (
+    <>
+      {/* Reminder Section */}
         <View style={styles.section}>
           <ThemedText type="subtitle" style={styles.sectionTitle}>Reminder</ThemedText>
           <View style={[styles.reminderCard, { backgroundColor: surfaceColor }]}>
-            <View style={styles.reminderRow}>
-              <ThemedText type="defaultSemiBold">Set Reminder</ThemedText>
-              <Pressable
-                style={[styles.reminderButton, { backgroundColor: tintColor }]}
-                onPress={() => {
-                  Alert.alert(
-                    'Set Reminder',
-                    'How many days before the best day should we remind you?',
-                    [
-                      {
-                        text: '1 day before',
-                        onPress: async () => {
-                          await updateEvent({ ...event, reminderDaysBefore: 1 });
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert('Reminder Set', 'You\'ll be notified 1 day before the best available day.');
-                        },
-                      },
-                      {
-                        text: '3 days before',
-                        onPress: async () => {
-                          await updateEvent({ ...event, reminderDaysBefore: 3 });
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert('Reminder Set', 'You\'ll be notified 3 days before the best available day.');
-                        },
-                      },
-                      {
-                        text: '7 days before',
-                        onPress: async () => {
-                          await updateEvent({ ...event, reminderDaysBefore: 7 });
-                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                          Alert.alert('Reminder Set', 'You\'ll be notified 7 days before the best available day.');
-                        },
-                      },
-                      { text: 'Cancel', style: 'cancel' },
-                    ]
-                  );
-                }}
-              >
-                <IconSymbol name="bell.fill" size={16} color="#FFFFFF" />
-                <ThemedText style={styles.reminderButtonText}>
-                  {event.reminderDaysBefore
-                    ? `${event.reminderDaysBefore} day${event.reminderDaysBefore > 1 ? 's' : ''} before`
-                    : 'Set Reminder'}
-                </ThemedText>
-              </Pressable>
-            </View>
-            {event.reminderDaysBefore && (
-              <ThemedText style={[styles.reminderHint, { color: textSecondaryColor }]}>
-                You'll receive a notification {event.reminderDaysBefore} day{event.reminderDaysBefore > 1 ? 's' : ''} before the best available day
-              </ThemedText>
+            {isEditingReminder ? (
+              <View>
+                <TextInput
+                  style={[
+                    styles.nameInput,
+                    { 
+                      color: textColor, 
+                      backgroundColor: backgroundColor,
+                      padding: 12,
+                      borderRadius: 8,
+                      minHeight: 80,
+                      marginBottom: 12
+                    },
+                  ]}
+                  value={editedReminder}
+                  onChangeText={setEditedReminder}
+                  placeholder="Draft your reminder message here..."
+                  placeholderTextColor={textSecondaryColor}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+                  <Pressable
+                    style={{ padding: 8, paddingHorizontal: 16 }}
+                    onPress={() => {
+                      setIsEditingReminder(false);
+                      setEditedReminder(event.reminderMessage || '');
+                    }}
+                  >
+                    <ThemedText style={{ color: textSecondaryColor }}>Cancel</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.reminderButton, { backgroundColor: tintColor }]}
+                    onPress={handleSaveReminder}
+                  >
+                    <IconSymbol name="checkmark" size={16} color="#FFFFFF" />
+                    <ThemedText style={styles.reminderButtonText}>Save</ThemedText>
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <View>
+                {event.reminderMessage ? (
+                  <ThemedText style={{ color: textColor, marginBottom: 12, lineHeight: 20 }}>
+                    {event.reminderMessage}
+                  </ThemedText>
+                ) : (
+                  <ThemedText style={{ color: textSecondaryColor, marginBottom: 12 }}>
+                    No reminder message set.
+                  </ThemedText>
+                )}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <ThemedText type="defaultSemiBold">Reminder Message</ThemedText>
+                  <Pressable
+                    style={[styles.reminderButton, { backgroundColor: tintColor }]}
+                    onPress={() => {
+                      setEditedReminder(event.reminderMessage || '');
+                      setIsEditingReminder(true);
+                    }}
+                  >
+                    <IconSymbol name="pencil" size={16} color="#FFFFFF" />
+                    <ThemedText style={styles.reminderButtonText}>
+                      {event.reminderMessage ? 'Edit Reminder' : 'Set Reminder'}
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
             )}
           </View>
         </View>
@@ -924,14 +725,32 @@ export default function EventDetailScreen() {
             )}
           </View>
         )}
+    </>
+  );
 
-        {/* Participants Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <ThemedText type="subtitle">Participants</ThemedText>
+  const renderParticipantsSection = () => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <ThemedText type="subtitle">Participants</ThemedText>
             <ThemedText style={[styles.participantCount, { color: textSecondaryColor }]}>
-              {event.participants.length}
+              {(() => {
+                const count = event.participants.filter(p => !p.deletedAt && (!rsvpFilter || (
+                  fixedEventHasAttendance 
+                    ? getEffectiveAttendanceStatus(p, event) === rsvpFilter
+                    : rsvpFilter === 'no-response' ? (!p.rsvpStatus || p.rsvpStatus === 'no-response') : p.rsvpStatus === rsvpFilter
+                ))).length;
+                return `${count}${rsvpFilter ? ' (Filtered)' : ''}`;
+              })()}
             </ThemedText>
+            {rsvpFilter && (
+              <Pressable
+                onPress={() => setRsvpFilter(null)}
+                style={{ marginLeft: 8 }}
+                hitSlop={8}
+              >
+                <IconSymbol name="xmark.circle.fill" size={20} color={textSecondaryColor} />
+              </Pressable>
+            )}
           </View>
 
           {event.participants.length === 0 ? (
@@ -946,7 +765,13 @@ export default function EventDetailScreen() {
             </View>
           ) : (
             <View style={styles.participantsList}>
-              {event.participants.filter(p => !p.deletedAt).map((participant) => (
+              {event.participants
+                .filter(p => !p.deletedAt && (!rsvpFilter || (
+                  fixedEventHasAttendance 
+                    ? getEffectiveAttendanceStatus(p, event) === rsvpFilter
+                    : rsvpFilter === 'no-response' ? (!p.rsvpStatus || p.rsvpStatus === 'no-response') : p.rsvpStatus === rsvpFilter
+                )))
+                .map((participant) => (
                 <Pressable
                   key={participant.id}
                   style={[styles.participantCard, { backgroundColor: surfaceColor }]}
@@ -970,40 +795,31 @@ export default function EventDetailScreen() {
                           {participant.notes}
                         </ThemedText>
                       )}
+                      {participant.designation && (
+                        <ThemedText style={[styles.participantNotes, { color: textSecondaryColor }]} numberOfLines={1}>
+                          {participant.designation}
+                        </ThemedText>
+                      )}
+                      {participant.organization && (
+                        <ThemedText style={[styles.participantNotes, { color: textSecondaryColor }]} numberOfLines={1}>
+                          {participant.organization}
+                        </ThemedText>
+                      )}
                       {participant.phone && (
                         <ThemedText style={[styles.participantPhone, { color: textSecondaryColor }]}>
                           {participant.phone}
                         </ThemedText>
                       )}
+                      {participant.email && (
+                        <ThemedText style={[styles.participantEmail, { color: textSecondaryColor }]}>
+                          {participant.email}
+                        </ThemedText>
+                      )}
                     </View>
                     <View style={styles.participantActions}>
-                      {participant.phone && (
-                        <>
-                          <Pressable
-                            style={[styles.quickActionButton, { backgroundColor: tintColor }]}
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              Linking.openURL(`tel:${participant.phone}`);
-                            }}
-                            hitSlop={4}
-                          >
-                            <IconSymbol name="phone.fill" size={14} color="#fff" />
-                          </Pressable>
-                          <Pressable
-                            style={[styles.quickActionButton, { backgroundColor: tintColor }]}
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              Linking.openURL(`sms:${participant.phone}`);
-                            }}
-                            hitSlop={4}
-                          >
-                            <IconSymbol name="message.fill" size={14} color="#fff" />
-                          </Pressable>
-                        </>
-                      )}
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusBadge(getParticipantStatus(participant, event)).color + '20' }]}>
-                        <ThemedText style={[styles.statusBadgeText, { color: getStatusBadge(getParticipantStatus(participant, event)).color }]}>
-                          {getStatusBadge(getParticipantStatus(participant, event)).icon}
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).color + '20' }]}>
+                        <ThemedText style={[styles.statusBadgeText, { color: getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).color }]}>
+                          {getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).icon}
                         </ThemedText>
                       </View>
                     </View>
@@ -1023,6 +839,467 @@ export default function EventDetailScreen() {
               Add Participant
             </ThemedText>
           </Pressable>
+        </View>
+  );
+
+  return (
+    <DesktopLayout>
+    <ThemedView style={[styles.container, { backgroundColor }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: 16,
+          },
+        ]}
+      >
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.back();
+          }}
+          hitSlop={8}
+        >
+          <IconSymbol name="chevron.left" size={28} color={tintColor} />
+        </Pressable>
+        
+        {isEditingName ? (
+          <TextInput
+            style={[
+              styles.nameInput,
+              { color: textColor },
+            ]}
+            value={editedName}
+            onChangeText={setEditedName}
+            onBlur={handleSaveName}
+            onSubmitEditing={handleSaveName}
+            autoFocus
+          />
+        ) : (
+          <Pressable
+            onPress={() => setIsEditingName(true)}
+            style={styles.nameButton}
+          >
+            <ThemedText type="subtitle" numberOfLines={1}>
+              {event.name}
+            </ThemedText>
+          </Pressable>
+        )}
+
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          {/* Share Button */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleShareEvent();
+            }}
+            hitSlop={8}
+          >
+            <IconSymbol name="square.and.arrow.up" size={24} color={tintColor} />
+          </Pressable>
+          
+          {/* Forward Button */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleForwardEvent();
+            }}
+            hitSlop={8}
+          >
+            <IconSymbol name="paperplane.fill" size={24} color={tintColor} />
+          </Pressable>
+          
+          {/* Menu Button */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowMenu(true);
+            }}
+            hitSlop={8}
+          >
+            <IconSymbol name="ellipsis.circle" size={28} color={tintColor} />
+          </Pressable>
+        </View>
+        
+        {/* Web-compatible menu modal */}
+        <Modal
+          visible={showMenu}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowMenu(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay}
+            onPress={() => setShowMenu(false)}
+          >
+            <View style={[styles.menuContainer, { backgroundColor: surfaceColor, maxHeight: '80%' }]}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Event Management */}
+                <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
+                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Event Management</ThemedText>
+                </View>
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/edit-event' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Edit Event</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleCopyEvent();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Copy Event</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleCopyEventDetails();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Copy Event Details</ThemedText>
+                </Pressable>
+
+                {/* Participants & Communication */}
+                <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
+                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Participants & Communication</ThemedText>
+                </View>
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/admin/attendance-event' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Take / View Attendance</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/invite-participants' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Invite Participants</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/send-messages' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Send Messages</ThemedText>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleEmailParticipants();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Email All Participants</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/import-contacts' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Import Contact List (CSV)</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    router.push({ pathname: '/bulk-import' as any, params: { eventId: event.id } });
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Bulk Import Availability</ThemedText>
+                </Pressable>
+
+                {/* Share & Export */}
+                <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
+                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Share & Export</ThemedText>
+                </View>
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleShareEvent();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Share Event</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleShareWithParticipants();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Share with Participants</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleExportToCalendar();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Export to Calendar</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleExportEventCSV();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Export Event to CSV</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    handleExportEventBackup();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Export Backup (Single Event)</ThemedText>
+                </Pressable>
+
+                {/* System & Status */}
+                <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
+                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>System & Status</ThemedText>
+                </View>
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleSaveSnapshot();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Save Snapshot</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleFinalizeDate();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>Finalize Date & Archive</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleArchiveEvent();
+                  }}
+                >
+                  <ThemedText style={styles.menuItemText}>{event.archived ? 'Unarchive Event' : 'Archive Event'}</ThemedText>
+                </Pressable>
+                
+                <Pressable
+                  style={[styles.menuItem, { borderBottomColor: 'transparent' }]}
+                  onPress={() => {
+                    setShowMenu(false);
+                    handleDeleteEvent();
+                  }}
+                >
+                  <ThemedText style={[styles.menuItemText, { color: '#FF3B30' }]}>Delete Event</ThemedText>
+                </Pressable>
+              </ScrollView>
+              
+              <View style={{ borderTopWidth: 1, borderTopColor: textSecondaryColor + '20', backgroundColor: surfaceColor }}>
+                <Pressable
+                  style={[styles.menuItem, { borderBottomWidth: 0 }]}
+                  onPress={() => setShowMenu(false)}
+                >
+                  <ThemedText style={[styles.menuItemText, { fontWeight: '600', textAlign: 'center' }]}>Cancel</ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+      </View>
+
+            <ScrollView
+        style={styles.content}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingBottom: Math.max(insets.bottom, 16) + 80 },
+        ]}
+      >
+        <View style={[isDesktop && styles.splitContainer]}>
+          <View style={[isDesktop && styles.splitLeft]}>
+            {/* Fixed Event Date & RSVP/Attendance Summary */}
+            {event.eventType === 'fixed' && event.fixedDate ? (
+              <>
+                <View style={[styles.fixedDateCard, { backgroundColor: surfaceColor }]}>
+                  <View style={styles.fixedDateHeader}>
+                    <IconSymbol name="calendar" size={24} color={tintColor} />
+                    <ThemedText type="subtitle">
+                      {new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })}
+                    </ThemedText>
+                  </View>
+                  {event.fixedTime && (
+                    <View style={styles.fixedTimeRow}>
+                      <IconSymbol name="clock" size={20} color={textSecondaryColor} />
+                      <ThemedText style={{ color: textSecondaryColor, fontSize: 16 }}>
+                        {(() => {
+                          const [hours, minutes] = event.fixedTime.split(':').map(Number);
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          const displayHours = hours % 12 || 12;
+                          return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                        })()}
+                      </ThemedText>
+                    </View>
+                  )}
+                </View>
+
+                {/* RSVP/Attendance Summary */}
+                <View style={styles.section}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <ThemedText type="subtitle" style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                      {fixedEventHasAttendance ? 'Attendance Summary' : 'RSVP Summary'}
+                    </ThemedText>
+                    <Pressable
+                      style={{ backgroundColor: tintColor, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                      onPress={() => router.push({ pathname: '/admin/attendance-event' as any, params: { eventId: event.id } })}
+                    >
+                      <ThemedText style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>Take Attendance</ThemedText>
+                    </Pressable>
+                  </View>
+                  <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: -8, marginBottom: 12 }}>
+                    Tap a box below to filter the participant list on the right.
+                  </ThemedText>
+                  <View style={[styles.rsvpSummaryCard, { backgroundColor: surfaceColor }]}>
+                    <View style={styles.rsvpSummaryRow}>
+                      <Pressable 
+                        style={[
+                          styles.rsvpSummaryItem, 
+                          rsvpFilter === 'attending' && { opacity: 1, backgroundColor: tintColor + '10', borderRadius: 12 }, 
+                          rsvpFilter && rsvpFilter !== 'attending' && { opacity: 0.3 }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRsvpFilter(prev => prev === 'attending' ? null : 'attending');
+                        }}
+                      >
+                        <ThemedText style={[styles.rsvpSummaryCount, { color: successColor }]}>
+                          {fixedEventHasAttendance ? fixedEventRsvpCounts?.attending.length : event.participants.filter(p => !p.deletedAt && p.rsvpStatus === 'attending').length}
+                        </ThemedText>
+                        <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
+                          {rsvpFilter === 'attending' ? (fixedEventHasAttendance ? 'Selected: Attended' : 'Selected: Attending') : (fixedEventHasAttendance ? 'Attended' : 'Attending')}
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable 
+                        style={[
+                          styles.rsvpSummaryItem, 
+                          rsvpFilter === 'not-attending' && { opacity: 1, backgroundColor: tintColor + '10', borderRadius: 12 }, 
+                          rsvpFilter && rsvpFilter !== 'not-attending' && { opacity: 0.3 }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRsvpFilter(prev => prev === 'not-attending' ? null : 'not-attending');
+                        }}
+                      >
+                        <ThemedText style={[styles.rsvpSummaryCount, { color: errorColor }]}>
+                          {fixedEventHasAttendance ? fixedEventRsvpCounts?.notAttending.length : event.participants.filter(p => !p.deletedAt && p.rsvpStatus === 'not-attending').length}
+                        </ThemedText>
+                        <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
+                          {rsvpFilter === 'not-attending' ? (fixedEventHasAttendance ? 'Selected: Not Attended' : 'Selected: Not Attending') : (fixedEventHasAttendance ? 'Not Attended' : 'Not Attending')}
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable 
+                        style={[
+                          styles.rsvpSummaryItem, 
+                          rsvpFilter === 'no-response' && { opacity: 1, backgroundColor: tintColor + '10', borderRadius: 12 }, 
+                          rsvpFilter && rsvpFilter !== 'no-response' && { opacity: 0.3 }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setRsvpFilter(prev => prev === 'no-response' ? null : 'no-response');
+                        }}
+                      >
+                        <ThemedText style={[styles.rsvpSummaryCount, { color: textSecondaryColor }]}>
+                          {fixedEventHasAttendance ? fixedEventRsvpCounts?.noResponse.length : event.participants.filter(p => !p.deletedAt && (!p.rsvpStatus || p.rsvpStatus === 'no-response')).length}
+                        </ThemedText>
+                        <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
+                          {rsvpFilter === 'no-response' ? 'Selected: No Response' : (fixedEventHasAttendance ? 'Unchecked' : 'No Response')}
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                {/* Month/Year Display */}
+                <View style={styles.monthHeader}>
+                  <ThemedText type="title">
+                    {getMonthName(event.month)} {event.year}
+                  </ThemedText>
+                </View>
+
+                {/* Calendar Grid */}
+                <CalendarGrid event={event} onDayPress={handleDayPress} />
+              </>
+            )}
+
+            {renderMeetingAndReminderSections()}
+            {!isDesktop && renderParticipantsSection()}
+          </View>
+
+          {isDesktop && (
+            <View style={[styles.splitRight, { borderColor: textSecondaryColor + '20' }]}>
+              {selectedDay !== null ? (
+                <DayDetailPane 
+                  eventId={event.id} 
+                  day={selectedDay} 
+                  onClose={() => setSelectedDay(null)} 
+                  onUpdate={() => loadEvent()}
+                />
+              ) : selectedParticipantId !== null ? (
+                <ParticipantDetailPane
+                  eventId={event.id}
+                  participantId={selectedParticipantId}
+                  onClose={() => setSelectedParticipantId(null)}
+                  onEventUpdated={updateEvent}
+                />
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingTop: 0 }}>
+                  {renderParticipantsSection()}
+                </ScrollView>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -1179,13 +1456,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
   },
   participantInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     flex: 1,
   },
   participantNameContainer: {
@@ -1197,8 +1474,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   participantName: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 22,
   },
   sourceBadge: {
     paddingHorizontal: 6,
@@ -1264,6 +1541,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 2,
   },
+  participantEmail: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+  },
   participantActions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1304,6 +1586,8 @@ const styles = StyleSheet.create({
   rsvpSummaryItem: {
     alignItems: 'center',
     gap: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   rsvpSummaryCount: {
     fontSize: 32,
@@ -1385,5 +1669,25 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
+  },
+  splitContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 24,
+  },
+  splitLeft: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  splitRight: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    height: '100%',
+    minHeight: 600,
+    backgroundColor: 'rgba(0,0,0,0.02)',
   },
 });

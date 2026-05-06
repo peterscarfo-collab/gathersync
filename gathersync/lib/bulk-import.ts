@@ -115,3 +115,99 @@ export function generateImportTemplate(month: number, year: number): string {
   
   return [header, example1, example2].join('\n');
 }
+
+export interface ContactsImportResult {
+  success: boolean;
+  participants: Array<{
+    name: string;
+    phone?: string;
+    email?: string;
+    designation?: string;
+    organization?: string;
+  }>;
+  errors: string[];
+}
+
+/**
+ * Parse bulk contacts data from CSV/TSV format
+ * Expected format:
+ * Name, Phone, Email
+ * John Doe, 555-1234, john@example.com
+ */
+export function parseContactsCSV(text: string): ContactsImportResult {
+  const result: ContactsImportResult = {
+    success: false,
+    participants: [],
+    errors: [],
+  };
+
+  try {
+    const lines = text.trim().split('\n').filter(line => line.trim());
+    
+    if (lines.length < 1) {
+      result.errors.push('No data found');
+      return result;
+    }
+
+    const firstLine = lines[0];
+    const separator = firstLine.includes('\t') ? '\t' : ',';
+    
+    // Check if there is a header
+    let startIndex = 0;
+    if (firstLine.toLowerCase().includes('name')) {
+      startIndex = 1; // skip header
+    }
+
+    for (let i = startIndex; i < lines.length; i++) {
+      const line = lines[i];
+      // Basic CSV parsing to handle quotes (not perfect but handles simple cases)
+      // For a robust implementation, a CSV parser library should be used.
+      // Here we just split by separator.
+      const cells = line.split(separator).map(c => {
+        let val = c.trim();
+        if (val.startsWith('="') && val.endsWith('"')) {
+          val = val.substring(2, val.length - 1);
+        } else {
+          val = val.replace(/^"|"$/g, '');
+        }
+        return val;
+      });
+      
+      const name = cells[0];
+      if (!name) {
+        result.errors.push(`Row ${i + 1}: Missing name`);
+        continue;
+      }
+
+      const phone = cells[1] || undefined;
+      const email = cells[2] || undefined;
+      const designation = cells[3] || undefined;
+      const organization = cells[4] || undefined;
+
+      result.participants.push({
+        name,
+        phone,
+        email,
+        designation,
+        organization,
+      });
+    }
+
+    result.success = result.participants.length > 0;
+    if (result.participants.length === 0) {
+      result.errors.push('No valid participant data found');
+    }
+  } catch (error: any) {
+    result.errors.push(`Parse error: ${error.message}`);
+  }
+
+  return result;
+}
+
+export function generateContactsImportTemplate(): string {
+  const header = ['Name', 'Phone', 'Email', 'Title/Designation', 'Company/Organization'].join(',');
+  const example1 = ['John Doe', '0412345678', 'john@example.com', 'Director', 'Acme Corp'].join(',');
+  const example2 = ['Sarah Smith', '', 'sarah@example.com', 'VIP', 'GatherSync'].join(',');
+  
+  return [header, example1, example2].join('\n');
+}

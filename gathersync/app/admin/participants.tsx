@@ -7,60 +7,171 @@ import {
   TextInput,
   Platform,
   Share,
+  Modal,
+  Alert,
+  ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAuth } from '@/hooks/use-auth';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { trpc } from '@/lib/trpc';
+import { AdminColors } from '@/constants/admin-theme';
 import type { Event, Participant } from '@/types/models';
+
+interface EventInfo {
+  id: string;
+  name: string;
+  date: string;
+}
 
 interface ParticipantWithEvents {
   name: string;
   phone?: string;
   email?: string;
+  designation?: string;
+  organization?: string;
   eventCount: number;
-  events: string[]; // Event names
+  events: EventInfo[];
 }
 
 export default function AdminParticipantsScreen() {
   const router = useRouter();
+  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
   const insets = useSafeAreaInsets();
   const tintColor = useThemeColor({}, 'tint');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2a2a2a' }, 'background');
   const surfaceColor = useThemeColor({ light: '#fff', dark: '#1a1a1a' }, 'background');
+  const { user } = useAuth();
+  
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+  const [sortBy, setSortBy] = useState<'firstName' | 'lastName' | 'phone'>('firstName');
+  const [filterEventId, setFilterEventId] = useState<string>('all');
+  const [showFilterModal, setShowFilterModal] = useState(false);
   
   const [events, setEvents] = useState<Event[]>([]);
+  const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [participants, setParticipants] = useState<ParticipantWithEvents[]>([]);
   const [filteredParticipants, setFilteredParticipants] = useState<ParticipantWithEvents[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedParticipant, setSelectedParticipant] = useState<ParticipantWithEvents | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addPhone, setAddPhone] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [addDesignation, setAddDesignation] = useState('');
+  const [addOrganization, setAddOrganization] = useState('');
+  const [addEventId, setAddEventId] = useState<string>(eventId || '');
+
+  const [isEditingParticipant, setIsEditingParticipant] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDesignation, setEditDesignation] = useState('');
+  const [editOrganization, setEditOrganization] = useState('');
+  const [editEventId, setEditEventId] = useState<string>(eventId || '');
+
+  const { data: matchedUsers, isLoading: isLoadingUser, refetch: refetchUsers } = trpc.admin.searchUsers.useQuery(
+    { query: selectedParticipant?.email || selectedParticipant?.name || '' },
+    { enabled: !!selectedParticipant }
+  );
+
+  const grantLifetimePro = trpc.admin.grantLifetimePro.useMutation({
+    onSuccess: () => {
+      refetchUsers();
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message);
+    }
+  });
+
+  const revokeLifetimePro = trpc.admin.revokeLifetimePro.useMutation({
+    onSuccess: () => {
+      refetchUsers();
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message);
+    }
+  });
+
+  const createParticipantAccount = trpc.admin.createParticipantAccount.useMutation({
+    onSuccess: (data) => {
+      const frontendUrl = process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:8081";
+      const loginUrl = `${frontendUrl}?loginSuccess=true&token=${data.token}`;
+      
+      if (Platform.OS === 'web') {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(loginUrl);
+          alert('Login link generated and copied to clipboard! Send this to the participant.');
+        } else {
+          prompt('Copy this login link and send it to the participant:', loginUrl);
+        }
+      } else {
+        Share.share({
+          message: `Here is your personal login link for GatherSync: ${loginUrl}`,
+          title: 'GatherSync Login',
+        });
+      }
+      refetchUsers();
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message);
+    }
+  });
+
+  const matchedUser = matchedUsers && matchedUsers.length > 0 ? matchedUsers[0] : null;
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [eventId]);
 
   useEffect(() => {
-    applySearch();
-  }, [participants, searchQuery]);
+    applySearchAndSort();
+  }, [participants, searchQuery, sortBy, filterEventId]);
 
   const loadData = async () => {
     try {
       const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      const activeEvents = allEvents.filter(e => !e.archived);
+      setEvents(activeEvents);
+
+      if (eventId) {
+        const foundEvent = allEvents.find(e => e.id === eventId);
+        if (foundEvent) {
+          setActiveEvent(foundEvent);
+        }
+      }
 
       // Build participant directory
       const participantMap = new Map<string, ParticipantWithEvents>();
       
-      allEvents.forEach(event => {
+      activeEvents.forEach(event => {
+        const date = event.eventType === 'fixed' && event.fixedDate 
+          ? new Date(event.fixedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : `${event.month}/${event.year}`;
+
         event.participants.forEach(participant => {
+          if (participant.deletedAt) return; // Skip soft-deleted participants
+          
           const existing = participantMap.get(participant.name);
           if (existing) {
             existing.eventCount += 1;
-            existing.events.push(event.name);
+            existing.events.push({ id: event.id, name: event.name, date });
             // Update contact info if available
             if (participant.phone && !existing.phone) {
               existing.phone = participant.phone;
@@ -68,13 +179,21 @@ export default function AdminParticipantsScreen() {
             if (participant.email && !existing.email) {
               existing.email = participant.email;
             }
+            if (participant.designation && !existing.designation) {
+              existing.designation = participant.designation;
+            }
+            if (participant.organization && !existing.organization) {
+              existing.organization = participant.organization;
+            }
           } else {
             participantMap.set(participant.name, {
               name: participant.name,
               phone: participant.phone,
               email: participant.email,
+              designation: participant.designation,
+              organization: participant.organization,
               eventCount: 1,
-              events: [event.name],
+              events: [{ id: event.id, name: event.name, date }],
             });
           }
         });
@@ -91,27 +210,101 @@ export default function AdminParticipantsScreen() {
     }
   };
 
-  const applySearch = () => {
-    if (!searchQuery.trim()) {
-      setFilteredParticipants(participants);
-      return;
+  const applySearchAndSort = () => {
+    let filtered = participants;
+
+    // Filter by Event first
+    if (filterEventId !== 'all') {
+      filtered = filtered.filter(p => p.events.some(e => e.id === filterEventId));
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = participants.filter(p =>
-      p.name.toLowerCase().includes(query) ||
-      p.phone?.toLowerCase().includes(query) ||
-      p.email?.toLowerCase().includes(query) ||
-      p.events.some(e => e.toLowerCase().includes(query))
-    );
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(p =>
+        p.name.toLowerCase().includes(query) ||
+        p.phone?.toLowerCase().includes(query) ||
+        p.email?.toLowerCase().includes(query) ||
+        p.designation?.toLowerCase().includes(query) ||
+        p.organization?.toLowerCase().includes(query) ||
+        p.events.some(e => e.name.toLowerCase().includes(query) || e.date.toLowerCase().includes(query))
+      );
+    }
+
+    filtered = [...filtered].sort((a, b) => {
+      if (sortBy === 'firstName') {
+        return a.name.localeCompare(b.name);
+      } else if (sortBy === 'lastName') {
+        const getLastName = (name: string) => {
+          const parts = name.trim().split(' ');
+          return parts.length > 1 ? parts[parts.length - 1] : name;
+        };
+        return getLastName(a.name).localeCompare(getLastName(b.name));
+      } else if (sortBy === 'phone') {
+        const phoneA = a.phone || '';
+        const phoneB = b.phone || '';
+        return phoneA.localeCompare(phoneB);
+      } else if (sortBy === 'event') {
+        const eventA = a.events.length > 0 ? a.events[0].name : '';
+        const eventB = b.events.length > 0 ? b.events[0].name : '';
+        if (eventA === eventB) {
+          return a.name.localeCompare(b.name);
+        }
+        return eventA.localeCompare(eventB);
+      }
+      return 0;
+    });
+
     setFilteredParticipants(filtered);
+  };
+
+  const handleQuickAdd = async (participantName: string) => {
+    if (!activeEvent) return;
+
+    try {
+      const existingParticipantIndex = activeEvent.participants.findIndex(p => p.name === participantName);
+      
+      if (existingParticipantIndex !== -1) {
+        if (activeEvent.participants[existingParticipantIndex].deletedAt) {
+          // Reactivate soft-deleted participant
+          activeEvent.participants[existingParticipantIndex].deletedAt = undefined;
+          await eventsLocalStorage.update(activeEvent.id, activeEvent);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          loadData(); // Refresh the list
+        } else {
+          Alert.alert('Info', 'Participant is already in this event.');
+        }
+      } else {
+        // Find their phone/email from the directory
+        const directoryEntry = participants.find(p => p.name === participantName);
+        
+        const newParticipant: Participant = {
+          id: Date.now().toString(),
+          name: participantName,
+          phone: directoryEntry?.phone,
+          email: directoryEntry?.email,
+          designation: directoryEntry?.designation,
+          organization: directoryEntry?.organization,
+          availability: {},
+          unavailableAllMonth: false,
+          source: 'manual',
+          rsvpStatus: 'no-response',
+        };
+        activeEvent.participants.push(newParticipant);
+        await eventsLocalStorage.update(activeEvent.id, activeEvent);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        loadData(); // Refresh the list
+      }
+    } catch (error) {
+      console.error('Failed to quick add participant:', error);
+      Alert.alert('Error', 'Failed to add participant to event');
+    }
   };
 
   const exportParticipantList = () => {
     // Generate CSV
     let csv = 'Name,Phone,Email,Event Count,Events\n';
     participants.forEach(p => {
-      csv += `${p.name},${p.phone || ''},${p.email || ''},${p.eventCount},"${p.events.join(', ')}"\n`;
+      csv += `${p.name},${p.phone || ''},${p.email || ''},${p.eventCount},"${p.events.map(e => e.name).join(', ')}"\n`;
     });
 
     if (Platform.OS === 'web') {
@@ -135,6 +328,155 @@ export default function AdminParticipantsScreen() {
     }
   };
 
+  const handleAddParticipant = async () => {
+    if (!addName.trim()) {
+      Alert.alert('Error', 'Name is required');
+      return;
+    }
+    if (!addEventId) {
+      Alert.alert('Error', 'Please select an event to add the participant to');
+      return;
+    }
+
+    try {
+      const eventToUpdate = await eventsLocalStorage.getById(addEventId);
+      if (!eventToUpdate) throw new Error('Event not found');
+
+      const existingIndex = eventToUpdate.participants.findIndex(p => p.name.toLowerCase() === addName.trim().toLowerCase());
+      
+      if (existingIndex !== -1) {
+        if (eventToUpdate.participants[existingIndex].deletedAt) {
+          // Reactivate and update
+          eventToUpdate.participants[existingIndex] = {
+            ...eventToUpdate.participants[existingIndex],
+            name: addName.trim(),
+            phone: addPhone.trim() || undefined,
+            email: addEmail.trim() || undefined,
+            designation: addDesignation.trim() || undefined,
+            organization: addOrganization.trim() || undefined,
+            deletedAt: undefined,
+          };
+          await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+        } else {
+          Alert.alert('Info', 'Participant is already in this event.');
+          return;
+        }
+      } else {
+        const newParticipant: Participant = {
+          id: Date.now().toString(),
+          name: addName.trim(),
+          phone: addPhone.trim() || undefined,
+          email: addEmail.trim() || undefined,
+          designation: addDesignation.trim() || undefined,
+          organization: addOrganization.trim() || undefined,
+          availability: {},
+          unavailableAllMonth: false,
+          source: 'manual',
+          rsvpStatus: 'no-response',
+        };
+
+        eventToUpdate.participants.push(newParticipant);
+        await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+      }
+
+      setAddName('');
+      setAddPhone('');
+      setAddEmail('');
+      setAddDesignation('');
+      setAddOrganization('');
+      setAddEventId('');
+      setShowAddModal(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadData(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to add participant:', error);
+      Alert.alert('Error', 'Failed to add participant');
+    }
+  };
+
+  const handleSaveParticipant = async () => {
+    if (!selectedParticipant) return;
+    if (!editName.trim()) {
+      Alert.alert('Error', 'Name is required');
+      return;
+    }
+
+    try {
+      const oldName = selectedParticipant.name;
+      const newName = editName.trim();
+      const newPhone = editPhone.trim() || undefined;
+      const newEmail = editEmail.trim() || undefined;
+      const newDesignation = editDesignation.trim() || undefined;
+      const newOrganization = editOrganization.trim() || undefined;
+
+      // Update existing events
+      for (const evt of selectedParticipant.events) {
+        const eventToUpdate = await eventsLocalStorage.getById(evt.id);
+        if (eventToUpdate) {
+          const participantIndex = eventToUpdate.participants.findIndex(p => p.name === oldName);
+          if (participantIndex !== -1) {
+            eventToUpdate.participants[participantIndex] = {
+              ...eventToUpdate.participants[participantIndex],
+              name: newName,
+              phone: newPhone,
+              email: newEmail,
+              designation: newDesignation,
+              organization: newOrganization,
+            };
+            await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+          }
+        }
+      }
+
+      // Add to new event if selected
+      if (editEventId) {
+        const eventToAdd = await eventsLocalStorage.getById(editEventId);
+        if (eventToAdd) {
+          const existingIndex = eventToAdd.participants.findIndex(p => p.name === newName);
+          if (existingIndex !== -1) {
+            if (eventToAdd.participants[existingIndex].deletedAt) {
+              // Reactivate
+              eventToAdd.participants[existingIndex] = {
+                ...eventToAdd.participants[existingIndex],
+                name: newName,
+                phone: newPhone,
+                email: newEmail,
+                designation: newDesignation,
+                organization: newOrganization,
+                deletedAt: undefined,
+              };
+              await eventsLocalStorage.update(eventToAdd.id, eventToAdd);
+            }
+          } else {
+            const newParticipant: Participant = {
+              id: Date.now().toString(),
+              name: newName,
+              phone: newPhone,
+              email: newEmail,
+              designation: newDesignation,
+              organization: newOrganization,
+              availability: {},
+              unavailableAllMonth: false,
+              source: 'manual',
+              rsvpStatus: 'no-response',
+            };
+            eventToAdd.participants.push(newParticipant);
+            await eventsLocalStorage.update(eventToAdd.id, eventToAdd);
+          }
+        }
+      }
+
+      setIsEditingParticipant(false);
+      setEditEventId('');
+      setSelectedParticipant(null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      loadData(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to update participant:', error);
+      Alert.alert('Error', 'Failed to update participant details');
+    }
+  };
+
   return (
     <ThemedView style={styles.container}>
       {/* Header */}
@@ -145,19 +487,76 @@ export default function AdminParticipantsScreen() {
         >
           <IconSymbol name="chevron.left" size={24} color={tintColor} />
         </Pressable>
-        <ThemedText type="title">Participant Management</ThemedText>
+        <ThemedText type="title" style={{ flex: 1 }}>Participant Management</ThemedText>
+        <Pressable
+          style={{ backgroundColor: tintColor, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => setShowAddModal(true)}
+        >
+          <IconSymbol name="plus" size={24} color="#fff" />
+        </Pressable>
       </View>
 
-      {/* Search */}
+      {/* Search and Sort */}
       <View style={styles.controls}>
         <TextInput
-          style={[styles.searchInput, { backgroundColor: surfaceColor, color: tintColor }]}
+          style={[styles.searchInput, { backgroundColor: surfaceColor, color: tintColor, flex: 1 }]}
           placeholder="Search participants..."
           placeholderTextColor="#999"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
+        <Pressable
+          style={[styles.sortButton, { backgroundColor: filterEventId !== 'all' ? tintColor : surfaceColor }]}
+          onPress={() => setShowFilterModal(true)}
+        >
+          <ThemedText style={[styles.sortButtonText, { color: filterEventId !== 'all' ? '#fff' : tintColor }]}>
+            {filterEventId === 'all' 
+              ? 'Filter: All Events' 
+              : `Filter: ${events.find(e => e.id === filterEventId)?.name || 'Event'}`}
+          </ThemedText>
+        </Pressable>
+        {isDesktop && (
+          <View style={styles.sortControls}>
+            <ThemedText style={{ fontSize: 14, color: '#999', marginRight: 8 }}>Sort by:</ThemedText>
+            {(['firstName', 'lastName', 'phone', 'event'] as const).map(option => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.sortButton,
+                  { backgroundColor: surfaceColor },
+                  sortBy === option && { backgroundColor: tintColor }
+                ]}
+                onPress={() => setSortBy(option)}
+              >
+                <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
+                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : 'Event'}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
+      {!isDesktop && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+          <View style={[styles.sortControls, { marginTop: 0 }]}>
+            {(['firstName', 'lastName', 'phone', 'event'] as const).map(option => (
+              <Pressable
+                key={option}
+                style={[
+                  styles.sortButton,
+                  { backgroundColor: surfaceColor },
+                  sortBy === option && { backgroundColor: tintColor }
+                ]}
+                onPress={() => setSortBy(option)}
+              >
+                <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
+                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : 'Event'}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      )}
 
       {/* Summary */}
       <View style={styles.summary}>
@@ -189,7 +588,10 @@ export default function AdminParticipantsScreen() {
       </Pressable>
 
       {/* Participant List */}
-      <ScrollView style={styles.participantList}>
+      <ScrollView 
+        style={styles.participantList}
+        contentContainerStyle={isDesktop ? styles.participantListGrid : undefined}
+      >
         {filteredParticipants.length === 0 ? (
           <View style={styles.emptyState}>
             <ThemedText style={{ opacity: 0.5 }}>
@@ -198,14 +600,40 @@ export default function AdminParticipantsScreen() {
           </View>
         ) : (
           filteredParticipants.map((participant, index) => (
-            <View
+            <Pressable
               key={index}
-              style={[styles.participantCard, { backgroundColor: cardBg }]}
+              style={[
+                styles.participantCard, 
+                { backgroundColor: cardBg },
+                isDesktop && { width: '32%', marginBottom: 0 }
+              ]}
+              onPress={() => {
+                setSelectedParticipant(participant);
+                setEditName(participant.name);
+                setEditPhone(participant.phone || '');
+                setEditEmail(participant.email || '');
+                setEditDesignation(participant.designation || '');
+                setEditOrganization(participant.organization || '');
+                setEditEventId(''); // Reset the "Add to Event" dropdown
+                setIsEditingParticipant(false);
+              }}
             >
               <View style={styles.participantHeader}>
                 <View style={styles.participantInfo}>
                   <ThemedText type="defaultSemiBold">{participant.name}</ThemedText>
                   <View style={styles.participantMeta}>
+                    {participant.designation && (
+                      <View style={styles.metaItem}>
+                        <IconSymbol name="briefcase.fill" size={12} color={tintColor} />
+                        <ThemedText style={styles.metaText}>{participant.designation}</ThemedText>
+                      </View>
+                    )}
+                    {participant.organization && (
+                      <View style={styles.metaItem}>
+                        <IconSymbol name="building.2.fill" size={12} color={tintColor} />
+                        <ThemedText style={styles.metaText}>{participant.organization}</ThemedText>
+                      </View>
+                    )}
                     {participant.phone && (
                       <View style={styles.metaItem}>
                         <IconSymbol name="phone.fill" size={12} color={tintColor} />
@@ -214,38 +642,616 @@ export default function AdminParticipantsScreen() {
                     )}
                     {participant.email && (
                       <View style={styles.metaItem}>
-                        <IconSymbol name="message.fill" size={12} color={tintColor} />
+                        <IconSymbol name="envelope.fill" size={12} color={tintColor} />
                         <ThemedText style={styles.metaText}>{participant.email}</ThemedText>
                       </View>
                     )}
                   </View>
                 </View>
-                <View style={[styles.eventBadge, { backgroundColor: tintColor }]}>
-                  <ThemedText style={styles.eventBadgeText}>
-                    {participant.eventCount} {participant.eventCount === 1 ? 'event' : 'events'}
-                  </ThemedText>
-                </View>
+                {activeEvent && !activeEvent.participants.some(p => p.name === participant.name) ? (
+                  <Pressable
+                    style={{ backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleQuickAdd(participant.name);
+                    }}
+                  >
+                    <ThemedText style={{ color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' }}>Add to Event</ThemedText>
+                  </Pressable>
+                ) : activeEvent && activeEvent.participants.some(p => p.name === participant.name) ? (
+                  <View style={{ backgroundColor: '#10B98120', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
+                    <ThemedText style={{ color: '#10B981', fontSize: 12, fontWeight: 'bold' }}>Added</ThemedText>
+                  </View>
+                ) : (
+                  <View style={[styles.eventBadge, { backgroundColor: tintColor }]}>
+                    <ThemedText style={styles.eventBadgeText}>
+                      {participant.eventCount} {participant.eventCount === 1 ? 'event' : 'events'}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
 
               {participant.events.length > 0 && (
                 <View style={styles.eventList}>
                   <ThemedText style={styles.eventListTitle}>Events:</ThemedText>
                   <View style={styles.eventChips}>
-                    {participant.events.map((eventName, i) => (
-                      <View key={i} style={[styles.eventChip, { backgroundColor: tintColor + '20' }]}>
+                    {participant.events.map((evt, i) => (
+                      <Pressable 
+                        key={i} 
+                        style={[styles.eventChip, { backgroundColor: tintColor + '20' }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          router.push(`/event-detail?eventId=${evt.id}` as any);
+                        }}
+                        hitSlop={4}
+                      >
                         <ThemedText style={[styles.eventChipText, { color: tintColor }]}>
-                          {eventName}
+                          {evt.name} • {evt.date}
                         </ThemedText>
-                      </View>
+                      </Pressable>
                     ))}
                   </View>
                 </View>
               )}
-            </View>
+            </Pressable>
           ))
         )}
         <View style={{ height: insets.bottom + 80 }} />
       </ScrollView>
+
+      {/* Participant Details Modal */}
+      <Modal
+        visible={!!selectedParticipant}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedParticipant(null)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setSelectedParticipant(null)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: surfaceColor }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {selectedParticipant && (
+              <>
+                <View style={styles.modalHeader}>
+                  <ThemedText type="subtitle" style={{ fontSize: 20 }}>Participant Details</ThemedText>
+                  <Pressable onPress={() => setSelectedParticipant(null)} hitSlop={8}>
+                    <IconSymbol name="xmark" size={24} color={tintColor} />
+                  </Pressable>
+                </View>
+
+                <ScrollView style={styles.modalBody}>
+                  {isEditingParticipant ? (
+                    <View style={styles.modalSection}>
+                      <View style={{ gap: 12, marginBottom: 16 }}>
+                        <View style={isDesktop ? { flexDirection: 'row', gap: 12 } : { gap: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Name *</ThemedText>
+                            <TextInput
+                              style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                              placeholder="e.g. John Doe"
+                              placeholderTextColor="#999"
+                              value={editName}
+                              onChangeText={setEditName}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Add to Event (Optional)</ThemedText>
+                            <View style={{ backgroundColor: cardBg, borderRadius: 8, overflow: 'hidden' }}>
+                              {Platform.OS === 'web' ? (
+                                <select
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 12px',
+                                    backgroundColor: 'transparent',
+                                    color: tintColor,
+                                    border: 'none',
+                                    outline: 'none',
+                                    fontSize: 14,
+                                    height: 38,
+                                  }}
+                                  value={editEventId}
+                                  onChange={(e) => setEditEventId(e.target.value)}
+                                >
+                                  <option value="">Select an event...</option>
+                                  {events.map((e) => (
+                                    <option key={e.id} value={e.id}>
+                                      {e.name} ({e.eventType === 'fixed' ? e.fixedDate : `${e.month}/${e.year}`})
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <ScrollView style={{ maxHeight: 120 }}>
+                                  <Pressable
+                                    style={{
+                                      padding: 8,
+                                      paddingHorizontal: 12,
+                                      borderBottomWidth: 1,
+                                      borderBottomColor: 'rgba(0,0,0,0.05)',
+                                      backgroundColor: editEventId === '' ? tintColor + '20' : 'transparent',
+                                    }}
+                                    onPress={() => setEditEventId('')}
+                                  >
+                                    <ThemedText style={{ color: editEventId === '' ? tintColor : undefined, fontSize: 14 }}>
+                                      Select an event...
+                                    </ThemedText>
+                                  </Pressable>
+                                  {events.map((e) => (
+                                    <Pressable
+                                      key={e.id}
+                                      style={{
+                                        padding: 8,
+                                        paddingHorizontal: 12,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: 'rgba(0,0,0,0.05)',
+                                        backgroundColor: editEventId === e.id ? tintColor + '20' : 'transparent',
+                                      }}
+                                      onPress={() => setEditEventId(e.id)}
+                                    >
+                                      <ThemedText style={{ color: editEventId === e.id ? tintColor : undefined, fontSize: 14 }}>
+                                        {e.name}
+                                      </ThemedText>
+                                      <ThemedText style={{ fontSize: 11, opacity: 0.7 }}>
+                                        {e.eventType === 'fixed' ? e.fixedDate : `${e.month}/${e.year}`}
+                                      </ThemedText>
+                                    </Pressable>
+                                  ))}
+                                </ScrollView>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                          <View style={{ flex: 1 }}>
+                            <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Phone (Optional)</ThemedText>
+                            <TextInput
+                              style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                              placeholder="e.g. 0400 000 000"
+                              placeholderTextColor="#999"
+                              value={editPhone}
+                              onChangeText={setEditPhone}
+                              keyboardType="phone-pad"
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Email (Optional)</ThemedText>
+                            <TextInput
+                              style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                              placeholder="e.g. john@example.com"
+                              placeholderTextColor="#999"
+                              value={editEmail}
+                              onChangeText={setEditEmail}
+                              keyboardType="email-address"
+                              autoCapitalize="none"
+                            />
+                          </View>
+                        </View>
+
+                        <View style={{ marginTop: 12 }}>
+                          <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Title or Designation (Optional)</ThemedText>
+                          <TextInput
+                            style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                            placeholder="e.g. Director, Treasurer, VIP"
+                            placeholderTextColor="#999"
+                            value={editDesignation}
+                            onChangeText={setEditDesignation}
+                            autoCapitalize="words"
+                          />
+                        </View>
+
+                        <View style={{ marginTop: 12 }}>
+                          <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Company or Organization (Optional)</ThemedText>
+                          <TextInput
+                            style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                            placeholder="e.g. Acme Corp, GatherSync"
+                            placeholderTextColor="#999"
+                            value={editOrganization}
+                            onChangeText={setEditOrganization}
+                            autoCapitalize="words"
+                          />
+                        </View>
+                      </View>
+                      
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <Pressable
+                          style={[styles.exportButton, { backgroundColor: cardBg, flex: 1, marginHorizontal: 0, paddingVertical: 12, marginBottom: 0 }]}
+                          onPress={() => setIsEditingParticipant(false)}
+                        >
+                          <ThemedText style={{ fontWeight: '600', fontSize: 14 }}>Cancel</ThemedText>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.exportButton, { backgroundColor: tintColor, flex: 1, marginHorizontal: 0, paddingVertical: 12, marginBottom: 0 }]}
+                          onPress={handleSaveParticipant}
+                        >
+                          <ThemedText style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Save Changes</ThemedText>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.modalSection}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <ThemedText type="defaultSemiBold" style={{ fontSize: 18, marginBottom: 8 }}>{selectedParticipant.name}</ThemedText>
+                          {selectedParticipant.phone && (
+                            <View style={[styles.metaItem, { marginBottom: 4 }]}>
+                              <IconSymbol name="phone.fill" size={16} color={tintColor} />
+                              <ThemedText>{selectedParticipant.phone}</ThemedText>
+                            </View>
+                          )}
+                          {selectedParticipant.email && (
+                            <View style={styles.metaItem}>
+                              <IconSymbol name="message.fill" size={16} color={tintColor} />
+                              <ThemedText>{selectedParticipant.email}</ThemedText>
+                            </View>
+                          )}
+                        </View>
+                        <Pressable
+                          style={{ backgroundColor: tintColor + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+                          onPress={() => setIsEditingParticipant(true)}
+                        >
+                          <ThemedText style={{ color: tintColor, fontSize: 13, fontWeight: '600' }}>Edit</ThemedText>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
+
+                  {user?.role === 'admin' && (
+                    <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: cardBg, paddingTop: 16 }]}>
+                      <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>GatherSync Account</ThemedText>
+                      
+                      {isLoadingUser ? (
+                        <ActivityIndicator size="small" color={tintColor} />
+                      ) : matchedUser ? (
+                        <View style={{ gap: 12 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <IconSymbol name="person.crop.circle.badge.checkmark" size={20} color={AdminColors.success} />
+                            <ThemedText>Registered User ({matchedUser.role})</ThemedText>
+                          </View>
+                          
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <IconSymbol name="star.fill" size={20} color={matchedUser.isLifetimePro || matchedUser.subscriptionTier === 'pro' ? AdminColors.warning : AdminColors.gray400} />
+                            <ThemedText>
+                              Tier: {matchedUser.isLifetimePro ? 'Lifetime Pro' : 
+                                    matchedUser.subscriptionTier === 'pro' ? 'Pro' : 
+                                    matchedUser.subscriptionTier === 'enterprise' ? 'Enterprise' : 'Free'}
+                            </ThemedText>
+                          </View>
+
+                          <View style={{ marginTop: 8 }}>
+                            {!matchedUser.isLifetimePro ? (
+                              <Pressable
+                                style={[styles.exportButton, { backgroundColor: AdminColors.primary, marginHorizontal: 0, padding: 12 }]}
+                                onPress={() => {
+                                  if (Platform.OS === 'web') {
+                                    if (confirm(`Grant Lifetime Pro access to ${matchedUser.name}?`)) {
+                                      grantLifetimePro.mutate({ userId: matchedUser.id });
+                                    }
+                                  } else {
+                                    Alert.alert(
+                                      'Confirm Grant',
+                                      `Grant Lifetime Pro access to ${matchedUser.name}?`,
+                                      [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        { text: 'Grant Pro', onPress: () => grantLifetimePro.mutate({ userId: matchedUser.id }) },
+                                      ]
+                                    );
+                                  }
+                                }}
+                                disabled={grantLifetimePro.isPending}
+                              >
+                                <IconSymbol name="star.fill" size={16} color="#fff" />
+                                <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Grant Lifetime Pro</ThemedText>
+                              </Pressable>
+                            ) : (
+                              <Pressable
+                                style={[styles.exportButton, { backgroundColor: AdminColors.error, marginHorizontal: 0, padding: 12 }]}
+                                onPress={() => {
+                                  if (Platform.OS === 'web') {
+                                    if (confirm(`Revoke Lifetime Pro access from ${matchedUser.name}?`)) {
+                                      revokeLifetimePro.mutate({ userId: matchedUser.id });
+                                    }
+                                  } else {
+                                    Alert.alert(
+                                      'Confirm Revoke',
+                                      `Revoke Lifetime Pro access from ${matchedUser.name}?`,
+                                      [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        { text: 'Revoke Pro', style: 'destructive', onPress: () => revokeLifetimePro.mutate({ userId: matchedUser.id }) },
+                                      ]
+                                    );
+                                  }
+                                }}
+                                disabled={revokeLifetimePro.isPending}
+                              >
+                                <IconSymbol name="xmark.circle.fill" size={16} color="#fff" />
+                                <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Revoke Pro</ThemedText>
+                              </Pressable>
+                            )}
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={{ backgroundColor: cardBg, padding: 16, borderRadius: 12, gap: 12 }}>
+                          <ThemedText style={{ opacity: 0.7, fontSize: 14 }}>
+                            This participant hasn't created a GatherSync account yet. You can create one for them and send them a login link.
+                          </ThemedText>
+                          
+                          <Pressable
+                            style={[styles.exportButton, { backgroundColor: AdminColors.primary, marginHorizontal: 0, padding: 12, marginBottom: 0 }]}
+                            onPress={() => {
+                              if (!selectedParticipant.email) {
+                                if (Platform.OS === 'web') {
+                                  const email = prompt("Enter the participant's email address to create an account:");
+                                  if (email) {
+                                    createParticipantAccount.mutate({ name: selectedParticipant.name, email });
+                                  }
+                                } else {
+                                  Alert.prompt(
+                                    "Email Required",
+                                    "Enter the participant's email address to create an account:",
+                                    [
+                                      { text: "Cancel", style: "cancel" },
+                                      { text: "Create", onPress: (email?: string) => {
+                                        if (email) createParticipantAccount.mutate({ name: selectedParticipant.name, email });
+                                      }}
+                                    ]
+                                  );
+                                }
+                              } else {
+                                if (Platform.OS === 'web') {
+                                  if (confirm(`Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`)) {
+                                    createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email });
+                                  }
+                                } else {
+                                  Alert.alert(
+                                    'Create Account',
+                                    `Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`,
+                                    [
+                                      { text: 'Cancel', style: 'cancel' },
+                                      { text: 'Create', onPress: () => createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email! }) },
+                                    ]
+                                  );
+                                }
+                              }
+                            }}
+                            disabled={createParticipantAccount.isPending}
+                          >
+                            {createParticipantAccount.isPending ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <>
+                                <IconSymbol name="person.badge.plus" size={16} color="#fff" />
+                                <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Create Account & Send Link</ThemedText>
+                              </>
+                            )}
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </ScrollView>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add Participant Modal */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAddModal(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: surfaceColor }]} onPress={e => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle" style={{ fontSize: 20 }}>Add Participant</ThemedText>
+              <Pressable onPress={() => setShowAddModal(false)} hitSlop={8}>
+                <IconSymbol name="xmark" size={24} color={tintColor} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              <View style={{ gap: 12, marginBottom: 16 }}>
+                <View style={isDesktop ? { flexDirection: 'row', gap: 12 } : { gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Name *</ThemedText>
+                    <TextInput
+                      style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                      placeholder="e.g. John Doe"
+                      placeholderTextColor="#999"
+                      value={addName}
+                      onChangeText={setAddName}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Select Event *</ThemedText>
+                    <View style={{ backgroundColor: cardBg, borderRadius: 8, overflow: 'hidden' }}>
+                      {Platform.OS === 'web' ? (
+                        <select
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            backgroundColor: 'transparent',
+                            color: tintColor,
+                            border: 'none',
+                            outline: 'none',
+                            fontSize: 14,
+                            height: 38,
+                          }}
+                          value={addEventId}
+                          onChange={(e) => setAddEventId(e.target.value)}
+                        >
+                          <option value="" disabled>Select an event...</option>
+                          {events.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.name} ({e.eventType === 'fixed' ? e.fixedDate : `${e.month}/${e.year}`})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <ScrollView style={{ maxHeight: 120 }}>
+                          {events.map((e) => (
+                            <Pressable
+                              key={e.id}
+                              style={{
+                                padding: 8,
+                                paddingHorizontal: 12,
+                                borderBottomWidth: 1,
+                                borderBottomColor: 'rgba(0,0,0,0.05)',
+                                backgroundColor: addEventId === e.id ? tintColor + '20' : 'transparent',
+                              }}
+                              onPress={() => setAddEventId(e.id)}
+                            >
+                              <ThemedText style={{ color: addEventId === e.id ? tintColor : undefined, fontSize: 14 }}>
+                                {e.name}
+                              </ThemedText>
+                              <ThemedText style={{ fontSize: 11, opacity: 0.7 }}>
+                                {e.eventType === 'fixed' ? e.fixedDate : `${e.month}/${e.year}`}
+                              </ThemedText>
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Phone (Optional)</ThemedText>
+                    <TextInput
+                      style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                      placeholder="e.g. 0400 000 000"
+                      placeholderTextColor="#999"
+                      value={addPhone}
+                      onChangeText={setAddPhone}
+                      keyboardType="phone-pad"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Email (Optional)</ThemedText>
+                    <TextInput
+                      style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                      placeholder="e.g. john@example.com"
+                      placeholderTextColor="#999"
+                      value={addEmail}
+                      onChangeText={setAddEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Title or Designation (Optional)</ThemedText>
+                  <TextInput
+                    style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                    placeholder="e.g. Director, Treasurer, VIP"
+                    placeholderTextColor="#999"
+                    value={addDesignation}
+                    onChangeText={setAddDesignation}
+                    autoCapitalize="words"
+                  />
+                </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Company or Organization (Optional)</ThemedText>
+                  <TextInput
+                    style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                    placeholder="e.g. Acme Corp, GatherSync"
+                    placeholderTextColor="#999"
+                    value={addOrganization}
+                    onChangeText={setAddOrganization}
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                style={[styles.exportButton, { backgroundColor: tintColor, marginBottom: 20, paddingVertical: 12 }]}
+                onPress={handleAddParticipant}
+              >
+                <ThemedText style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Add to Event</ThemedText>
+              </Pressable>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {/* Filter Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showFilterModal}
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowFilterModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: surfaceColor, width: isDesktop ? 500 : '90%', maxHeight: '80%' }]}
+            onPress={e => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">Filter by Event</ThemedText>
+              <Pressable
+                onPress={() => setShowFilterModal(false)}
+                style={styles.closeButton}
+              >
+                <IconSymbol name="xmark" size={24} color={tintColor} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ marginTop: 16 }}>
+              <Pressable
+                style={[
+                  styles.menuItem,
+                  { borderBottomColor: cardBg, borderBottomWidth: 1 },
+                  filterEventId === 'all' && { backgroundColor: tintColor + '15' }
+                ]}
+                onPress={() => {
+                  setFilterEventId('all');
+                  setShowFilterModal(false);
+                }}
+              >
+                <ThemedText style={[styles.menuItemText, filterEventId === 'all' && { fontWeight: 'bold', color: tintColor }]}>
+                  All Events
+                </ThemedText>
+                {filterEventId === 'all' && (
+                  <IconSymbol name="checkmark" size={16} color={tintColor} />
+                )}
+              </Pressable>
+
+              {events.map((event) => (
+                <Pressable
+                  key={event.id}
+                  style={[
+                    styles.menuItem,
+                    { borderBottomColor: cardBg, borderBottomWidth: 1 },
+                    filterEventId === event.id && { backgroundColor: tintColor + '15' }
+                  ]}
+                  onPress={() => {
+                    setFilterEventId(event.id);
+                    setShowFilterModal(false);
+                  }}
+                >
+                  <ThemedText style={[styles.menuItemText, filterEventId === event.id && { fontWeight: 'bold', color: tintColor }]}>
+                    {event.name}
+                  </ThemedText>
+                  {filterEventId === event.id && (
+                    <IconSymbol name="checkmark" size={16} color={tintColor} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ThemedView>
   );
 }
@@ -267,6 +1273,23 @@ const styles = StyleSheet.create({
   controls: {
     paddingHorizontal: 20,
     marginBottom: 16,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  sortControls: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  sortButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  sortButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   searchInput: {
     padding: 12,
@@ -312,6 +1335,12 @@ const styles = StyleSheet.create({
   participantList: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  participantListGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: '2%',
+    paddingBottom: 80,
   },
   participantCard: {
     padding: 16,
@@ -374,5 +1403,30 @@ const styles = StyleSheet.create({
   emptyState: {
     padding: 40,
     alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  modalBody: {
+    padding: 24,
+  },
+  modalSection: {
+    marginBottom: 24,
   },
 });

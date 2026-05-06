@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,8 @@ import { canCreateEvent, getSubscriptionLimits } from '@/lib/subscription';
 export default function CreateEventScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   const params = useLocalSearchParams<{
     copyFrom?: string;
     name?: string;
@@ -319,48 +321,15 @@ export default function CreateEventScreen() {
 
         {/* Fixed Event Date & Time */}
         {eventType === 'fixed' && (
-          <>
-            <View style={styles.section}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>
-                Date
-              </ThemedText>
-              <Pressable
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: surfaceColor,
-                    borderColor: surfaceColor,
-                    justifyContent: 'center',
-                  },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowDatePicker(true);
-                }}
-              >
-                <ThemedText style={{ color: textColor }}>
-                  {fixedDate.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 16 }}>
+            <View style={[styles.section, { flex: 1, marginBottom: 0 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <ThemedText type="defaultSemiBold" style={{}}>
+                  Date
                 </ThemedText>
-              </Pressable>
-              {showDatePicker && Platform.OS !== 'web' && (
-                <DateTimePicker
-                  value={fixedDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={(event: any, selectedDate?: Date) => {
-                    setShowDatePicker(Platform.OS === 'ios');
-                    if (selectedDate) {
-                      setFixedDate(selectedDate);
-                    }
-                  }}
-                />
-              )}
-              {Platform.OS === 'web' && (
+                <IconSymbol name="calendar" size={16} color={textSecondaryColor} />
+              </View>
+              {Platform.OS === 'web' ? (
                 <input
                   type="date"
                   style={{
@@ -372,80 +341,115 @@ export default function CreateEventScreen() {
                     border: 'none',
                     borderRadius: 12,
                   }}
-                  value={fixedDate.toISOString().split('T')[0]}
+                  value={`${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}`}
                   onChange={(e) => {
-                    const date = new Date(e.target.value);
-                    if (!isNaN(date.getTime())) {
-                      setFixedDate(new Date(date.getFullYear(), date.getMonth(), date.getDate(), fixedDate.getHours(), fixedDate.getMinutes()));
+                    if (e.target.value) {
+                      const [year, month, day] = e.target.value.split('-').map(Number);
+                      setFixedDate(new Date(year, month - 1, day, fixedDate.getHours(), fixedDate.getMinutes()));
                     }
                   }}
                 />
+              ) : (
+                <Pressable
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: surfaceColor,
+                      borderColor: surfaceColor,
+                      justifyContent: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowDatePicker(true);
+                  }}
+                >
+                  <ThemedText style={{ color: textColor }}>
+                    {fixedDate.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </ThemedText>
+                </Pressable>
               )}
             </View>
 
-            <View style={styles.section}>
-              <ThemedText type="defaultSemiBold" style={styles.label}>
-                Time
-              </ThemedText>
-              <Pressable
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: surfaceColor,
-                    borderColor: surfaceColor,
-                    justifyContent: 'center',
-                  },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowTimePicker(true);
-                }}
-              >
-                <ThemedText style={{ color: textColor }}>
-                  {fixedDate.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit'
-                  })}
+            <View style={[styles.section, { flex: 1, marginBottom: 0 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <ThemedText type="defaultSemiBold" style={{}}>
+                  Time
                 </ThemedText>
-              </Pressable>
-              {showTimePicker && Platform.OS !== 'web' && (
-                <DateTimePicker
-                  value={fixedDate}
-                  mode="time"
-                  display="spinner"
-                  onChange={(event: any, selectedTime?: Date) => {
-                    setShowTimePicker(Platform.OS === 'ios');
-                    if (selectedTime) {
-                      setFixedDate(selectedTime);
-                    }
-                  }}
-                />
-              )}
-              {Platform.OS === 'web' && (
-                <input
-                  type="time"
-                  style={{
-                    width: '100%',
-                    padding: 16,
-                    fontSize: 16,
-                    backgroundColor: surfaceColor,
-                    color: textColor,
-                    border: 'none',
-                    borderRadius: 12,
-                  }}
-                  value={`${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}`}
-                  onChange={(e) => {
-                    const [hours, minutes] = e.target.value.split(':').map(Number);
-                    if (!isNaN(hours) && !isNaN(minutes)) {
+                <IconSymbol name="clock.fill" size={16} color={textSecondaryColor} />
+              </View>
+              {Platform.OS === 'web' ? (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                      appearance: 'none',
+                    }}
+                    value={`${String(fixedDate.getHours() % 12 || 12)}:${String(fixedDate.getMinutes()).padStart(2, '0')} ${fixedDate.getHours() >= 12 ? 'PM' : 'AM'}`}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const isPM = val.includes('PM');
+                      let [hours, minutes] = val.replace(' AM', '').replace(' PM', '').split(':').map(Number);
+                      if (isPM && hours !== 12) hours += 12;
+                      if (!isPM && hours === 12) hours = 0;
+                      
                       const newDate = new Date(fixedDate);
                       newDate.setHours(hours, minutes);
                       setFixedDate(newDate);
-                    }
+                    }}
+                  >
+                    {Array.from({ length: 24 * 4 }).map((_, i) => {
+                      const totalMinutes = i * 15;
+                      let h = Math.floor(totalMinutes / 60);
+                      const m = totalMinutes % 60;
+                      const ampm = h >= 12 ? 'PM' : 'AM';
+                      const displayH = h % 12 || 12;
+                      const timeString = `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
+                      return (
+                        <option key={timeString} value={timeString}>
+                          {timeString}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <Pressable
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: surfaceColor,
+                      borderColor: surfaceColor,
+                      justifyContent: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowTimePicker(true);
                   }}
-                />
+                >
+                  <ThemedText style={{ color: textColor }}>
+                    {fixedDate.toLocaleTimeString('en-US', { 
+                      hour: '2-digit', 
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </ThemedText>
+                </Pressable>
               )}
             </View>
-          </>
+          </View>
         )}
 
         {/* Team Leader */}

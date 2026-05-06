@@ -1,9 +1,11 @@
+import React from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { IconSymbol } from './ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getMonthName, getBestDays } from '@/lib/calendar-utils';
+import { hasRecordedAttendance, getRsvpCounts } from '@/lib/participant-status';
 import type { Event } from '@/types/models';
 
 interface EventCardProps {
@@ -22,12 +24,9 @@ export function EventCard({ event, onPress }: EventCardProps) {
   const hasBestDay = bestDays.length > 0;
   const bestDayCount = hasBestDay ? bestDays[0].availableCount : 0;
 
-  // Calculate RSVP counts for fixed events
-  const rsvpCounts = event.eventType === 'fixed' ? {
-    attending: event.participants.filter(p => p.rsvpStatus === 'attending').length,
-    notAttending: event.participants.filter(p => p.rsvpStatus === 'not-attending').length,
-    noResponse: event.participants.filter(p => !p.rsvpStatus || p.rsvpStatus === 'no-response').length,
-  } : null;
+  // Calculate RSVP/Attendance counts for fixed events
+  const hasAttendance = event.eventType === 'fixed' ? hasRecordedAttendance(event) : false;
+  const rsvpCounts = event.eventType === 'fixed' ? getRsvpCounts(event) : null;
 
   return (
     <Pressable
@@ -52,7 +51,7 @@ export function EventCard({ event, onPress }: EventCardProps) {
         {event.eventType === 'fixed' && event.fixedDate ? (
           <>
             <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
-              {new Date(event.fixedDate + 'T00:00:00').toLocaleDateString('en-US', {
+              {new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short',
                 day: 'numeric',
@@ -65,7 +64,12 @@ export function EventCard({ event, onPress }: EventCardProps) {
                   •
                 </ThemedText>
                 <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
-                  {event.fixedTime}
+                  {(() => {
+                    const [hours, minutes] = event.fixedTime.split(':').map(Number);
+                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                    const displayHours = hours % 12 || 12;
+                    return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                  })()}
                 </ThemedText>
               </>
             )}
@@ -87,26 +91,26 @@ export function EventCard({ event, onPress }: EventCardProps) {
         <View style={styles.rsvpSummary}>
           <View style={styles.rsvpItem}>
             <ThemedText style={[styles.rsvpCount, { color: successColor }]}>
-              {rsvpCounts.attending}
+              {rsvpCounts.attending.length}
             </ThemedText>
             <ThemedText style={[styles.rsvpLabel, { color: textSecondaryColor }]}>
-              Attending
+              {hasAttendance ? 'Attended' : 'Attending'}
             </ThemedText>
           </View>
           <View style={styles.rsvpItem}>
             <ThemedText style={[styles.rsvpCount, { color: errorColor }]}>
-              {rsvpCounts.notAttending}
+              {rsvpCounts.notAttending.length}
             </ThemedText>
             <ThemedText style={[styles.rsvpLabel, { color: textSecondaryColor }]}>
-              Not Attending
+              {hasAttendance ? 'Not Attended' : 'Not Attending'}
             </ThemedText>
           </View>
           <View style={styles.rsvpItem}>
             <ThemedText style={[styles.rsvpCount, { color: textSecondaryColor }]}>
-              {rsvpCounts.noResponse}
+              {rsvpCounts.noResponse.length}
             </ThemedText>
             <ThemedText style={[styles.rsvpLabel, { color: textSecondaryColor }]}>
-              No Response
+              {hasAttendance ? 'Unchecked' : 'No Response'}
             </ThemedText>
           </View>
         </View>

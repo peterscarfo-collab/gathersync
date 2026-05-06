@@ -62,22 +62,23 @@ export default function AdminAnalyticsScreen() {
   const loadData = async () => {
     try {
       const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      const activeEvents = allEvents.filter(e => !e.archived);
+      setEvents(activeEvents);
       
       const now = new Date();
       
       // Basic counts
-      const flexibleEvents = allEvents.filter(e => e.eventType === 'flexible').length;
-      const fixedEvents = allEvents.filter(e => e.eventType === 'fixed').length;
+      const flexibleEvents = activeEvents.filter(e => e.eventType === 'flexible').length;
+      const fixedEvents = activeEvents.filter(e => e.eventType === 'fixed').length;
       
-      const upcomingEvents = allEvents.filter(e => {
+      const upcomingEvents = activeEvents.filter(e => {
         if (e.eventType === 'fixed' && e.fixedDate) {
           return new Date(e.fixedDate).getTime() > now.getTime();
         }
         return !e.finalized && !e.archived;
       }).length;
       
-      const pastEvents = allEvents.filter(e => {
+      const pastEvents = activeEvents.filter(e => {
         if (e.eventType === 'fixed' && e.fixedDate) {
           return new Date(e.fixedDate).getTime() < now.getTime();
         }
@@ -85,16 +86,16 @@ export default function AdminAnalyticsScreen() {
       }).length;
       
       // Participant stats
-      const totalParticipants = allEvents.reduce((sum, e) => sum + e.participants.length, 0);
+      const totalParticipants = activeEvents.reduce((sum, e) => sum + e.participants.length, 0);
       const uniqueParticipants = new Set(
-        allEvents.flatMap(e => e.participants.map(p => p.name))
+        activeEvents.flatMap(e => e.participants.map(p => p.name))
       ).size;
-      const avgParticipantsPerEvent = allEvents.length > 0
-        ? Math.round(totalParticipants / allEvents.length)
+      const avgParticipantsPerEvent = activeEvents.length > 0
+        ? Math.round(totalParticipants / activeEvents.length)
         : 0;
       
       // Response rate
-      const responseCounts = allEvents.map(e => {
+      const responseCounts = activeEvents.map(e => {
         const responded = e.participants.filter(p =>
           (e.eventType === 'flexible' && p.availability && Object.keys(p.availability).length > 0) ||
           (e.eventType === 'fixed' && p.rsvpStatus && p.rsvpStatus !== 'no-response')
@@ -109,7 +110,7 @@ export default function AdminAnalyticsScreen() {
       
       // Most active participant
       const participantCounts = new Map<string, number>();
-      allEvents.forEach(e => {
+      activeEvents.forEach(e => {
         e.participants.forEach(p => {
           participantCounts.set(p.name, (participantCounts.get(p.name) || 0) + 1);
         });
@@ -122,7 +123,7 @@ export default function AdminAnalyticsScreen() {
       
       // Most popular month
       const monthCounts = new Map<string, number>();
-      allEvents.forEach(e => {
+      activeEvents.forEach(e => {
         const key = `${e.month}/${e.year}`;
         monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
       });
@@ -133,7 +134,7 @@ export default function AdminAnalyticsScreen() {
         : null;
       
       setAnalytics({
-        totalEvents: allEvents.length,
+        totalEvents: activeEvents.length,
         flexibleEvents,
         fixedEvents,
         upcomingEvents,

@@ -139,8 +139,8 @@ export class EventsLocalStorage {
     try {
       console.log('[LocalStorage] Adding event with existing ID:', event.id);
       
-      // Get existing events
-      const events = await this.getAll();
+      // Get ALL existing events (including soft-deleted) to prevent destroying tombstones
+      const events = await this.getAllRaw();
       
       // Check if event already exists
       const existingIndex = events.findIndex(e => e.id === event.id);

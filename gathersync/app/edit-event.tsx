@@ -110,7 +110,7 @@ export default function EditEventScreen() {
         eventType,
         month: eventType === 'fixed' ? new Date(fixedDate).getMonth() + 1 : selectedMonth,
         year: eventType === 'fixed' ? new Date(fixedDate).getFullYear() : selectedYear,
-        fixedDate: eventType === 'fixed' ? new Date(fixedDate.getFullYear(), fixedDate.getMonth(), fixedDate.getDate()).toISOString().split('T')[0] : undefined,
+        fixedDate: eventType === 'fixed' ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}` : undefined,
         fixedTime: eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : undefined,
         updatedAt: new Date().toISOString(),
         teamLeader: teamLeader.trim() || undefined,
@@ -153,40 +153,43 @@ export default function EditEventScreen() {
             router.back();
           }}
           hitSlop={8}
+          style={{ flexDirection: 'row', alignItems: 'center' }}
         >
           <IconSymbol name="chevron.left" size={28} color={tintColor} />
+          <ThemedText style={{ color: tintColor, fontSize: 16, fontWeight: '600', marginLeft: -4 }}>Back to Events</ThemedText>
         </Pressable>
         <ThemedText type="subtitle">Edit Event</ThemedText>
-        <View style={{ width: 28 }} />
+        <View style={{ width: 100 }} />
       </View>
 
       <ScrollView
         style={styles.content}
         contentContainerStyle={[
           styles.contentContainer,
-          { paddingBottom: Math.max(insets.bottom, 16) + 80 },
+          { paddingBottom: Math.max(insets.bottom, 16) + 20 },
         ]}
       >
-        <View style={styles.section}>
-          <ThemedText type="defaultSemiBold" style={styles.label}>
-            Event Name
-          </ThemedText>
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: surfaceColor,
-                color: textColor,
-                borderColor: surfaceColor,
-              },
-            ]}
-            placeholder="e.g., Team Dinner, Weekend Hike"
-            placeholderTextColor={textSecondaryColor}
-            value={eventName}
-            onChangeText={setEventName}
-            autoFocus
-          />
-        </View>
+        <View style={styles.formContainer}>
+          <View style={styles.section}>
+            <ThemedText type="defaultSemiBold" style={styles.label}>
+              Event Name
+            </ThemedText>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                  borderColor: surfaceColor,
+                },
+              ]}
+              placeholder="e.g., Team Dinner, Weekend Hike"
+              placeholderTextColor={textSecondaryColor}
+              value={eventName}
+              onChangeText={setEventName}
+              autoFocus
+            />
+          </View>
 
         {/* Event Type */}
         <View style={styles.section}>
@@ -242,41 +245,78 @@ export default function EditEventScreen() {
           </ThemedText>
         </View>
 
+        {/* Flexible Event Details */}
         {eventType === 'flexible' && (
-          <View style={styles.section}>
-            <ThemedText type="defaultSemiBold" style={styles.label}>
-              Month
-            </ThemedText>
-          <View style={styles.pickerGrid}>
-            {months.map((month, index) => {
-              const monthValue = index + 1;
-              const isSelected = selectedMonth === monthValue;
-              return (
-                <Pressable
-                  key={month}
-                  style={[
-                    styles.pickerItem,
-                    { backgroundColor: surfaceColor },
-                    isSelected && { backgroundColor: tintColor },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedMonth(monthValue);
-                  }}
-                >
-                  <ThemedText
-                    style={[
-                      styles.pickerText,
-                      isSelected && styles.pickerTextSelected,
-                    ]}
-                  >
-                    {month}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+          <>
+            <View style={styles.section}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Year
+              </ThemedText>
+              <View style={styles.yearRow}>
+                {years.map((year) => {
+                  const isSelected = selectedYear === year;
+                  return (
+                    <Pressable
+                      key={year}
+                      style={[
+                        styles.yearItem,
+                        { backgroundColor: surfaceColor },
+                        isSelected && { backgroundColor: tintColor },
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedYear(year);
+                      }}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.yearText,
+                          isSelected && styles.pickerTextSelected,
+                        ]}
+                      >
+                        {year}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <ThemedText type="defaultSemiBold" style={styles.label}>
+                Month
+              </ThemedText>
+              <View style={styles.pickerGrid}>
+                {months.map((month, index) => {
+                  const monthValue = index + 1;
+                  const isSelected = selectedMonth === monthValue;
+                  return (
+                    <Pressable
+                      key={month}
+                      style={[
+                        styles.pickerItem,
+                        { backgroundColor: surfaceColor },
+                        isSelected && { backgroundColor: tintColor },
+                      ]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSelectedMonth(monthValue);
+                      }}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.pickerText,
+                          isSelected && styles.pickerTextSelected,
+                        ]}
+                      >
+                        {month}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </>
         )}
 
         {/* Fixed Event Date & Time */}
@@ -286,29 +326,51 @@ export default function EditEventScreen() {
               <ThemedText type="defaultSemiBold" style={styles.label}>
                 Date
               </ThemedText>
-              <Pressable
-                style={[
-                  styles.input,
-                  {
+              {Platform.OS === 'web' ? (
+                <input
+                  type="date"
+                  style={{
+                    width: '100%',
+                    padding: 12,
+                    fontSize: 16,
                     backgroundColor: surfaceColor,
-                    borderColor: surfaceColor,
-                    justifyContent: 'center',
-                  },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowDatePicker(true);
-                }}
-              >
-                <ThemedText style={{ color: textColor }}>
-                  {fixedDate.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </ThemedText>
-              </Pressable>
+                    color: textColor,
+                    border: 'none',
+                    borderRadius: 12,
+                  }}
+                  value={`${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}`}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [year, month, day] = e.target.value.split('-').map(Number);
+                      setFixedDate(new Date(year, month - 1, day, fixedDate.getHours(), fixedDate.getMinutes()));
+                    }
+                  }}
+                />
+              ) : (
+                <Pressable
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: surfaceColor,
+                      borderColor: surfaceColor,
+                      justifyContent: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowDatePicker(true);
+                  }}
+                >
+                  <ThemedText style={{ color: textColor }}>
+                    {fixedDate.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric' 
+                    })}
+                  </ThemedText>
+                </Pressable>
+              )}
               {showDatePicker && Platform.OS !== 'web' && (
                 <DateTimePicker
                   value={fixedDate}
@@ -322,54 +384,77 @@ export default function EditEventScreen() {
                   }}
                 />
               )}
-              {Platform.OS === 'web' && (
-                <input
-                  type="date"
-                  style={{
-                    width: '100%',
-                    padding: 16,
-                    fontSize: 16,
-                    backgroundColor: surfaceColor,
-                    color: textColor,
-                    border: 'none',
-                    borderRadius: 12,
-                  }}
-                  value={fixedDate.toISOString().split('T')[0]}
-                  onChange={(e) => {
-                    const date = new Date(e.target.value);
-                    if (!isNaN(date.getTime())) {
-                      setFixedDate(new Date(date.getFullYear(), date.getMonth(), date.getDate(), fixedDate.getHours(), fixedDate.getMinutes()));
-                    }
-                  }}
-                />
-              )}
             </View>
 
             <View style={styles.section}>
               <ThemedText type="defaultSemiBold" style={styles.label}>
                 Time
               </ThemedText>
-              <Pressable
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: surfaceColor,
-                    borderColor: surfaceColor,
-                    justifyContent: 'center',
-                  },
-                ]}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowTimePicker(true);
-                }}
-              >
-                <ThemedText style={{ color: textColor }}>
-                  {fixedDate.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit'
-                  })}
-                </ThemedText>
-              </Pressable>
+              {Platform.OS === 'web' ? (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                      appearance: 'none',
+                    }}
+                    value={`${String(fixedDate.getHours() % 12 || 12)}:${String(fixedDate.getMinutes()).padStart(2, '0')} ${fixedDate.getHours() >= 12 ? 'PM' : 'AM'}`}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const isPM = val.includes('PM');
+                      let [hours, minutes] = val.replace(' AM', '').replace(' PM', '').split(':').map(Number);
+                      if (isPM && hours !== 12) hours += 12;
+                      if (!isPM && hours === 12) hours = 0;
+                      
+                      const newDate = new Date(fixedDate);
+                      newDate.setHours(hours, minutes);
+                      setFixedDate(newDate);
+                    }}
+                  >
+                    {Array.from({ length: 24 * 4 }).map((_, i) => {
+                      const totalMinutes = i * 15;
+                      let h = Math.floor(totalMinutes / 60);
+                      const m = totalMinutes % 60;
+                      const ampm = h >= 12 ? 'PM' : 'AM';
+                      const displayH = h % 12 || 12;
+                      const timeString = `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
+                      return (
+                        <option key={timeString} value={timeString}>
+                          {timeString}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              ) : (
+                <Pressable
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: surfaceColor,
+                      borderColor: surfaceColor,
+                      justifyContent: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowTimePicker(true);
+                  }}
+                >
+                  <ThemedText style={{ color: textColor }}>
+                    {fixedDate.toLocaleTimeString('en-US', { 
+                      hour: 'numeric', 
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </ThemedText>
+                </Pressable>
+              )}
               {showTimePicker && Platform.OS !== 'web' && (
                 <DateTimePicker
                   value={fixedDate}
@@ -379,29 +464,6 @@ export default function EditEventScreen() {
                     setShowTimePicker(Platform.OS === 'ios');
                     if (selectedTime) {
                       setFixedDate(selectedTime);
-                    }
-                  }}
-                />
-              )}
-              {Platform.OS === 'web' && (
-                <input
-                  type="time"
-                  style={{
-                    width: '100%',
-                    padding: 16,
-                    fontSize: 16,
-                    backgroundColor: surfaceColor,
-                    color: textColor,
-                    border: 'none',
-                    borderRadius: 12,
-                  }}
-                  value={`${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}`}
-                  onChange={(e) => {
-                    const [hours, minutes] = e.target.value.split(':').map(Number);
-                    if (!isNaN(hours) && !isNaN(minutes)) {
-                      const newDate = new Date(fixedDate);
-                      newDate.setHours(hours, minutes);
-                      setFixedDate(newDate);
                     }
                   }}
                 />
@@ -615,38 +677,6 @@ export default function EditEventScreen() {
           />
         </View>
 
-        <View style={styles.section}>
-          <ThemedText type="defaultSemiBold" style={styles.label}>
-            Year
-          </ThemedText>
-          <View style={styles.yearRow}>
-            {years.map((year) => {
-              const isSelected = selectedYear === year;
-              return (
-                <Pressable
-                  key={year}
-                  style={[
-                    styles.yearItem,
-                    { backgroundColor: surfaceColor },
-                    isSelected && { backgroundColor: tintColor },
-                  ]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedYear(year);
-                  }}
-                >
-                  <ThemedText
-                    style={[
-                      styles.yearText,
-                      isSelected && styles.pickerTextSelected,
-                    ]}
-                  >
-                    {year}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
         </View>
       </ScrollView>
 
@@ -660,7 +690,7 @@ export default function EditEventScreen() {
       >
         <Pressable
           style={[styles.createButton, { backgroundColor: tintColor }]}
-              onPress={handleSave}
+          onPress={handleSave}
         >
           <ThemedText style={styles.createButtonText}>
             Save Changes
@@ -688,21 +718,26 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
+    alignItems: 'center',
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: 600,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 16,
   },
   label: {
-    marginBottom: 12,
-    fontSize: 16,
-    lineHeight: 24,
+    marginBottom: 8,
+    fontSize: 14,
+    lineHeight: 20,
   },
   input: {
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     fontSize: 16,
     lineHeight: 24,
-    borderWidth: 2,
+    borderWidth: 1,
   },
   textArea: {
     minHeight: 100,
@@ -743,9 +778,14 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontWeight: '500',
   },
+  helperText: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
+  },
   footer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    padding: 16,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
@@ -753,17 +793,13 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    minHeight: 48,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   createButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    lineHeight: 24,
     fontWeight: '600',
-  },
-  helperText: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 6,
   },
 });

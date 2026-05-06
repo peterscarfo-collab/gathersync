@@ -16,7 +16,7 @@ export const adminRouter = router({
   searchUsers: publicProcedure
     .input(
       z.object({
-        query: z.string().min(1),
+        query: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -36,16 +36,24 @@ export const adminRouter = router({
         });
       }
 
-      const results = await db
-        .select()
-        .from(users)
-        .where(
-          or(
-            like(users.email, `%${input.query}%`),
-            like(users.name, `%${input.query}%`)
+      let results;
+      if (input.query && input.query.trim().length > 0) {
+        results = await db
+          .select()
+          .from(users)
+          .where(
+            or(
+              like(users.email, `%${input.query}%`),
+              like(users.name, `%${input.query}%`)
+            )
           )
-        )
-        .limit(20);
+          .limit(50);
+      } else {
+        results = await db
+          .select()
+          .from(users)
+          .limit(50);
+      }
 
       return results;
     }),
@@ -255,4 +263,64 @@ export const adminRouter = router({
       conversionRate: totalUsers > 0 ? ((proUsers + enterpriseUsers) / totalUsers) * 100 : 0,
     };
   }),
+
+  /**
+   * Create an account for a participant (Admin only)
+   */
+  createParticipantAccount: publicProcedure
+    .input(
+      z.object({
+        name: z.string(),
+        email: z.string().email(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if user is admin
+      if (!ctx.user || ctx.user.role !== "admin") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Admin access required",
+        });
+      }
+
+      const db = await getDb();
+      if (!db) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database not available",
+        });
+      }
+
+      // Check if user already exists with this email
+      const existingUsers = await db.select().from(users).where(eq(users.email, input.email));
+      if (existingUsers.length > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "A user with this email already exists",
+        });
+      }
+
+      const crypto = await import("crypto");
+      const openId = `manual-${crypto.randomUUID()}`;
+
+      // Insert the new user
+      await db.insert(users).values({
+        openId,
+        name: input.name,
+        email: input.email,
+        loginMethod: "manual",
+        role: "user",
+        subscriptionTier: "free",
+      });
+
+      // Generate a session token for the new user
+      const { sdk } = await import("../_core/sdk");
+      const token = await sdk.createSessionToken(openId, { name: input.name });
+
+      return {
+        success: true,
+        token,
+        openId,
+      };
+    }),
 });

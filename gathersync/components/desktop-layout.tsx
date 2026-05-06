@@ -87,7 +87,7 @@ export function DesktopLayout({ children }: DesktopLayoutProps) {
         {/* Copyright Footer */}
         <View style={styles.sidebarFooter}>
           <ThemedText style={[styles.copyrightText, { color: textSecondaryColor }]}>
-            © 2025 Peter Scarfo
+            © 2026 Peter Scarfo
           </ThemedText>
         </View>
       </View>

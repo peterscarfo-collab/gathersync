@@ -71,10 +71,18 @@ export default function EditAvailabilityScreen() {
     if (!event || !participant) return;
 
     const dateStr = formatDate(event.year, event.month, day);
+    const hasStatus = dateStr in participant.availability;
     const currentStatus = participant.availability[dateStr];
     
-    // Simple toggle - tap to mark available/unavailable
-    participant.availability[dateStr] = !currentStatus;
+    // Toggle: undefined -> true (Available), true -> false (Unavailable), false -> undefined (No Response)
+    if (!hasStatus) {
+      participant.availability[dateStr] = true;
+    } else if (currentStatus === true) {
+      participant.availability[dateStr] = false;
+    } else {
+      delete participant.availability[dateStr];
+    }
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     saveChanges();
   };
@@ -104,9 +112,17 @@ export default function EditAvailabilityScreen() {
     if (!event || !participant) return;
 
     const dateStr = formatDate(event.year, event.month, day);
+    const hasStatus = dateStr in participant.availability;
     const currentStatus = participant.availability[dateStr];
     
-    participant.availability[dateStr] = !currentStatus;
+    if (!hasStatus) {
+      participant.availability[dateStr] = true;
+    } else if (currentStatus === true) {
+      participant.availability[dateStr] = false;
+    } else {
+      delete participant.availability[dateStr];
+    }
+    
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     saveChanges();
   };
@@ -529,7 +545,9 @@ export default function EditAvailabilityScreen() {
                   }
 
                   const dateStr = formatDate(event.year, event.month, day);
+                  const hasStatus = dateStr in participant.availability;
                   const isAvailable = participant.availability[dateStr] === true;
+                  const isUnavailable = hasStatus && participant.availability[dateStr] === false;
 
                   return (
                     <Pressable
@@ -539,7 +557,9 @@ export default function EditAvailabilityScreen() {
                         {
                           backgroundColor: isAvailable 
                             ? successColor 
-                            : colorScheme === 'light' ? '#F1F5F9' : '#1E293B',
+                            : isUnavailable
+                              ? errorColor
+                              : colorScheme === 'light' ? '#F1F5F9' : '#1E293B',
                         },
                       ]}
                       onPress={() => handleDayPress(day)}
@@ -547,13 +567,16 @@ export default function EditAvailabilityScreen() {
                       <ThemedText
                         style={[
                           styles.dayText,
-                          { color: isAvailable ? '#FFFFFF' : textColor },
+                          { color: hasStatus ? '#FFFFFF' : textColor },
                         ]}
                       >
                         {day}
                       </ThemedText>
                       {isAvailable && (
                         <IconSymbol name="checkmark" size={12} color="#FFFFFF" />
+                      )}
+                      {isUnavailable && (
+                        <IconSymbol name="xmark" size={12} color="#FFFFFF" />
                       )}
                     </Pressable>
                   );

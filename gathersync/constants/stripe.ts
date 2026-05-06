@@ -27,10 +27,10 @@ export const SUBSCRIPTION_PLANS = {
     annualPriceDisplay: 'Free forever',
     eventLimit: 5,
     features: [
-      'Up to 5 events per month',
-      'Up to 50 participants per event',
-      'Cloud sync across devices',
-      'Mobile app access',
+      'Up to 5 events',
+      'Up to 10 participants per event',
+      'Smart availability calendar',
+      'Mobile & Web app access',
     ],
   },
   lite: {
@@ -44,10 +44,11 @@ export const SUBSCRIPTION_PLANS = {
     eventLimit: 50,
     stripePriceIds: STRIPE_PRICE_IDS.lite,
     features: [
-      'Up to 50 events per month',
+      'Up to 50 events',
       'Up to 100 participants per event',
-      'Cloud sync across devices',
-      'Mobile app access',
+      'CSV Import for Contacts',
+      'Export Event to CSV',
+      'Direct Native Messaging',
       'Priority email support',
     ],
   },
@@ -62,13 +63,12 @@ export const SUBSCRIPTION_PLANS = {
     eventLimit: null, // unlimited
     stripePriceIds: STRIPE_PRICE_IDS.pro,
     features: [
-      'Unlimited events',
-      'Unlimited participants',
-      'Cloud sync across devices',
-      'Mobile app access',
+      'Unlimited events & participants',
+      'CSV Imports & Exports',
+      'Live Attendance Tracking',
+      'Custom Reminder Templates',
+      'Advanced Analytics Dashboard',
       'Priority support',
-      'Advanced analytics',
-      'Export data',
     ],
   },
 } as const;

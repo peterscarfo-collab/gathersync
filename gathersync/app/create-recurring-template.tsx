@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Alert,
   Pressable,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TextInput,
   View,
+  Modal,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,8 +18,9 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { recurringTemplatesStorage } from '@/lib/recurring-storage';
+import { eventsLocalStorage } from '@/lib/local-storage';
 import { generateId } from '@/lib/calendar-utils';
-import type { RecurrencePattern, RecurringEventTemplate } from '@/types/models';
+import type { RecurrencePattern, RecurringEventTemplate, Event } from '@/types/models';
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEKS_OF_MONTH = ['First', 'Second', 'Third', 'Fourth', 'Last'];
@@ -32,6 +35,13 @@ export default function CreateRecurringTemplateScreen() {
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [weekOfMonth, setWeekOfMonth] = useState(1); // First
   const [participants, setParticipants] = useState('');
+  const [pastEvents, setPastEvents] = useState<Event[]>([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [copiedEvent, setCopiedEvent] = useState<Event | null>(null);
+
+  useEffect(() => {
+    eventsLocalStorage.getAll().then(setPastEvents);
+  }, []);
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -59,22 +69,41 @@ export default function CreateRecurringTemplateScreen() {
       id: generateId(),
       name: name.trim(),
       pattern,
-      dayOfWeek: pattern === 'weekly' || pattern === 'biweekly' ? dayOfWeek : undefined,
+      dayOfWeek: pattern !== 'monthly' || dayOfWeek !== undefined ? dayOfWeek : undefined,
       dayOfMonth: pattern === 'monthly' ? dayOfMonth : undefined,
       weekOfMonth: pattern === 'monthly' ? weekOfMonth : undefined,
       participantNames,
       active: true,
       createdAt: new Date().toISOString(),
+      ...(copiedEvent ? {
+        eventType: copiedEvent.eventType,
+        fixedTime: copiedEvent.fixedTime,
+        meetingType: copiedEvent.meetingType,
+        venueName: copiedEvent.venueName,
+        venueAddress: copiedEvent.venueAddress,
+        venueContact: copiedEvent.venueContact,
+        venuePhone: copiedEvent.venuePhone,
+        meetingLink: copiedEvent.meetingLink,
+        teamLeader: copiedEvent.teamLeader,
+        rsvpDeadline: copiedEvent.rsvpDeadline,
+        meetingNotes: copiedEvent.meetingNotes,
+      } : {})
     };
 
     await recurringTemplatesStorage.save(template);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Success', 'Recurring template created!', [
-      {
-        text: 'OK',
-        onPress: () => router.back(),
-      },
-    ]);
+    
+    if (Platform.OS === 'web') {
+      window.alert('Recurring template created!');
+      router.back();
+    } else {
+      Alert.alert('Success', 'Recurring template created!', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    }
   };
 
   return (
@@ -242,7 +271,15 @@ export default function CreateRecurringTemplateScreen() {
 
         {/* Participants */}
         <View style={[styles.card, { backgroundColor: surfaceColor }]}>
-          <ThemedText style={styles.label}>Participants</ThemedText>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <ThemedText style={[styles.label, { marginBottom: 0 }]}>Participants</ThemedText>
+            <Pressable
+              style={{ backgroundColor: tintColor + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}
+              onPress={() => setShowEventModal(true)}
+            >
+              <ThemedText style={{ color: tintColor, fontSize: 13, fontWeight: '600' }}>Copy from Past Event</ThemedText>
+            </Pressable>
+          </View>
           <ThemedText style={[styles.hint, { color: textSecondaryColor }]}>
             Enter names separated by commas
           </ThemedText>
@@ -266,6 +303,52 @@ export default function CreateRecurringTemplateScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Event Selection Modal */}
+      <Modal
+        visible={showEventModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEventModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}
+          onPress={() => setShowEventModal(false)}
+        >
+          <View style={{ backgroundColor: surfaceColor, borderRadius: 16, width: '100%', maxHeight: '80%', padding: 20 }} onStartShouldSetResponder={() => true}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <ThemedText type="subtitle">Select Past Event</ThemedText>
+              <Pressable onPress={() => setShowEventModal(false)} hitSlop={8}>
+                <IconSymbol name="xmark" size={24} color={tintColor} />
+              </Pressable>
+            </View>
+            <ScrollView>
+              {pastEvents.length === 0 ? (
+                <ThemedText style={{ color: textSecondaryColor, textAlign: 'center', padding: 20 }}>No past events found</ThemedText>
+              ) : (
+                pastEvents.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(event => (
+                  <Pressable
+                    key={event.id}
+                    style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: textSecondaryColor + '20' }}
+                    onPress={() => {
+                      const names = event.participants.map(p => p.name).join(', ');
+                      setParticipants(prev => prev ? `${prev}, ${names}` : names);
+                      setCopiedEvent(event);
+                      setShowEventModal(false);
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    }}
+                  >
+                    <ThemedText type="defaultSemiBold">{event.name}</ThemedText>
+                    <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                      {event.eventType === 'fixed' ? event.fixedDate : `${event.month}/${event.year}`} • {event.participants.length} participants
+                    </ThemedText>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Create Button */}
       <View

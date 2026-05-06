@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,9 +29,42 @@ export default function BulkImportScreen() {
   const textColor = useThemeColor({}, 'text');
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
 
+  const handleSelectFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        
+        if (Platform.OS === 'web') {
+          // Read web file
+          const response = await fetch(file.uri);
+          const text = await response.text();
+          setImportText(text);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          // Read native file
+          const fileContent = await FileSystem.readAsStringAsync(file.uri);
+          setImportText(fileContent);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      }
+    } catch (error) {
+      console.error('Error selecting file:', error);
+      Alert.alert('Error', 'Failed to read the selected file. Please try pasting the text instead.');
+    }
+  };
+
   const handleImport = async () => {
     if (!importText.trim()) {
-      Alert.alert('Error', 'Please paste your spreadsheet data');
+      if (Platform.OS === 'web') {
+        alert('Please paste your spreadsheet data');
+      } else {
+        Alert.alert('Error', 'Please paste your spreadsheet data');
+      }
       return;
     }
 
@@ -39,7 +74,12 @@ export default function BulkImportScreen() {
       // Get event details
       const event = await eventsLocalStorage.getById(eventId!);
       if (!event) {
-        Alert.alert('Error', 'Event not found');
+        if (Platform.OS === 'web') {
+          alert('Event not found');
+        } else {
+          Alert.alert('Error', 'Event not found');
+        }
+        setIsProcessing(false);
         return;
       }
 
@@ -47,11 +87,16 @@ export default function BulkImportScreen() {
       const result = parseBulkAvailability(importText, event.month, event.year);
 
       if (!result.success) {
-        Alert.alert(
-          'Import Failed',
-          result.errors.join('\n'),
-          [{ text: 'OK' }]
-        );
+        if (Platform.OS === 'web') {
+          alert('Import Failed\n\n' + result.errors.join('\n'));
+        } else {
+          Alert.alert(
+            'Import Failed',
+            result.errors.join('\n'),
+            [{ text: 'OK' }]
+          );
+        }
+        setIsProcessing(false);
         return;
       }
 
@@ -72,18 +117,30 @@ export default function BulkImportScreen() {
       await eventsLocalStorage.update(eventId!, updatedEvent);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Success',
-        `Imported ${newParticipants.length} participant${newParticipants.length === 1 ? '' : 's'}${result.errors.length > 0 ? `\n\nWarnings:\n${result.errors.join('\n')}` : ''}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      
+      const successMessage = `Imported ${newParticipants.length} participant${newParticipants.length === 1 ? '' : 's'}${result.errors.length > 0 ? `\n\nWarnings:\n${result.errors.join('\n')}` : ''}`;
+      
+      if (Platform.OS === 'web') {
+        alert(successMessage);
+        router.back();
+      } else {
+        Alert.alert(
+          'Success',
+          successMessage,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            },
+          ]
+        );
+      }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to import data');
+      if (Platform.OS === 'web') {
+        alert(error.message || 'Failed to import data');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to import data');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -94,11 +151,15 @@ export default function BulkImportScreen() {
     if (!event) return;
 
     const template = generateImportTemplate(event.month, event.year);
-    Alert.alert(
-      'Example Format',
-      'Copy this format and replace with your data:\n\n' + template,
-      [{ text: 'OK' }]
-    );
+    if (Platform.OS === 'web') {
+      alert('Copy this format and replace with your data:\n\n' + template);
+    } else {
+      Alert.alert(
+        'Example Format',
+        'Copy this format and replace with your data:\n\n' + template,
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   return (
@@ -149,6 +210,16 @@ export default function BulkImportScreen() {
             <IconSymbol name="info.circle" size={16} color={tintColor} />
             <ThemedText style={[styles.exampleButtonText, { color: tintColor }]}>
               Show Example
+            </ThemedText>
+          </Pressable>
+
+          <Pressable
+            style={[styles.exampleButton, { backgroundColor: tintColor, borderColor: tintColor }]}
+            onPress={handleSelectFile}
+          >
+            <IconSymbol name="arrow.up.doc" size={16} color="#FFFFFF" />
+            <ThemedText style={[styles.exampleButtonText, { color: '#FFFFFF' }]}>
+              Select CSV File
             </ThemedText>
           </Pressable>
         </View>

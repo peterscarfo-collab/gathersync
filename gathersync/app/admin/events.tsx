@@ -16,6 +16,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { useAutoSync } from '@/hooks/use-auto-sync';
 import type { Event } from '@/types/models';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';
 
@@ -24,6 +25,7 @@ type FilterType = 'all' | 'upcoming' | 'past' | 'flexible' | 'fixed';
 export default function AdminEventsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { deleteEvent } = useAutoSync();
   
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
@@ -43,7 +45,8 @@ export default function AdminEventsScreen() {
   const loadEvents = async () => {
     try {
       const allEvents = await eventsLocalStorage.getAll();
-      setEvents(allEvents);
+      const activeEvents = allEvents.filter(e => !e.archived);
+      setEvents(activeEvents);
     } catch (error) {
       console.error('Failed to load events:', error);
     } finally {
@@ -54,6 +57,8 @@ export default function AdminEventsScreen() {
   const applyFilters = () => {
     let filtered = [...events];
     const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
 
     // Apply type filter
     if (filter === 'flexible') {
@@ -63,14 +68,20 @@ export default function AdminEventsScreen() {
     } else if (filter === 'upcoming') {
       filtered = filtered.filter(e => {
         if (e.eventType === 'fixed' && e.fixedDate) {
-          return new Date(e.fixedDate).getTime() > now.getTime();
+          return new Date(e.fixedDate + 'T12:00:00').getTime() >= now.getTime();
+        }
+        if (e.eventType === 'flexible') {
+          return e.year > currentYear || (e.year === currentYear && e.month >= currentMonth);
         }
         return true;
       });
     } else if (filter === 'past') {
       filtered = filtered.filter(e => {
         if (e.eventType === 'fixed' && e.fixedDate) {
-          return new Date(e.fixedDate).getTime() < now.getTime();
+          return new Date(e.fixedDate + 'T12:00:00').getTime() < now.getTime();
+        }
+        if (e.eventType === 'flexible') {
+          return e.year < currentYear || (e.year === currentYear && e.month < currentMonth);
         }
         return false;
       });
@@ -130,7 +141,7 @@ export default function AdminEventsScreen() {
   const performBulkDelete = async () => {
     try {
       for (const eventId of selectedEvents) {
-        await eventsLocalStorage.delete(eventId);
+        await deleteEvent(eventId);
       }
       setSelectedEvents(new Set());
       await loadEvents();
@@ -145,22 +156,30 @@ export default function AdminEventsScreen() {
 
   const formatDate = (event: Event) => {
     if (event.eventType === 'fixed' && event.fixedDate) {
-      return new Date(event.fixedDate).toLocaleDateString('en-US', {
+      const displayDate = new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       });
+      if (event.fixedTime) {
+        const [hours, minutes] = event.fixedTime.split(':').map(Number);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        return `${displayDate} • ${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+      }
+      return displayDate;
     }
     return `${event.month}/${event.year}`;
   };
 
   const getResponseRate = (event: Event) => {
-    if (event.participants.length === 0) return 0;
-    const responded = event.participants.filter(p =>
+    const activeParticipants = event.participants.filter(p => !p.deletedAt);
+    if (activeParticipants.length === 0) return 0;
+    const responded = activeParticipants.filter(p =>
       (event.eventType === 'flexible' && p.availability && Object.keys(p.availability).length > 0) ||
       (event.eventType === 'fixed' && p.rsvpStatus && p.rsvpStatus !== 'no-response')
     ).length;
-    return Math.round((responded / event.participants.length) * 100);
+    return Math.round((responded / activeParticipants.length) * 100);
   };
 
   return (
@@ -265,7 +284,7 @@ export default function AdminEventsScreen() {
                     styles.eventCard,
                     isSelected && styles.eventCardSelected,
                   ]}
-                  onPress={() => router.push(`/event-detail?id=${event.id}` as any)}
+                  onPress={() => router.push(`/event-detail?eventId=${event.id}` as any)}
                   onLongPress={() => toggleEventSelection(event.id)}
                 >
                   <View style={styles.eventCardHeader}>
@@ -304,7 +323,7 @@ export default function AdminEventsScreen() {
                       <View style={styles.metaItem}>
                         <IconSymbol name="person.2.fill" size={14} color={AdminColors.gray500} />
                         <ThemedText style={styles.metaText}>
-                          {event.participants.length} participants
+                          {event.participants.filter(p => !p.deletedAt).length} participants
                         </ThemedText>
                       </View>
                     </View>

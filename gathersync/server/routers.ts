@@ -151,6 +151,7 @@ export const appRouter = router({
           meetingLink: z.string().optional(),
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
+          deletedAt: z.date().nullable().optional(),
         })
       )
       .mutation(({ ctx, input }) =>
@@ -184,6 +185,7 @@ export const appRouter = router({
           meetingLink: z.string().optional(),
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
+          deletedAt: z.date().nullable().optional(),
         })
       )
       .mutation(({ input }) => {
@@ -193,7 +195,7 @@ export const appRouter = router({
 
     delete: protectedProcedure
       .input(z.object({ id: z.string() }))
-      .mutation(({ input }) => db.deleteEvent(input.id)),
+      .mutation(({ ctx, input }) => db.deleteEvent(input.id, ctx.user.id)),
   }),
 
   participants: router({
@@ -214,6 +216,7 @@ export const appRouter = router({
           phone: z.string().optional(),
           email: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
+          deletedAt: z.date().nullable().optional(),
         })
       )
       .mutation(({ input }) => {
@@ -234,12 +237,16 @@ export const appRouter = router({
         if (input.phone !== undefined) participantData.phone = input.phone;
         if (input.email !== undefined) participantData.email = input.email;
         if (input.rsvpStatus !== undefined) participantData.rsvpStatus = input.rsvpStatus;
+        if (input.deletedAt !== undefined) participantData.deletedAt = input.deletedAt;
         
         console.log('[tRPC] Final participantData to insert:', JSON.stringify(participantData));
         console.log('[tRPC] participantData keys:', Object.keys(participantData));
         
         // Do NOT include createdAt/updatedAt - let database handle them
-        return db.createParticipant(participantData);
+        const result = db.createParticipant(participantData);
+        // Touch parent event so clients pull the new participant
+        db.updateEvent(input.eventId, { updatedAt: new Date() }).catch(console.error);
+        return result;
       }),
 
     update: protectedProcedure
@@ -255,11 +262,15 @@ export const appRouter = router({
           phone: z.string().optional(),
           email: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
+          deletedAt: z.date().nullable().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         const { id, eventId, ...data } = input;
         await db.updateParticipant(id, data as any);
+
+        // Touch parent event so clients pull the updated participant
+        db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
 
         // Send notification to event owner
         const event = await db.getEventById(eventId);

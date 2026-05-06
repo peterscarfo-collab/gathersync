@@ -63,21 +63,32 @@ export default function EventsScreen() {
       // Check for recurring templates and generate events if needed
       const templates = await recurringTemplatesStorage.getAll();
       const currentDate = new Date();
+      
+      const checkAndGenerate = async (month: number, year: number) => {
+        for (const template of templates) {
+          if (shouldGenerateForMonth(template, month, year)) {
+            console.log('[EventsScreen] Generating event from template:', template.name);
+            const newEvent = generateEventFromTemplate(template, month, year);
+            await eventsLocalStorage.add(newEvent);
+            
+            // Update template's lastGeneratedMonth
+            await recurringTemplatesStorage.update(template.id, {
+              lastGeneratedMonth: `${year}-${String(month).padStart(2, '0')}`,
+            });
+            // Update local object so it doesn't get regenerated in next loop iteration
+            template.lastGeneratedMonth = `${year}-${String(month).padStart(2, '0')}`;
+          }
+        }
+      };
+
       const currentMonth = currentDate.getMonth() + 1;
       const currentYear = currentDate.getFullYear();
+      await checkAndGenerate(currentMonth, currentYear);
 
-      for (const template of templates) {
-        if (shouldGenerateForMonth(template, currentMonth, currentYear)) {
-          console.log('[EventsScreen] Generating event from template:', template.name);
-          const newEvent = generateEventFromTemplate(template, currentMonth, currentYear);
-          await eventsLocalStorage.add(newEvent);
-          
-          // Update template's lastGeneratedMonth
-          await recurringTemplatesStorage.update(template.id, {
-            lastGeneratedMonth: `${currentYear}-${String(currentMonth).padStart(2, '0')}`,
-          });
-        }
-      }
+      const nextDate = new Date(currentYear, currentMonth, 1);
+      const nextMonth = nextDate.getMonth() + 1;
+      const nextYear = nextDate.getFullYear();
+      await checkAndGenerate(nextMonth, nextYear);
       
       const loadedEvents = await eventsLocalStorage.getAll();
       console.log('[EventsScreen] Loaded', loadedEvents.length, 'events');
@@ -425,31 +436,61 @@ export default function EventsScreen() {
               const backup = JSON.parse(json);
               const stats = getBackupStats(backup);
               
-              Alert.alert(
-                'Import Backup',
-                `Import backup from ${new Date(backup.exportedAt).toLocaleDateString()}?\n\nEvents: ${stats.eventsCount}\nSnapshots: ${stats.snapshotsCount}\nTemplates: ${stats.templatesCount}\n\nThis will replace your current data.`,
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Import',
-                    style: 'destructive',
-                    onPress: async () => {
-                      try {
-                        await importBackup(backup);
-                        await loadEvents();
-                        Alert.alert('Success', 'Backup imported successfully!');
-                        setShowBackupMenu(false);
-                      } catch (error) {
-                        console.error('[Backup] Import execution failed:', error);
-                        Alert.alert('Error', 'Failed to import backup. Please try again.');
-                      }
+              const isSingleEvent = backup.type === 'single' || 
+                (backup.type === undefined && backup.events?.length === 1 && (!backup.snapshots || backup.snapshots.length === 0) && (!backup.templates || backup.templates.length === 0));
+              const warningText = isSingleEvent ? 'This will update or add this event to your current data.' : 'This will replace your current data.';
+
+              const confirmMessage = `Import backup from ${new Date(backup.exportedAt).toLocaleDateString()}?\n\nEvents: ${stats.eventsCount}\nSnapshots: ${stats.snapshotsCount}\nTemplates: ${stats.templatesCount}\n\n${warningText}`;
+
+              const doImport = async () => {
+                try {
+                  await importBackup(backup);
+                  await loadEvents();
+                  
+                  const importedNames = backup.events?.slice(0, 3).map((e: any) => e.name).join(', ') || 'No events';
+                  const moreStr = (backup.events?.length || 0) > 3 ? ` and ${(backup.events?.length || 0) - 3} more` : '';
+                  
+                  if (Platform.OS === 'web') {
+                    alert(`Backup imported successfully!\n\nImported: ${importedNames}${moreStr}`);
+                  } else {
+                    Alert.alert('Success', `Backup imported successfully!\n\nImported: ${importedNames}${moreStr}`);
+                  }
+                  setShowBackupMenu(false);
+                } catch (error) {
+                  console.error('[Backup] Import execution failed:', error);
+                  if (Platform.OS === 'web') {
+                    alert('Failed to import backup. Please try again.');
+                  } else {
+                    Alert.alert('Error', 'Failed to import backup. Please try again.');
+                  }
+                }
+              };
+
+              if (Platform.OS === 'web') {
+                if (window.confirm(confirmMessage)) {
+                  doImport();
+                }
+              } else {
+                Alert.alert(
+                  'Import Backup',
+                  confirmMessage,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Import',
+                      style: 'destructive',
+                      onPress: doImport,
                     },
-                  },
-                ]
-              );
+                  ]
+                );
+              }
             } catch (error) {
               console.error('[Backup] Import failed:', error);
-              alert('Failed to import backup. Please check the file format.');
+              if (Platform.OS === 'web') {
+                alert('Failed to import backup. Please check the file format.');
+              } else {
+                Alert.alert('Error', 'Failed to import backup. Please check the file format.');
+              }
             }
           };
           reader.readAsText(file);
@@ -467,9 +508,13 @@ export default function EventsScreen() {
         const backup = await readBackupFile(result.assets[0].uri);
         const stats = getBackupStats(backup);
         
+        const isSingleEvent = backup.type === 'single' || 
+          (backup.type === undefined && backup.events?.length === 1 && (!backup.snapshots || backup.snapshots.length === 0) && (!backup.templates || backup.templates.length === 0));
+        const warningText = isSingleEvent ? 'This will update or add this event to your current data.' : 'This will replace your current data.';
+
         Alert.alert(
           'Import Backup',
-          `Import backup from ${new Date(backup.exportedAt).toLocaleDateString()}?\n\nEvents: ${stats.eventsCount}\nSnapshots: ${stats.snapshotsCount}\nTemplates: ${stats.templatesCount}\n\nThis will replace your current data.`,
+          `Import backup from ${new Date(backup.exportedAt).toLocaleDateString()}?\n\nEvents: ${stats.eventsCount}\nSnapshots: ${stats.snapshotsCount}\nTemplates: ${stats.templatesCount}\n\n${warningText}`,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -837,7 +882,7 @@ export default function EventsScreen() {
         ListFooterComponent={() => (
           <View style={[styles.footer, Platform.OS === 'web' && styles.footerWeb]}>
             <ThemedText style={[styles.footerText, { color: textSecondaryColor }]}>
-              © 2025 Peter Scarfo. All rights reserved.
+              © 2026 Peter Scarfo. All rights reserved.
             </ThemedText>
           </View>
         )}
