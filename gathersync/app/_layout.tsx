@@ -18,6 +18,20 @@ import { useFonts } from "expo-font";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as SplashScreen from "expo-splash-screen";
 
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  // eslint-disable-next-line no-undef
+  const iconFontStyles = `@font-face {
+    src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf')});
+    font-family: 'material';
+  }`;
+  // eslint-disable-next-line no-undef
+  const style = document.createElement('style');
+  style.type = 'text/css';
+  style.appendChild(document.createTextNode(iconFontStyles));
+  // eslint-disable-next-line no-undef
+  document.head.appendChild(style);
+}
+
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync().catch(() => {
   // Ignore error if splash screen is not configured
@@ -94,6 +108,10 @@ export default function RootLayout() {
     () => initialWindowMetrics ?? { insets: initialInsets, frame: initialFrame },
     [initialFrame, initialInsets],
   );
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
