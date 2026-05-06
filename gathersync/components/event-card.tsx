@@ -83,7 +83,10 @@ export function EventCard({ event, onPress }: EventCardProps) {
           •
         </ThemedText>
         <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
-          {event.participants.length} {event.participants.length === 1 ? 'person' : 'people'}
+          {(() => {
+            const activeParticipants = event.participants.filter(p => !p.deletedAt);
+            return `${activeParticipants.length} ${activeParticipants.length === 1 ? 'person' : 'people'}`;
+          })()}
         </ThemedText>
       </View>
 
