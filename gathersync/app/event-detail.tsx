@@ -846,7 +846,7 @@ export default function EventDetailScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <DesktopLayout>
-    <ThemedView style={[styles.container, { backgroundColor }]}>
+        <ThemedView style={[styles.container, { backgroundColor }]}>
       <View
         style={[
           styles.header,
