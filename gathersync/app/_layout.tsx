@@ -20,14 +20,18 @@ import * as SplashScreen from "expo-splash-screen";
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   // eslint-disable-next-line no-undef
-  const iconFontStyles = `@font-face {
-    src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf')});
-    font-family: 'material';
-  }`;
-  // eslint-disable-next-line no-undef
   const style = document.createElement('style');
   style.type = 'text/css';
-  style.appendChild(document.createTextNode(iconFontStyles));
+  style.appendChild(document.createTextNode(`
+    @font-face {
+      font-family: 'material';
+      src: url('/MaterialIcons.ttf') format('truetype');
+    }
+    @font-face {
+      font-family: 'MaterialIcons';
+      src: url('/MaterialIcons.ttf') format('truetype');
+    }
+  `));
   // eslint-disable-next-line no-undef
   document.head.appendChild(style);
 }
