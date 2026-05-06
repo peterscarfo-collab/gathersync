@@ -3,7 +3,22 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { SymbolWeight, SymbolViewProps } from "expo-symbols";
 import React, { ComponentProps } from "react";
-import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
+import { OpaqueColorValue, type StyleProp, type TextStyle, Platform } from "react-native";
+
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  // eslint-disable-next-line no-undef
+  const iconFontStyles = `@font-face {
+    src: url(${require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf')});
+    font-family: MaterialIcons;
+  }`;
+
+  // eslint-disable-next-line no-undef
+  const style = document.createElement('style');
+  style.type = 'text/css';
+  style.appendChild(document.createTextNode(iconFontStyles));
+  // eslint-disable-next-line no-undef
+  document.head.appendChild(style);
+}
 
 type IconMapping = Record<SymbolViewProps["name"], ComponentProps<typeof MaterialIcons>["name"]>;
 type IconSymbolName = keyof typeof MAPPING;
