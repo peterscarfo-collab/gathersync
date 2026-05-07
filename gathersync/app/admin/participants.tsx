@@ -79,6 +79,8 @@ export default function AdminParticipantsScreen() {
   const [editDesignation, setEditDesignation] = useState('');
   const [editOrganization, setEditOrganization] = useState('');
   const [editEventId, setEditEventId] = useState<string>(eventId || '');
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [selectedUserForGrant, setSelectedUserForGrant] = useState<{id: number, name: string} | null>(null);
 
   const { data: matchedUsers, isLoading: isLoadingUser, refetch: refetchUsers } = trpc.admin.searchUsers.useQuery(
     { query: selectedParticipant?.email || selectedParticipant?.name || '' },
@@ -88,8 +90,12 @@ export default function AdminParticipantsScreen() {
   const grantLifetimePro = trpc.admin.grantLifetimePro.useMutation({
     onSuccess: () => {
       refetchUsers();
+      setShowGrantModal(false);
+      setSelectedUserForGrant(null);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        alert('Subscription granted successfully!');
       }
     },
     onError: (error) => {
@@ -112,14 +118,45 @@ export default function AdminParticipantsScreen() {
   const grantTemporaryPro = trpc.admin.grantTemporaryPro.useMutation({
     onSuccess: () => {
       refetchUsers();
+      setShowGrantModal(false);
+      setSelectedUserForGrant(null);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        alert('Subscription granted successfully!');
       }
     },
     onError: (error) => {
       Alert.alert('Error', error.message);
     }
   });
+
+  const handleGrantLifetimeProClick = () => {
+    if (!selectedUserForGrant) return;
+    const message = `Grant Lifetime Pro access to ${selectedUserForGrant.name}?`;
+    
+    if (Platform.OS === 'web') {
+      if (confirm(message)) {
+        grantLifetimePro.mutate({ userId: selectedUserForGrant.id });
+      }
+    } else {
+      Alert.alert(
+        'Confirm Grant Pro',
+        message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Grant Pro', style: 'default', onPress: () => {
+            grantLifetimePro.mutate({ userId: selectedUserForGrant.id });
+          }},
+        ]
+      );
+    }
+  };
+
+  const handleGrantTemporaryPro = (durationDays: number) => {
+    if (!selectedUserForGrant) return;
+    grantTemporaryPro.mutate({ userId: selectedUserForGrant.id, durationDays, reason: "Gifted by Admin" });
+  };
 
   const createParticipantAccount = trpc.admin.createParticipantAccount.useMutation({
     onSuccess: (data) => {
@@ -956,49 +993,12 @@ export default function AdminParticipantsScreen() {
                                 <Pressable
                                   style={[styles.exportButton, { backgroundColor: AdminColors.primary, marginHorizontal: 0, padding: 12 }]}
                                   onPress={() => {
-                                    if (Platform.OS === 'web') {
-                                      if (confirm(`Grant 1 Year Pro access to ${matchedUser.name}?`)) {
-                                        grantTemporaryPro.mutate({ userId: matchedUser.id, durationDays: 365, reason: "Gifted by Admin" });
-                                      }
-                                    } else {
-                                      Alert.alert(
-                                        'Confirm Grant 1 Year Pro',
-                                        `Grant 1 Year Pro access to ${matchedUser.name}?`,
-                                        [
-                                          { text: 'Cancel', style: 'cancel' },
-                                          { text: 'Grant 1 Year Pro', onPress: () => grantTemporaryPro.mutate({ userId: matchedUser.id, durationDays: 365, reason: "Gifted by Admin" }) },
-                                        ]
-                                      );
-                                    }
+                                    setSelectedUserForGrant({ id: matchedUser.id, name: matchedUser.name || 'User' });
+                                    setShowGrantModal(true);
                                   }}
-                                  disabled={grantTemporaryPro.isPending}
                                 >
                                   <IconSymbol name="star.fill" size={16} color="#fff" />
-                                  <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Grant 1 Year Pro</ThemedText>
-                                </Pressable>
-
-                                <Pressable
-                                  style={[styles.exportButton, { backgroundColor: AdminColors.gray600, marginHorizontal: 0, padding: 12 }]}
-                                  onPress={() => {
-                                    if (Platform.OS === 'web') {
-                                      if (confirm(`Grant Lifetime Pro access to ${matchedUser.name}?`)) {
-                                        grantLifetimePro.mutate({ userId: matchedUser.id });
-                                      }
-                                    } else {
-                                      Alert.alert(
-                                        'Confirm Grant Lifetime Pro',
-                                        `Grant Lifetime Pro access to ${matchedUser.name}?`,
-                                        [
-                                          { text: 'Cancel', style: 'cancel' },
-                                          { text: 'Grant Pro', onPress: () => grantLifetimePro.mutate({ userId: matchedUser.id }) },
-                                        ]
-                                      );
-                                    }
-                                  }}
-                                  disabled={grantLifetimePro.isPending}
-                                >
-                                  <IconSymbol name="star.fill" size={16} color="#fff" />
-                                  <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Lifetime Pro</ThemedText>
+                                  <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Grant Pro Options</ThemedText>
                                 </Pressable>
                               </View>
                             ) : (
@@ -1307,6 +1307,67 @@ export default function AdminParticipantsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Grant Pro Modal */}
+      <Modal
+        visible={showGrantModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowGrantModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: surfaceColor, borderRadius: 12, padding: 24, width: '90%', maxWidth: 400 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <ThemedText style={{ fontSize: 20, fontWeight: '700' }}>Grant Pro Access</ThemedText>
+              <Pressable onPress={() => setShowGrantModal(false)} style={{ padding: 4 }}>
+                <IconSymbol name="xmark" size={24} color={AdminColors.gray500} />
+              </Pressable>
+            </View>
+            <ThemedText style={{ fontSize: 14, color: AdminColors.gray500, marginBottom: 24 }}>
+              Select a duration to gift Pro access to {selectedUserForGrant?.name}.
+            </ThemedText>
+            
+            <View style={{ gap: 12 }}>
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(30)}
+              >
+                <ThemedText style={styles.modalOptionText}>30 Days Free</ThemedText>
+              </Pressable>
+              
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(60)}
+              >
+                <ThemedText style={styles.modalOptionText}>60 Days Free</ThemedText>
+              </Pressable>
+
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(180)}
+              >
+                <ThemedText style={styles.modalOptionText}>6 Months Free</ThemedText>
+              </Pressable>
+
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(365)}
+              >
+                <ThemedText style={styles.modalOptionText}>1 Year Free</ThemedText>
+              </Pressable>
+
+              <View style={{ height: 1, backgroundColor: AdminColors.border, marginVertical: 12 }} />
+
+              <Pressable 
+                style={[styles.modalOptionBtn, { backgroundColor: AdminColors.gray800 }]}
+                onPress={handleGrantLifetimeProClick}
+              >
+                <ThemedText style={[styles.modalOptionText, { color: '#fff' }]}>Lifetime Pro</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -1483,5 +1544,18 @@ const styles = StyleSheet.create({
   },
   modalSection: {
     marginBottom: 24,
+  },
+  modalOptionBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: AdminColors.gray100,
+    borderRadius: 8,
+    alignItems: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' } }),
+  },
+  modalOptionText: {
+    fontSize: 16,
+    fontWeight: '600' as any,
+    color: AdminColors.gray800,
   },
 });
