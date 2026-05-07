@@ -224,7 +224,8 @@ export default function AdminParticipantsScreen() {
         }
       }));
 
-      activeEvents.forEach(event => {
+      // Use allEvents instead of activeEvents so prospects and archived participants show in the directory
+      allEvents.forEach(event => {
         const date = event.eventType === 'fixed' && event.fixedDate 
           ? new Date(event.fixedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : `${event.month}/${event.year}`;
@@ -399,13 +400,29 @@ export default function AdminParticipantsScreen() {
       Alert.alert('Error', 'Name is required');
       return;
     }
-    if (!addEventId) {
-      Alert.alert('Error', 'Please select an event to add the participant to');
-      return;
-    }
 
     try {
-      const eventToUpdate = await eventsLocalStorage.getById(addEventId);
+      let targetEventId = addEventId;
+
+      // If no event selected, find or create the hidden "Prospects Directory" event
+      if (!targetEventId) {
+        const allEvents = await eventsLocalStorage.getAll();
+        let prospectsEvent = allEvents.find(e => e.name === "Prospects Directory" && e.archived);
+        
+        if (!prospectsEvent) {
+          prospectsEvent = await eventsLocalStorage.add({
+            name: "Prospects Directory",
+            eventType: "flexible",
+            month: new Date().getMonth() + 1,
+            year: new Date().getFullYear(),
+            participants: [],
+            archived: true,
+          });
+        }
+        targetEventId = prospectsEvent.id;
+      }
+
+      const eventToUpdate = await eventsLocalStorage.getById(targetEventId);
       if (!eventToUpdate) throw new Error('Event not found');
 
       const existingIndex = eventToUpdate.participants.findIndex(p => p.name.toLowerCase() === addName.trim().toLowerCase());
@@ -965,28 +982,28 @@ export default function AdminParticipantsScreen() {
                     </View>
                   )}
 
-                  {user?.role === 'admin' && (
-                    <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: cardBg, paddingTop: 16 }]}>
-                      <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>GatherSync Account</ThemedText>
-                      
-                      {isLoadingUser ? (
-                        <ActivityIndicator size="small" color={tintColor} />
-                      ) : matchedUser ? (
-                        <View style={{ gap: 12 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <IconSymbol name="person.crop.circle.badge.checkmark" size={20} color={AdminColors.success} />
-                            <ThemedText>Registered User ({matchedUser.role})</ThemedText>
-                          </View>
-                          
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <IconSymbol name="star.fill" size={20} color={matchedUser.isLifetimePro || matchedUser.subscriptionTier === 'pro' ? AdminColors.warning : AdminColors.gray400} />
-                            <ThemedText>
-                              Tier: {matchedUser.isLifetimePro ? 'Lifetime Pro' : 
-                                    matchedUser.subscriptionTier === 'pro' ? 'Pro' : 
-                                    matchedUser.subscriptionTier === 'enterprise' ? 'Enterprise' : 'Free'}
-                            </ThemedText>
-                          </View>
+                  <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: cardBg, paddingTop: 16 }]}>
+                    <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>GatherSync Account</ThemedText>
+                    
+                    {isLoadingUser ? (
+                      <ActivityIndicator size="small" color={tintColor} />
+                    ) : matchedUser ? (
+                      <View style={{ gap: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <IconSymbol name="person.crop.circle.badge.checkmark" size={20} color={AdminColors.success} />
+                          <ThemedText>Registered User ({matchedUser.role})</ThemedText>
+                        </View>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <IconSymbol name="star.fill" size={20} color={matchedUser.isLifetimePro || matchedUser.subscriptionTier === 'pro' ? AdminColors.warning : AdminColors.gray400} />
+                          <ThemedText>
+                            Tier: {matchedUser.isLifetimePro ? 'Lifetime Pro' : 
+                                  matchedUser.subscriptionTier === 'pro' ? 'Pro' : 
+                                  matchedUser.subscriptionTier === 'enterprise' ? 'Enterprise' : 'Free'}
+                          </ThemedText>
+                        </View>
 
+                        {user?.role === 'admin' && (
                           <View style={{ marginTop: 8 }}>
                             {!matchedUser.isLifetimePro && matchedUser.subscriptionTier !== 'pro' ? (
                               <View style={{ gap: 8 }}>
@@ -1027,66 +1044,66 @@ export default function AdminParticipantsScreen() {
                               </Pressable>
                             )}
                           </View>
-                        </View>
-                      ) : (
-                        <View style={{ backgroundColor: cardBg, padding: 16, borderRadius: 12, gap: 12 }}>
-                          <ThemedText style={{ opacity: 0.7, fontSize: 14 }}>
-                            This participant hasn't created a GatherSync account yet. You can create one for them and send them a login link.
-                          </ThemedText>
-                          
-                          <Pressable
-                            style={[styles.exportButton, { backgroundColor: AdminColors.primary, marginHorizontal: 0, padding: 12, marginBottom: 0 }]}
-                            onPress={() => {
-                              if (!selectedParticipant.email) {
-                                if (Platform.OS === 'web') {
-                                  const email = prompt("Enter the participant's email address to create an account:");
-                                  if (email) {
-                                    createParticipantAccount.mutate({ name: selectedParticipant.name, email });
-                                  }
-                                } else {
-                                  Alert.prompt(
-                                    "Email Required",
-                                    "Enter the participant's email address to create an account:",
-                                    [
-                                      { text: "Cancel", style: "cancel" },
-                                      { text: "Create", onPress: (email?: string) => {
-                                        if (email) createParticipantAccount.mutate({ name: selectedParticipant.name, email });
-                                      }}
-                                    ]
-                                  );
+                        )}
+                      </View>
+                    ) : (
+                      <View style={{ backgroundColor: cardBg, padding: 16, borderRadius: 12, gap: 12 }}>
+                        <ThemedText style={{ opacity: 0.7, fontSize: 14 }}>
+                          This participant hasn't created a GatherSync account yet. You can create one for them and send them a login link.
+                        </ThemedText>
+                        
+                        <Pressable
+                          style={[styles.exportButton, { backgroundColor: AdminColors.primary, marginHorizontal: 0, padding: 12, marginBottom: 0 }]}
+                          onPress={() => {
+                            if (!selectedParticipant.email) {
+                              if (Platform.OS === 'web') {
+                                const email = prompt("Enter the participant's email address to create an account:");
+                                if (email) {
+                                  createParticipantAccount.mutate({ name: selectedParticipant.name, email });
                                 }
                               } else {
-                                if (Platform.OS === 'web') {
-                                  if (confirm(`Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`)) {
-                                    createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email });
-                                  }
-                                } else {
-                                  Alert.alert(
-                                    'Create Account',
-                                    `Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`,
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      { text: 'Create', onPress: () => createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email! }) },
-                                    ]
-                                  );
-                                }
+                                Alert.prompt(
+                                  "Email Required",
+                                  "Enter the participant's email address to create an account:",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    { text: "Create", onPress: (email?: string) => {
+                                      if (email) createParticipantAccount.mutate({ name: selectedParticipant.name, email });
+                                    }}
+                                  ]
+                                );
                               }
-                            }}
-                            disabled={createParticipantAccount.isPending}
-                          >
-                            {createParticipantAccount.isPending ? (
-                              <ActivityIndicator size="small" color="#fff" />
-                            ) : (
-                              <>
-                                <IconSymbol name="person.badge.plus" size={16} color="#fff" />
-                                <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Create Account & Send Link</ThemedText>
-                              </>
-                            )}
-                          </Pressable>
-                        </View>
-                      )}
-                    </View>
-                  )}
+                            } else {
+                              if (Platform.OS === 'web') {
+                                if (confirm(`Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`)) {
+                                  createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email });
+                                }
+                              } else {
+                                Alert.alert(
+                                  'Create Account',
+                                  `Create an account for ${selectedParticipant.name} (${selectedParticipant.email})?`,
+                                  [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { text: 'Create', onPress: () => createParticipantAccount.mutate({ name: selectedParticipant.name, email: selectedParticipant.email! }) },
+                                  ]
+                                );
+                              }
+                            }
+                          }}
+                          disabled={createParticipantAccount.isPending}
+                        >
+                          {createParticipantAccount.isPending ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <>
+                              <IconSymbol name="person.badge.plus" size={16} color="#fff" />
+                              <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Create Account & Send Link</ThemedText>
+                            </>
+                          )}
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
                 </ScrollView>
               </>
             )}
@@ -1124,7 +1141,7 @@ export default function AdminParticipantsScreen() {
                     />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Select Event *</ThemedText>
+                    <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Select Event (Optional)</ThemedText>
                     <View style={{ backgroundColor: cardBg, borderRadius: 8, overflow: 'hidden' }}>
                       {Platform.OS === 'web' ? (
                         <select
@@ -1141,7 +1158,7 @@ export default function AdminParticipantsScreen() {
                           value={addEventId}
                           onChange={(e) => setAddEventId(e.target.value)}
                         >
-                          <option value="" disabled>Select an event...</option>
+                          <option value="">None (Add as Prospect)</option>
                           {events.map((e) => (
                             <option key={e.id} value={e.id}>
                               {e.name} ({e.eventType === 'fixed' ? e.fixedDate : `${e.month}/${e.year}`})
@@ -1150,6 +1167,20 @@ export default function AdminParticipantsScreen() {
                         </select>
                       ) : (
                         <ScrollView style={{ maxHeight: 120 }}>
+                          <Pressable
+                            style={{
+                              padding: 8,
+                              paddingHorizontal: 12,
+                              borderBottomWidth: 1,
+                              borderBottomColor: 'rgba(0,0,0,0.05)',
+                              backgroundColor: addEventId === '' ? tintColor + '20' : 'transparent',
+                            }}
+                            onPress={() => setAddEventId('')}
+                          >
+                            <ThemedText style={{ color: addEventId === '' ? tintColor : undefined, fontSize: 14 }}>
+                              None (Add as Prospect)
+                            </ThemedText>
+                          </Pressable>
                           {events.map((e) => (
                             <Pressable
                               key={e.id}

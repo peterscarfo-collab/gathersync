@@ -293,7 +293,8 @@ export const adminRouter = router({
   }),
 
   /**
-   * Create an account for a participant (Admin only)
+   * Create an account for a participant
+   * Any authenticated user can do this for their prospects
    */
   createParticipantAccount: publicProcedure
     .input(
@@ -303,11 +304,11 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Check if user is admin
-      if (!ctx.user || ctx.user.role !== "admin") {
+      // Check if user is authenticated
+      if (!ctx.user) {
         throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Admin access required",
+          code: "UNAUTHORIZED",
+          message: "You must be logged in to create accounts for participants",
         });
       }
 
