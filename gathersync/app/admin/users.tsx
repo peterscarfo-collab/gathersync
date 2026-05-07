@@ -64,6 +64,18 @@ export default function AdminUsersScreen() {
     }
   });
 
+  const grantTemporaryPro = trpc.admin.grantTemporaryPro.useMutation({
+    onSuccess: () => {
+      refetch();
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message);
+    }
+  });
+
   const handleGrantPro = (userId: number, name: string) => {
     const message = `Grant Lifetime Pro access to ${name}?`;
     
@@ -78,6 +90,25 @@ export default function AdminUsersScreen() {
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Grant Pro', style: 'default', onPress: () => grantLifetimePro.mutate({ userId }) },
+        ]
+      );
+    }
+  };
+
+  const handleGrant1YearPro = (userId: number, name: string) => {
+    const message = `Grant 1 Year Pro access to ${name}?`;
+    
+    if (Platform.OS === 'web') {
+      if (confirm(message)) {
+        grantTemporaryPro.mutate({ userId, durationDays: 365, reason: "Gifted by Admin" });
+      }
+    } else {
+      Alert.alert(
+        'Confirm Grant 1 Year Pro',
+        message,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Grant 1 Year Pro', style: 'default', onPress: () => grantTemporaryPro.mutate({ userId, durationDays: 365, reason: "Gifted by Admin" }) },
         ]
       );
     }
@@ -207,15 +238,25 @@ export default function AdminUsersScreen() {
                   <View style={styles.userActions}>
                     {user.id !== currentUser?.id && (
                       <>
-                        {!user.isLifetimePro ? (
-                          <Pressable
-                            style={styles.actionButtonPrimary}
-                            onPress={() => handleGrantPro(user.id, user.name || 'User')}
-                            disabled={grantLifetimePro.isPending}
-                          >
-                            <IconSymbol name="star.fill" size={16} color="#fff" />
-                            <ThemedText style={styles.actionButtonText}>Grant Lifetime Pro</ThemedText>
-                          </Pressable>
+                        {user.subscriptionTier !== 'pro' && !user.isLifetimePro ? (
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <Pressable
+                              style={styles.actionButtonPrimary}
+                              onPress={() => handleGrant1YearPro(user.id, user.name || 'User')}
+                              disabled={grantTemporaryPro.isPending}
+                            >
+                              <IconSymbol name="star.fill" size={16} color="#fff" />
+                              <ThemedText style={styles.actionButtonText}>Grant 1 Year Pro</ThemedText>
+                            </Pressable>
+                            <Pressable
+                              style={[styles.actionButtonPrimary, { backgroundColor: AdminColors.gray600 }]}
+                              onPress={() => handleGrantPro(user.id, user.name || 'User')}
+                              disabled={grantLifetimePro.isPending}
+                            >
+                              <IconSymbol name="star.fill" size={16} color="#fff" />
+                              <ThemedText style={styles.actionButtonText}>Lifetime Pro</ThemedText>
+                            </Pressable>
+                          </View>
                         ) : (
                           <Pressable
                             style={styles.actionButtonDanger}
