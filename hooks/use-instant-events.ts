@@ -3,8 +3,35 @@
  * Real-time events hook using InstantDB
  * Provides automatic real-time sync for events and participants
  */
+import { useCallback, useState } from 'react';
 import { db } from '@/lib/db';
 import type { Event, Participant } from '@/types/models';
+
+function normalizeEventId(value: unknown): string {
+  if (typeof value !== 'string') {
+    const received = Array.isArray(value) ? 'array' : typeof value;
+    throw new Error(
+      `[useEvents] Expected eventId to be a string, received ${received}. ` +
+        'Pass event.id instead of the event object.'
+    );
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error('[useEvents] Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
 
 function normalizeDeletedAt(value: unknown): string | undefined {
   if (!value) return undefined;
@@ -65,6 +92,7 @@ export function useEvents() {
   // Get the current user from InstantDB auth
   const { user } = db.useAuth();
   const shouldQuery = Boolean(user?.id);
+  const [pendingDeletedEventIds, setPendingDeletedEventIds] = useState<Set<string>>(new Set());
   
   // Query events with participants in real-time
   // Only fetch events created by the current user (permission-filtered)
@@ -100,6 +128,7 @@ export function useEvents() {
 
     const mapped = data.events
       .filter((event: any) => event.creator?.id === user.id)
+      .filter((event: any) => !pendingDeletedEventIds.has(event.id))
       .map((event: any) => ({
       id: event.id,
       name: event.name,
@@ -147,10 +176,89 @@ export function useEvents() {
     return dedupeEvents(mapped);
   })();
 
+  const deleteEvent = useCallback(async (eventId: unknown) => {
+    const normalizedEventId = normalizeEventId(eventId);
+
+    if (!user?.id) {
+      throw new Error('[useEvents] Cannot delete event without an authenticated InstantDB user');
+    }
+
+    setPendingDeletedEventIds((previous) => new Set(previous).add(normalizedEventId));
+
+    try {
+      const { data: existingData } = await withTimeout(
+        db.queryOnce({
+          events: {
+            $: {
+              where: {
+                id: normalizedEventId,
+              },
+            },
+            creator: {},
+          },
+        }),
+        10000,
+        `Fetch event ${normalizedEventId} before delete`
+      );
+
+      const event = existingData?.events?.[0];
+      if (!event) {
+        throw new Error(
+          `[useEvents] Event ${normalizedEventId} was not readable before delete. ` +
+            'Confirm the current user owns the event and InstantDB permissions allow reads.'
+        );
+      }
+
+      if (event.creator?.id !== user.id) {
+        throw new Error(
+          `[useEvents] User ${user.id} cannot delete event ${normalizedEventId} owned by ${event.creator?.id || 'unknown'}`
+        );
+      }
+
+      // InstantDB accepts a transaction chunk array; using an array avoids delete sync hangs
+      // seen when a single delete chunk is passed directly.
+      await withTimeout(
+        db.transact([db.tx.events[normalizedEventId].delete()]),
+        10000,
+        `Delete event ${normalizedEventId}`
+      );
+
+      const { data: verifyData } = await withTimeout(
+        db.queryOnce({
+          events: {
+            $: {
+              where: {
+                id: normalizedEventId,
+              },
+            },
+          },
+        }),
+        10000,
+        `Verify event ${normalizedEventId} deletion`
+      );
+
+      if (verifyData?.events?.some((event: any) => event.id === normalizedEventId)) {
+        throw new Error(
+          `[useEvents] Delete transaction completed, but event ${normalizedEventId} is still readable. ` +
+            'Check InstantDB delete permissions for the events collection.'
+        );
+      }
+    } catch (error) {
+      setPendingDeletedEventIds((previous) => {
+        const next = new Set(previous);
+        next.delete(normalizedEventId);
+        return next;
+      });
+      console.error('[useEvents] Failed to delete event:', normalizedEventId, error);
+      throw error;
+    }
+  }, [user?.id]);
+
   return {
     events,
     isLoading: shouldQuery ? isLoading : false,
     error: shouldQuery ? error : null,
+    deleteEvent,
   };
 }
 
