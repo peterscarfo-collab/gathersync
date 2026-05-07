@@ -2,8 +2,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { users } from "../../drizzle/schema";
-import { eq, like, or } from "drizzle-orm";
+import { users, events } from "../../drizzle/schema";
+import { eq, like, or, and, inArray } from "drizzle-orm";
 
 /**
  * Admin router for subscription management
@@ -17,6 +17,8 @@ export const adminRouter = router({
     .input(
       z.object({
         query: z.string().optional(),
+        tier: z.enum(["all", "free", "lite", "pro", "enterprise"]).optional(),
+        eventSearch: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -36,17 +38,43 @@ export const adminRouter = router({
         });
       }
 
-      let results;
+      let conditions = [];
+
       if (input.query && input.query.trim().length > 0) {
+        conditions.push(
+          or(
+            like(users.email, `%${input.query}%`),
+            like(users.name, `%${input.query}%`)
+          )
+        );
+      }
+
+      if (input.tier && input.tier !== "all") {
+        conditions.push(eq(users.subscriptionTier, input.tier));
+      }
+
+      if (input.eventSearch && input.eventSearch.trim().length > 0) {
+        // If eventSearch is provided, find users who have created an event matching the search
+        const matchingEvents = await db
+          .select({ userId: events.userId })
+          .from(events)
+          .where(like(events.name, `%${input.eventSearch}%`));
+        
+        const userIds = matchingEvents.map(e => e.userId);
+        if (userIds.length > 0) {
+          conditions.push(inArray(users.id, userIds));
+        } else {
+          // If no events match, return empty array early
+          return [];
+        }
+      }
+
+      let results;
+      if (conditions.length > 0) {
         results = await db
           .select()
           .from(users)
-          .where(
-            or(
-              like(users.email, `%${input.query}%`),
-              like(users.name, `%${input.query}%`)
-            )
-          )
+          .where(and(...conditions))
           .limit(50);
       } else {
         results = await db

@@ -46,6 +46,7 @@ export function useAuth(options?: UseAuthOptions) {
           email: apiUser.email,
           loginMethod: apiUser.loginMethod,
           lastSignedIn: new Date(apiUser.lastSignedIn),
+          role: (apiUser as any).role,
           // Include subscription fields from API
           subscriptionTier: (apiUser as any).subscriptionTier,
           subscriptionStatus: (apiUser as any).subscriptionStatus,
@@ -102,6 +103,8 @@ export function useAuth(options?: UseAuthOptions) {
           console.log("[useAuth] Setting cached user immediately");
           setUser(cachedUser);
           setLoading(false);
+          // ALSO fetch fresh data in background to keep cache updated
+          fetchUser();
         } else {
           // No cached user, check session token
           fetchUser();

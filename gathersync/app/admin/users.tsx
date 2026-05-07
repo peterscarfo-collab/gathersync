@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +22,8 @@ import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/hooks/use-auth';
 import { DesktopLayout } from '@/components/desktop-layout';
 
+type FilterTier = 'all' | 'free' | 'lite' | 'pro' | 'enterprise';
+
 export default function AdminUsersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -29,15 +32,27 @@ export default function AdminUsersScreen() {
   
   const [searchQuery, setSearchQuery] = useState(params.search || '');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  
+  const [eventSearchQuery, setEventSearchQuery] = useState('');
+  const [debouncedEventQuery, setDebouncedEventQuery] = useState('');
+  
+  const [filterTier, setFilterTier] = useState<FilterTier>('all');
+  
+  // Grant Pro Modal State
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{id: number, name: string} | null>(null);
 
   // Debounce search query
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+      setDebouncedEventQuery(eventSearchQuery);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, eventSearchQuery]);
 
   const { data: users, isLoading, refetch } = trpc.admin.searchUsers.useQuery(
-    { query: debouncedQuery }
+    { query: debouncedQuery, tier: filterTier, eventSearch: debouncedEventQuery }
   );
 
   const grantLifetimePro = trpc.admin.grantLifetimePro.useMutation({
@@ -67,8 +82,12 @@ export default function AdminUsersScreen() {
   const grantTemporaryPro = trpc.admin.grantTemporaryPro.useMutation({
     onSuccess: () => {
       refetch();
+      setShowGrantModal(false);
+      setSelectedUser(null);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        alert('Subscription granted successfully!');
       }
     },
     onError: (error) => {
@@ -76,12 +95,14 @@ export default function AdminUsersScreen() {
     }
   });
 
-  const handleGrantPro = (userId: number, name: string) => {
-    const message = `Grant Lifetime Pro access to ${name}?`;
+  const handleGrantLifetimeProClick = () => {
+    if (!selectedUser) return;
+    const message = `Grant Lifetime Pro access to ${selectedUser.name}?`;
     
     if (Platform.OS === 'web') {
       if (confirm(message)) {
-        grantLifetimePro.mutate({ userId });
+        grantLifetimePro.mutate({ userId: selectedUser.id });
+        setShowGrantModal(false);
       }
     } else {
       Alert.alert(
@@ -89,29 +110,18 @@ export default function AdminUsersScreen() {
         message,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Grant Pro', style: 'default', onPress: () => grantLifetimePro.mutate({ userId }) },
+          { text: 'Grant Pro', style: 'default', onPress: () => {
+            grantLifetimePro.mutate({ userId: selectedUser.id });
+            setShowGrantModal(false);
+          }},
         ]
       );
     }
   };
 
-  const handleGrant1YearPro = (userId: number, name: string) => {
-    const message = `Grant 1 Year Pro access to ${name}?`;
-    
-    if (Platform.OS === 'web') {
-      if (confirm(message)) {
-        grantTemporaryPro.mutate({ userId, durationDays: 365, reason: "Gifted by Admin" });
-      }
-    } else {
-      Alert.alert(
-        'Confirm Grant 1 Year Pro',
-        message,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Grant 1 Year Pro', style: 'default', onPress: () => grantTemporaryPro.mutate({ userId, durationDays: 365, reason: "Gifted by Admin" }) },
-        ]
-      );
-    }
+  const handleGrantTemporaryPro = (durationDays: number) => {
+    if (!selectedUser) return;
+    grantTemporaryPro.mutate({ userId: selectedUser.id, durationDays, reason: "Gifted by Admin" });
   };
 
   const handleRevokePro = (userId: number, name: string) => {
@@ -155,15 +165,49 @@ export default function AdminUsersScreen() {
 
       {/* Controls */}
       <View style={styles.controls}>
-        <View style={styles.searchContainer}>
-          <IconSymbol name="magnifyingglass" size={20} color={AdminColors.gray400} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search users by name or email..."
-            placeholderTextColor={AdminColors.gray400}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
+        <View style={styles.searchRow}>
+          <View style={[styles.searchContainer, { flex: 1 }]}>
+            <IconSymbol name="magnifyingglass" size={20} color={AdminColors.gray400} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search users by name or email..."
+              placeholderTextColor={AdminColors.gray400}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+          <View style={[styles.searchContainer, { flex: 1 }]}>
+            <IconSymbol name="calendar" size={20} color={AdminColors.gray400} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by event name they created..."
+              placeholderTextColor={AdminColors.gray400}
+              value={eventSearchQuery}
+              onChangeText={setEventSearchQuery}
+            />
+          </View>
+        </View>
+
+        <View style={styles.filterTabsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterTabs}>
+            {(['all', 'free', 'lite', 'pro', 'enterprise'] as FilterTier[]).map((tier) => (
+              <Pressable
+                key={tier}
+                style={[
+                  styles.filterTab,
+                  filterTier === tier && styles.filterTabActive
+                ]}
+                onPress={() => setFilterTier(tier)}
+              >
+                <ThemedText style={[
+                  styles.filterTabText,
+                  filterTier === tier && styles.filterTabTextActive
+                ]}>
+                  {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </ScrollView>
         </View>
       </View>
 
@@ -178,7 +222,7 @@ export default function AdminUsersScreen() {
             <IconSymbol name="person.3.fill" size={48} color={AdminColors.gray300} />
             <ThemedText style={styles.emptyText}>No users found</ThemedText>
             <ThemedText style={styles.emptySubtext}>
-              {searchQuery ? 'Try adjusting your search' : 'No users match your criteria'}
+              {searchQuery || eventSearchQuery ? 'Try adjusting your search filters' : 'No users match your criteria'}
             </ThemedText>
           </View>
         ) : (
@@ -186,7 +230,8 @@ export default function AdminUsersScreen() {
             {users.map(user => {
               const isPro = user.subscriptionTier === 'pro' || user.isLifetimePro;
               const isEnterprise = user.subscriptionTier === 'enterprise';
-              const isFree = !isPro && !isEnterprise;
+              const isLite = user.subscriptionTier === 'lite';
+              const isFree = !isPro && !isEnterprise && !isLite;
               
               return (
                 <View key={user.id} style={styles.userCard}>
@@ -213,22 +258,25 @@ export default function AdminUsersScreen() {
                       <View style={[
                         styles.tierBadge,
                         isFree ? styles.tierBadgeFree : 
+                        isLite ? styles.tierBadgeLite :
                         isEnterprise ? styles.tierBadgeEnterprise : 
                         styles.tierBadgePro
                       ]}>
                         <IconSymbol 
                           name={isPro ? "star.fill" : "person.fill"} 
                           size={14} 
-                          color={isFree ? AdminColors.gray600 : isEnterprise ? '#6366f1' : AdminColors.warning} 
+                          color={isFree ? AdminColors.gray600 : isLite ? '#3b82f6' : isEnterprise ? '#6366f1' : AdminColors.warning} 
                         />
                         <ThemedText style={[
                           styles.tierBadgeText,
                           isFree ? styles.tierBadgeTextFree : 
+                          isLite ? styles.tierBadgeTextLite :
                           isEnterprise ? styles.tierBadgeTextEnterprise : 
                           styles.tierBadgeTextPro
                         ]}>
                           {user.isLifetimePro ? 'Lifetime Pro' : 
                            user.subscriptionTier === 'pro' ? 'Pro' : 
+                           user.subscriptionTier === 'lite' ? 'Lite' :
                            user.subscriptionTier === 'enterprise' ? 'Enterprise' : 'Free'}
                         </ThemedText>
                       </View>
@@ -242,19 +290,13 @@ export default function AdminUsersScreen() {
                           <View style={{ flexDirection: 'row', gap: 8 }}>
                             <Pressable
                               style={styles.actionButtonPrimary}
-                              onPress={() => handleGrant1YearPro(user.id, user.name || 'User')}
-                              disabled={grantTemporaryPro.isPending}
+                              onPress={() => {
+                                setSelectedUser({ id: user.id, name: user.name || 'User' });
+                                setShowGrantModal(true);
+                              }}
                             >
                               <IconSymbol name="star.fill" size={16} color="#fff" />
-                              <ThemedText style={styles.actionButtonText}>Grant 1 Year Pro</ThemedText>
-                            </Pressable>
-                            <Pressable
-                              style={[styles.actionButtonPrimary, { backgroundColor: AdminColors.gray600 }]}
-                              onPress={() => handleGrantPro(user.id, user.name || 'User')}
-                              disabled={grantLifetimePro.isPending}
-                            >
-                              <IconSymbol name="star.fill" size={16} color="#fff" />
-                              <ThemedText style={styles.actionButtonText}>Lifetime Pro</ThemedText>
+                              <ThemedText style={styles.actionButtonText}>Grant Pro Options</ThemedText>
                             </Pressable>
                           </View>
                         ) : (
@@ -276,6 +318,68 @@ export default function AdminUsersScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Grant Pro Modal */}
+      <Modal
+        visible={showGrantModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowGrantModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Grant Pro Access</ThemedText>
+              <Pressable onPress={() => setShowGrantModal(false)} style={styles.modalCloseButton}>
+                <IconSymbol name="xmark" size={24} color={AdminColors.gray500} />
+              </Pressable>
+            </View>
+            <ThemedText style={styles.modalSubtitle}>
+              Select a duration to gift Pro access to {selectedUser?.name}.
+            </ThemedText>
+            
+            <View style={styles.modalOptions}>
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(30)}
+              >
+                <ThemedText style={styles.modalOptionText}>30 Days Free</ThemedText>
+              </Pressable>
+              
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(60)}
+              >
+                <ThemedText style={styles.modalOptionText}>60 Days Free</ThemedText>
+              </Pressable>
+
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(180)}
+              >
+                <ThemedText style={styles.modalOptionText}>6 Months Free</ThemedText>
+              </Pressable>
+
+              <Pressable 
+                style={styles.modalOptionBtn}
+                onPress={() => handleGrantTemporaryPro(365)}
+              >
+                <ThemedText style={styles.modalOptionText}>1 Year Free</ThemedText>
+              </Pressable>
+
+              <View style={styles.modalDivider} />
+
+              <Pressable 
+                style={[styles.modalOptionBtn, { backgroundColor: AdminColors.gray800 }]}
+                onPress={handleGrantLifetimeProClick}
+              >
+                <ThemedText style={[styles.modalOptionText, { color: '#fff' }]}>Lifetime Pro</ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </ThemedView>
     </DesktopLayout>
   );
@@ -332,6 +436,10 @@ const styles = StyleSheet.create({
     gap: AdminSpacing.base,
     backgroundColor: AdminColors.surface,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: AdminSpacing.base,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -352,6 +460,31 @@ const styles = StyleSheet.create({
         outlineStyle: 'none' as any,
       },
     }),
+  },
+  filterTabsContainer: {
+    marginTop: AdminSpacing.sm,
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    gap: AdminSpacing.sm,
+  },
+  filterTab: {
+    paddingHorizontal: AdminSpacing.lg,
+    paddingVertical: AdminSpacing.xs,
+    borderRadius: AdminBorderRadius.full,
+    backgroundColor: AdminColors.gray100,
+    ...Platform.select({ web: { cursor: 'pointer' } }),
+  },
+  filterTabActive: {
+    backgroundColor: AdminColors.primary,
+  },
+  filterTabText: {
+    fontSize: AdminTypography.sm,
+    color: AdminColors.gray600,
+    fontWeight: '500' as any,
+  },
+  filterTabTextActive: {
+    color: '#ffffff',
   },
   
   // List
@@ -444,6 +577,11 @@ const styles = StyleSheet.create({
   tierBadgeFree: {
     backgroundColor: AdminColors.gray100,
   },
+  tierBadgeLite: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+  },
   tierBadgePro: {
     backgroundColor: AdminColors.warningLight,
     borderWidth: 1,
@@ -460,6 +598,9 @@ const styles = StyleSheet.create({
   },
   tierBadgeTextFree: {
     color: AdminColors.gray700,
+  },
+  tierBadgeTextLite: {
+    color: '#2563eb',
   },
   tierBadgeTextPro: {
     color: AdminColors.warning,
@@ -522,4 +663,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: AdminColors.surface,
+    borderRadius: AdminBorderRadius.lg,
+    padding: AdminSpacing.xl,
+    width: '90%',
+    maxWidth: 400,
+    ...Platform.select({
+      web: {
+        boxShadow: AdminShadows.lg,
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 5,
+      },
+    }),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: AdminSpacing.sm,
+  },
+  modalTitle: {
+    fontSize: AdminTypography.xl,
+    fontWeight: '700' as any,
+    color: AdminColors.gray900,
+  },
+  modalSubtitle: {
+    fontSize: AdminTypography.sm,
+    color: AdminColors.gray500,
+    marginBottom: AdminSpacing.xl,
+  },
+  modalCloseButton: {
+    padding: AdminSpacing.xs,
+    ...Platform.select({ web: { cursor: 'pointer' } }),
+  },
+  modalOptions: {
+    gap: AdminSpacing.sm,
+  },
+  modalOptionBtn: {
+    paddingVertical: AdminSpacing.md,
+    paddingHorizontal: AdminSpacing.lg,
+    backgroundColor: AdminColors.gray100,
+    borderRadius: AdminBorderRadius.md,
+    alignItems: 'center',
+    ...Platform.select({ web: { cursor: 'pointer' } }),
+  },
+  modalOptionText: {
+    fontSize: AdminTypography.base,
+    fontWeight: '600' as any,
+    color: AdminColors.gray800,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: AdminColors.border,
+    marginVertical: AdminSpacing.sm,
+  }
 });

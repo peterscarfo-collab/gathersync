@@ -172,6 +172,21 @@ export default function AdminParticipantsScreen() {
       // Build participant directory
       const participantMap = new Map<string, ParticipantWithEvents>();
       
+      // First pass: gather global contact info from ALL events (including archived)
+      const globalInfo = new Map<string, {phone?: string, email?: string, designation?: string, organization?: string}>();
+      allEvents.forEach(e => e.participants.forEach(p => {
+        if (p.deletedAt) return;
+        if (!globalInfo.has(p.name)) {
+          globalInfo.set(p.name, { phone: p.phone, email: p.email, designation: p.designation, organization: p.organization });
+        } else {
+          const current = globalInfo.get(p.name)!;
+          if (p.phone && !current.phone) current.phone = p.phone;
+          if (p.email && !current.email) current.email = p.email;
+          if (p.designation && !current.designation) current.designation = p.designation;
+          if (p.organization && !current.organization) current.organization = p.organization;
+        }
+      }));
+
       activeEvents.forEach(event => {
         const date = event.eventType === 'fixed' && event.fixedDate 
           ? new Date(event.fixedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -180,30 +195,32 @@ export default function AdminParticipantsScreen() {
         event.participants.forEach(participant => {
           if (participant.deletedAt) return; // Skip soft-deleted participants
           
+          const info = globalInfo.get(participant.name) || {};
+          
           const existing = participantMap.get(participant.name);
           if (existing) {
             existing.eventCount += 1;
             existing.events.push({ id: event.id, name: event.name, date });
-            // Update contact info if available
-            if (participant.phone && !existing.phone) {
-              existing.phone = participant.phone;
+            // Update contact info if available from global info
+            if (info.phone && !existing.phone) {
+              existing.phone = info.phone;
             }
-            if (participant.email && !existing.email) {
-              existing.email = participant.email;
+            if (info.email && !existing.email) {
+              existing.email = info.email;
             }
-            if (participant.designation && !existing.designation) {
-              existing.designation = participant.designation;
+            if (info.designation && !existing.designation) {
+              existing.designation = info.designation;
             }
-            if (participant.organization && !existing.organization) {
-              existing.organization = participant.organization;
+            if (info.organization && !existing.organization) {
+              existing.organization = info.organization;
             }
           } else {
             participantMap.set(participant.name, {
               name: participant.name,
-              phone: participant.phone,
-              email: participant.email,
-              designation: participant.designation,
-              organization: participant.organization,
+              phone: info.phone || participant.phone,
+              email: info.email || participant.email,
+              designation: info.designation || participant.designation,
+              organization: info.organization || participant.organization,
               eventCount: 1,
               events: [{ id: event.id, name: event.name, date }],
             });
