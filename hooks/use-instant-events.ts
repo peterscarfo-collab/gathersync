@@ -3,8 +3,45 @@
  * Real-time events hook using InstantDB
  * Provides automatic real-time sync for events and participants
  */
+import { useCallback, useState } from 'react';
 import { db } from '@/lib/db';
 import type { Event, Participant } from '@/types/models';
+
+function normalizeEventId(value: unknown): string {
+  if (typeof value !== 'string') {
+    const received = Array.isArray(value) ? 'array' : typeof value;
+    throw new Error(
+      `[useEvents] Expected eventId to be a string, received ${received}. ` +
+        'Pass event.id instead of the event object.'
+    );
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error('[useEvents] Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
+function formatErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)),
+      timeoutMs
+    );
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 function normalizeDeletedAt(value: unknown): string | undefined {
   if (!value) return undefined;
@@ -63,8 +100,9 @@ function dedupeEvents(events: Event[]): Event[] {
 
 export function useEvents() {
   // Get the current user from InstantDB auth
-  const { user } = db.useAuth();
+  const { user, isLoading: authLoading, error: authError } = db.useAuth();
   const shouldQuery = Boolean(user?.id);
+  const [pendingDeletedEventIds, setPendingDeletedEventIds] = useState<Set<string>>(new Set());
   
   // Query events with participants in real-time
   // Only fetch events created by the current user (permission-filtered)
@@ -84,6 +122,101 @@ export function useEvents() {
     console.error('[useEvents] Query error:', error);
   }
 
+  if (authError) {
+    console.error('[useEvents] Auth error:', authError);
+  }
+
+  const deleteEvent = useCallback(async (eventId: unknown) => {
+    const normalizedEventId = normalizeEventId(eventId);
+
+    if (authLoading) {
+      throw new Error('[useEvents] Cannot delete event while InstantDB auth is still loading');
+    }
+
+    if (authError) {
+      throw new Error(
+        `[useEvents] Cannot delete event because InstantDB auth failed: ${formatErrorMessage(authError)}`
+      );
+    }
+
+    if (!user?.id) {
+      throw new Error('[useEvents] Cannot delete event without an authenticated InstantDB user');
+    }
+
+    setPendingDeletedEventIds((previous) => new Set(previous).add(normalizedEventId));
+
+    try {
+      const { data: existingData } = await withTimeout(
+        db.queryOnce({
+          events: {
+            $: {
+              where: {
+                id: normalizedEventId,
+              },
+            },
+            creator: {},
+          },
+        }),
+        10000,
+        `Fetch event ${normalizedEventId} before delete`
+      );
+
+      const event = existingData?.events?.[0];
+      if (!event) {
+        throw new Error(
+          `[useEvents] Event ${normalizedEventId} was not readable before delete. ` +
+            'Confirm the current user owns the event and InstantDB permissions allow reads.'
+        );
+      }
+
+      if (event.creator?.id !== user.id) {
+        throw new Error(
+          `[useEvents] User ${user.id} cannot delete event ${normalizedEventId} owned by ${event.creator?.id || 'unknown'}`
+        );
+      }
+
+      console.log('[useEvents] Deleting event from InstantDB:', normalizedEventId, 'user:', user.id);
+
+      // InstantDB accepts transaction chunks as an array; using a batch avoids delete sync hangs.
+      await withTimeout(
+        db.transact([db.tx.events[normalizedEventId].delete()]),
+        10000,
+        `Delete event ${normalizedEventId}`
+      );
+
+      const { data: verifyData } = await withTimeout(
+        db.queryOnce({
+          events: {
+            $: {
+              where: {
+                id: normalizedEventId,
+              },
+            },
+          },
+        }),
+        10000,
+        `Verify event ${normalizedEventId} deletion`
+      );
+
+      if (verifyData?.events?.some((event: any) => event.id === normalizedEventId)) {
+        throw new Error(
+          `[useEvents] Delete transaction completed, but event ${normalizedEventId} is still readable. ` +
+            'Check InstantDB delete permissions for the events collection.'
+        );
+      }
+
+      return normalizedEventId;
+    } catch (deleteError) {
+      setPendingDeletedEventIds((previous) => {
+        const next = new Set(previous);
+        next.delete(normalizedEventId);
+        return next;
+      });
+      console.error('[useEvents] Failed to delete event:', normalizedEventId, deleteError);
+      throw deleteError;
+    }
+  }, [authError, authLoading, user?.id]);
+
   // Transform InstantDB data to our Event type
   const events: Event[] = (() => {
     if (!shouldQuery) {
@@ -100,6 +233,7 @@ export function useEvents() {
 
     const mapped = data.events
       .filter((event: any) => event.creator?.id === user.id)
+      .filter((event: any) => !pendingDeletedEventIds.has(event.id))
       .map((event: any) => ({
       id: event.id,
       name: event.name,
@@ -149,8 +283,9 @@ export function useEvents() {
 
   return {
     events,
-    isLoading: shouldQuery ? isLoading : false,
-    error: shouldQuery ? error : null,
+    isLoading: authLoading || (shouldQuery ? isLoading : false),
+    error: authError || (shouldQuery ? error : null),
+    deleteEvent,
   };
 }
 
