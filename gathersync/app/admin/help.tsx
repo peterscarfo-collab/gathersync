@@ -218,6 +218,27 @@ export default function HelpScreen() {
           </ThemedText>
         </View>
       ),
+    },
+    {
+      id: 'privacy-settings',
+      title: 'Privacy Settings & Visibility',
+      icon: 'eye.fill',
+      content: (
+        <View style={styles.topicContent}>
+          <ThemedText style={styles.paragraph}>
+            GatherSync gives you granular control over what participant information is visible on the public event page.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Public Page Visibility:</ThemedText> When editing an event, you can toggle exactly which fields (Names, Emails, and Phone Numbers) are shown to people who view the event link.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • If you turn off "Show Attendee Names", the public page will only display the total count of attendees (e.g., "5 people attending").
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Exporting Reports:</ThemedText> When you export an event report or copy it to your clipboard, the system will automatically default to matching your public privacy settings. For example, if you chose to hide emails publicly, the email column will be deselected by default in your export. (You can still manually re-select these columns if you need them for your own admin records).
+          </ThemedText>
+        </View>
+      ),
     }
   ];
 
