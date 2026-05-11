@@ -31,7 +31,9 @@ export default function EditMeetingDetailsScreen() {
   const [meetingLink, setMeetingLink] = useState('');
   const [rsvpDeadline, setRsvpDeadline] = useState('');
   const [meetingNotes, setMeetingNotes] = useState('');
-  const [hideAttendeeNames, setHideAttendeeNames] = useState(false);
+  const [showAttendeeNames, setShowAttendeeNames] = useState(true);
+  const [showAttendeeEmails, setShowAttendeeEmails] = useState(false);
+  const [showAttendeePhones, setShowAttendeePhones] = useState(false);
   const [fixedDate, setFixedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -66,7 +68,9 @@ export default function EditMeetingDetailsScreen() {
       setMeetingLink(loadedEvent.meetingLink || '');
       setRsvpDeadline(loadedEvent.rsvpDeadline || '');
       setMeetingNotes(loadedEvent.meetingNotes || '');
-      setHideAttendeeNames(loadedEvent.hideAttendeeNames || false);
+      setShowAttendeeNames(loadedEvent.showAttendeeNames ?? true);
+      setShowAttendeeEmails(loadedEvent.showAttendeeEmails ?? false);
+      setShowAttendeePhones(loadedEvent.showAttendeePhones ?? false);
       
       // Initialize fixed date/time if it's a fixed event
       if (loadedEvent.eventType === 'fixed' && loadedEvent.fixedDate && loadedEvent.fixedTime) {
@@ -104,7 +108,9 @@ export default function EditMeetingDetailsScreen() {
         meetingLink: meetingType === 'virtual' ? meetingLink.trim() || undefined : undefined,
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
-        hideAttendeeNames,
+        showAttendeeNames,
+        showAttendeeEmails,
+        showAttendeePhones,
         // Update fixed date/time if it's a fixed event
         fixedDate: event.eventType === 'fixed' ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}` : event.fixedDate,
         fixedTime: event.eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : event.fixedTime,
@@ -520,24 +526,58 @@ export default function EditMeetingDetailsScreen() {
           />
         </View>
 
-        {/* Privacy Settings */}
+        {/* Public Page Visibility */}
         <View style={styles.section}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
-            Privacy Settings
+            Public Page Visibility
           </ThemedText>
-          <View style={[styles.input, { backgroundColor: surfaceColor, borderColor: surfaceColor, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16 }]}>
-            <View style={{ flex: 1, paddingRight: 16 }}>
-              <ThemedText type="defaultSemiBold">Hide Attendee Names</ThemedText>
-              <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
-                If enabled, the public event page will only show the total number of attendees, not their names. (Phone numbers and emails are always hidden).
-              </ThemedText>
+          <View style={[styles.input, { backgroundColor: surfaceColor, borderColor: surfaceColor, paddingVertical: 16 }]}>
+            
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Names</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the names of people who have RSVP'd.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeeNames}
+                onValueChange={setShowAttendeeNames}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeeNames ? '#FFFFFF' : '#f4f3f4'}
+              />
             </View>
-            <Switch
-              value={hideAttendeeNames}
-              onValueChange={setHideAttendeeNames}
-              trackColor={{ false: '#767577', true: tintColor }}
-              thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : hideAttendeeNames ? '#FFFFFF' : '#f4f3f4'}
-            />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Emails</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the email addresses of attendees.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeeEmails}
+                onValueChange={setShowAttendeeEmails}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeeEmails ? '#FFFFFF' : '#f4f3f4'}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Phone Numbers</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the phone numbers of attendees.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeePhones}
+                onValueChange={setShowAttendeePhones}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeePhones ? '#FFFFFF' : '#f4f3f4'}
+              />
+            </View>
+
           </View>
         </View>
         </View>

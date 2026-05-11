@@ -420,7 +420,7 @@ export default function PublicEventScreen() {
             <Text style={styles.emptyText}>No attendees yet.</Text>
           ) : (
             <View style={styles.attendeesList}>
-              {event.hideAttendeeNames ? (
+              {event.showAttendeeNames === false ? (
                 <Text style={styles.attendeeCountText}>
                   {event.participants.filter(p => p.rsvpStatus === "attending").length} people attending
                 </Text>
@@ -430,6 +430,12 @@ export default function PublicEventScreen() {
                   .map(p => (
                     <View key={p.id} style={styles.attendeeItem}>
                       <Text style={styles.attendeeName}>{p.name}</Text>
+                      {event.showAttendeeEmails && p.email && (
+                        <Text style={{ fontSize: 14, color: '#666', marginTop: 2 }}>{p.email}</Text>
+                      )}
+                      {event.showAttendeePhones && p.phone && (
+                        <Text style={{ fontSize: 14, color: '#666', marginTop: 2 }}>{p.phone}</Text>
+                      )}
                     </View>
                   ))
               )}

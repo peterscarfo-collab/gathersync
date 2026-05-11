@@ -39,7 +39,9 @@ export default function EditEventScreen() {
   const [meetingLink, setMeetingLink] = useState('');
   const [rsvpDeadline, setRsvpDeadline] = useState('');
   const [meetingNotes, setMeetingNotes] = useState('');
-  const [hideAttendeeNames, setHideAttendeeNames] = useState(false);
+  const [showAttendeeNames, setShowAttendeeNames] = useState(true);
+  const [showAttendeeEmails, setShowAttendeeEmails] = useState(false);
+  const [showAttendeePhones, setShowAttendeePhones] = useState(false);
   
   // Use auto-sync for proper event updates
   const { updateEvent: autoUpdateEvent } = useAutoSync();
@@ -72,7 +74,9 @@ export default function EditEventScreen() {
         setMeetingLink(existingEvent.meetingLink || '');
         setRsvpDeadline(existingEvent.rsvpDeadline || '');
         setMeetingNotes(existingEvent.meetingNotes || '');
-        setHideAttendeeNames(existingEvent.hideAttendeeNames || false);
+        setShowAttendeeNames(existingEvent.showAttendeeNames ?? true);
+        setShowAttendeeEmails(existingEvent.showAttendeeEmails ?? false);
+        setShowAttendeePhones(existingEvent.showAttendeePhones ?? false);
         console.log('[EditEvent] Event loaded successfully');
       }
     } catch (error) {
@@ -169,7 +173,9 @@ export default function EditEventScreen() {
         meetingLink: meetingType === 'virtual' ? meetingLink.trim() || undefined : undefined,
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
-        hideAttendeeNames,
+        showAttendeeNames,
+        showAttendeeEmails,
+        showAttendeePhones,
         participants: updatedParticipants,
       };
 
@@ -760,21 +766,55 @@ export default function EditEventScreen() {
         {/* Privacy Settings */}
         <View style={styles.section}>
           <ThemedText type="defaultSemiBold" style={styles.label}>
-            Privacy Settings
+            Public Page Visibility
           </ThemedText>
-          <View style={[styles.input, { backgroundColor: surfaceColor, borderColor: surfaceColor, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16 }]}>
-            <View style={{ flex: 1, paddingRight: 16 }}>
-              <ThemedText type="defaultSemiBold">Hide Attendee Names</ThemedText>
-              <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
-                If enabled, the public event page will only show the total number of attendees, not their names. (Phone numbers and emails are always hidden).
-              </ThemedText>
+          <View style={[styles.input, { backgroundColor: surfaceColor, borderColor: surfaceColor, paddingVertical: 16 }]}>
+            
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Names</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the names of people who have RSVP'd.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeeNames}
+                onValueChange={setShowAttendeeNames}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeeNames ? '#FFFFFF' : '#f4f3f4'}
+              />
             </View>
-            <Switch
-              value={hideAttendeeNames}
-              onValueChange={setHideAttendeeNames}
-              trackColor={{ false: '#767577', true: tintColor }}
-              thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : hideAttendeeNames ? '#FFFFFF' : '#f4f3f4'}
-            />
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Emails</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the email addresses of attendees.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeeEmails}
+                onValueChange={setShowAttendeeEmails}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeeEmails ? '#FFFFFF' : '#f4f3f4'}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <ThemedText type="defaultSemiBold">Show Attendee Phone Numbers</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                  Display the phone numbers of attendees.
+                </ThemedText>
+              </View>
+              <Switch
+                value={showAttendeePhones}
+                onValueChange={setShowAttendeePhones}
+                trackColor={{ false: '#767577', true: tintColor }}
+                thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : showAttendeePhones ? '#FFFFFF' : '#f4f3f4'}
+              />
+            </View>
+
           </View>
         </View>
 
