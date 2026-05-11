@@ -76,6 +76,9 @@ export const events = mysqlTable("events", {
   rsvpDeadline: varchar("rsvpDeadline", { length: 100 }),
   meetingNotes: text("meetingNotes"),
   hideAttendeeNames: boolean("hideAttendeeNames").default(false).notNull(),
+  showAttendeeNames: boolean("showAttendeeNames").default(true).notNull(),
+  showAttendeeEmails: boolean("showAttendeeEmails").default(false).notNull(),
+  showAttendeePhones: boolean("showAttendeePhones").default(false).notNull(),
   deletedAt: timestamp("deletedAt"), // Soft delete timestamp
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

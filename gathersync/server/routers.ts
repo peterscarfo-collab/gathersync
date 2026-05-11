@@ -58,6 +58,9 @@ export const appRouter = router({
           rsvpDeadline: event.rsvpDeadline || undefined,
           meetingNotes: event.meetingNotes || undefined,
           hideAttendeeNames: event.hideAttendeeNames ?? undefined,
+          showAttendeeNames: event.showAttendeeNames ?? undefined,
+          showAttendeeEmails: event.showAttendeeEmails ?? undefined,
+          showAttendeePhones: event.showAttendeePhones ?? undefined,
           createdAt: event.createdAt.toISOString(),
           updatedAt: event.updatedAt.toISOString(),
           participants: participants.map((p) => ({
@@ -157,6 +160,9 @@ export const appRouter = router({
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
           hideAttendeeNames: z.boolean().optional(),
+          showAttendeeNames: z.boolean().optional(),
+          showAttendeeEmails: z.boolean().optional(),
+          showAttendeePhones: z.boolean().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )
@@ -192,6 +198,9 @@ export const appRouter = router({
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
           hideAttendeeNames: z.boolean().optional(),
+          showAttendeeNames: z.boolean().optional(),
+          showAttendeeEmails: z.boolean().optional(),
+          showAttendeePhones: z.boolean().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )

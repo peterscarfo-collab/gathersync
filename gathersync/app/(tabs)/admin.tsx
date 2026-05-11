@@ -173,9 +173,9 @@ export default function AdminScreen() {
             <View style={styles.lockIconContainer}>
               <IconSymbol name="lock.fill" size={48} color={AdminColors.primary} />
             </View>
-            <ThemedText style={styles.loginTitle}>Admin Dashboard</ThemedText>
+            <ThemedText style={styles.loginTitle}>Dashboard</ThemedText>
             <ThemedText style={styles.loginSubtitle}>
-              Please log in to access the admin dashboard
+              Please log in to access your dashboard
             </ThemedText>
           </View>
         </View>
@@ -190,9 +190,9 @@ export default function AdminScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top + 40, 80) }]}>
         <View>
-          <ThemedText style={styles.headerTitle}>Admin Dashboard</ThemedText>
+          <ThemedText style={styles.headerTitle}>Dashboard</ThemedText>
           <ThemedText style={styles.headerSubtitle}>
-            Welcome back, {user?.name || user?.email || 'Admin'}
+            Welcome back, {user?.name || user?.email || 'User'}
           </ThemedText>
         </View>
       </View>

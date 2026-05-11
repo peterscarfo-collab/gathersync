@@ -74,6 +74,9 @@ export const eventsCloudStorage = {
               fixedDate: event.fixedDate,
               fixedTime: event.fixedTime,
               hideAttendeeNames: event.hideAttendeeNames,
+              showAttendeeNames: event.showAttendeeNames,
+              showAttendeeEmails: event.showAttendeeEmails,
+              showAttendeePhones: event.showAttendeePhones,
               createdAt: event.createdAt.toISOString(),
               updatedAt: event.updatedAt.toISOString(),
               participants: participants.map((p) => ({
@@ -182,6 +185,9 @@ export const eventsCloudStorage = {
       if (event.rsvpDeadline !== null && event.rsvpDeadline !== undefined) eventPayload.rsvpDeadline = event.rsvpDeadline;
       if (event.meetingNotes !== null && event.meetingNotes !== undefined) eventPayload.meetingNotes = event.meetingNotes;
       if (event.hideAttendeeNames !== null && event.hideAttendeeNames !== undefined) eventPayload.hideAttendeeNames = event.hideAttendeeNames;
+      if (event.showAttendeeNames !== null && event.showAttendeeNames !== undefined) eventPayload.showAttendeeNames = event.showAttendeeNames;
+      if (event.showAttendeeEmails !== null && event.showAttendeeEmails !== undefined) eventPayload.showAttendeeEmails = event.showAttendeeEmails;
+      if (event.showAttendeePhones !== null && event.showAttendeePhones !== undefined) eventPayload.showAttendeePhones = event.showAttendeePhones;
       if (event.deletedAt !== undefined) eventPayload.deletedAt = event.deletedAt ? new Date(event.deletedAt) : null;
 
       console.log('[CloudStorage] Event payload:', JSON.stringify(eventPayload, null, 2));
@@ -263,6 +269,9 @@ export const eventsCloudStorage = {
       if (updates.rsvpDeadline !== undefined && updates.rsvpDeadline !== null) eventUpdatePayload.rsvpDeadline = updates.rsvpDeadline;
       if (updates.meetingNotes !== undefined && updates.meetingNotes !== null) eventUpdatePayload.meetingNotes = updates.meetingNotes;
       if (updates.hideAttendeeNames !== undefined) eventUpdatePayload.hideAttendeeNames = updates.hideAttendeeNames;
+      if (updates.showAttendeeNames !== undefined) eventUpdatePayload.showAttendeeNames = updates.showAttendeeNames;
+      if (updates.showAttendeeEmails !== undefined) eventUpdatePayload.showAttendeeEmails = updates.showAttendeeEmails;
+      if (updates.showAttendeePhones !== undefined) eventUpdatePayload.showAttendeePhones = updates.showAttendeePhones;
       if ('deletedAt' in updates) eventUpdatePayload.deletedAt = updates.deletedAt ? new Date(updates.deletedAt) : null;
 
       console.log('[CloudStorage] Event payload for update:', JSON.stringify(eventUpdatePayload, null, 2));

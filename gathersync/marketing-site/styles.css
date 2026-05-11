@@ -67,7 +67,7 @@ body {
     gap: 32px;
 }
 
-.nav-links a {
+.nav-links a:not(.btn-primary) {
     font-size: 14px;
     color: var(--color-text);
     text-decoration: none;
@@ -96,7 +96,7 @@ body {
 
 .btn-primary {
     background: var(--color-primary);
-    color: white;
+    color: white !important;
 }
 
 .btn-primary:hover {

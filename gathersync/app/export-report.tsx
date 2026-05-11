@@ -83,6 +83,20 @@ export default function ExportReportScreen() {
       // Filter out deleted participants
       loadedEvent.participants = loadedEvent.participants.filter(p => !p.deletedAt);
       
+      // Update default selected columns based on event privacy settings
+      const initialCols = new Set(['designation', 'organization', 'rsvp', 'attendance']);
+      if (loadedEvent.showAttendeeNames !== false) initialCols.add('name');
+      if (loadedEvent.showAttendeeEmails === true) initialCols.add('email');
+      if (loadedEvent.showAttendeePhones === true) initialCols.add('phone');
+      
+      // If it's an older event without these settings, default to showing everything
+      if (loadedEvent.showAttendeeEmails === undefined && loadedEvent.showAttendeePhones === undefined) {
+        initialCols.add('email');
+        initialCols.add('phone');
+      }
+      
+      setSelectedColumns(initialCols);
+      
       setEvent(loadedEvent);
     }
   };

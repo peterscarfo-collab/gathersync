@@ -45,7 +45,10 @@ export interface Event {
   meetingLink?: string; // Zoom/virtual meeting link
   rsvpDeadline?: string; // When headcount needs to be confirmed (e.g., "Monday before")
   meetingNotes?: string; // Additional meeting details
-  hideAttendeeNames?: boolean; // Privacy setting: if true, public page only shows counts, not names
+  hideAttendeeNames?: boolean; // Legacy privacy setting
+  showAttendeeNames?: boolean; // Privacy setting: if true, show names on public page
+  showAttendeeEmails?: boolean; // Privacy setting: if true, show emails on public page
+  showAttendeePhones?: boolean; // Privacy setting: if true, show phones on public page
   attendanceRecords?: AttendanceRecord[]; // Attendance tracking for completed events
   deletedAt?: string; // ISO date string when event was soft-deleted
 }

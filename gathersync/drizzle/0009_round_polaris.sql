@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `hideAttendeeNames` boolean DEFAULT false NOT NULL;

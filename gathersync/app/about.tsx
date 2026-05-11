@@ -1,4 +1,4 @@
-import { StyleSheet, View, Pressable } from 'react-native';
+import { StyleSheet, View, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -42,7 +42,10 @@ export default function AboutScreen() {
 
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <IconSymbol name="calendar" size={80} color={useThemeColor({}, 'tint')} />
+          <Image 
+            source={require('@/assets/images/icon.png')} 
+            style={{ width: 80, height: 80, borderRadius: 20, marginBottom: 16 }} 
+          />
           <ThemedText type="title" style={styles.appName}>
             GatherSync
           </ThemedText>

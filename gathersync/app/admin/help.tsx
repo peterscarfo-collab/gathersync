@@ -46,7 +46,7 @@ export default function HelpScreen() {
             Welcome to GatherSync! This application is designed to make event planning, participant management, and attendance tracking effortless.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            As an Administrator, you have access to this Admin Dashboard where you can oversee all events, manage users, and generate detailed reports.
+            As an Administrator, you have access to this Dashboard where you can oversee all events, manage users, and generate detailed reports.
           </ThemedText>
         </View>
       ),
@@ -176,12 +176,24 @@ export default function HelpScreen() {
     },
     {
       id: 'participant-management',
-      title: 'Participant Management',
+      title: 'Participant Management & CRM',
       icon: 'person.3.fill',
       content: (
         <View style={styles.topicContent}>
           <ThemedText style={styles.paragraph}>
-            The <ThemedText style={{ fontWeight: 'bold' }}>Participant Management</ThemedText> screen is your master directory. If you edit a participant's phone number or Title here (or within an event pane), it syncs globally across all their events!
+            The <ThemedText style={{ fontWeight: 'bold' }}>Participant Management</ThemedText> screen is your master directory and built-in CRM. If you edit a participant's phone number or Title here, it syncs globally across all their events!
+          </ThemedText>
+          <ThemedText style={[styles.paragraph, { marginTop: 8 }]}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Using the Prospecting System:</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Add a Prospect:</ThemedText> Click "+", enter their details, and select "None (Add as Prospect)" as the event. They will be saved to your directory without creating an account.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Find Prospects:</ThemedText> Use the "Filter: All Events" button at the top and select "Prospects Only" to instantly view your leads.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Upgrade to User:</ThemedText> Open a prospect's details and scroll to the bottom. Click "Create Account & Send Link" to instantly generate a free GatherSync account and get a magic login link to email them!
           </ThemedText>
         </View>
       ),

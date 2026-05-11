@@ -26,7 +26,7 @@ export function DesktopLayout({ children }: DesktopLayoutProps) {
 
   const menuItems = [
     { id: 'events', label: 'Events', icon: 'calendar' as const, path: '/' },
-    { id: 'admin', label: 'Admin', icon: 'gearshape.fill' as const, path: '/admin' },
+    { id: 'admin', label: 'Dashboard', icon: 'gearshape.fill' as const, path: '/admin' },
     { id: 'saves', label: 'Saves', icon: 'bookmark.fill' as const, path: '/saves' },
     { id: 'profile', label: 'Profile', icon: 'person.fill' as const, path: '/profile' },
   ];
