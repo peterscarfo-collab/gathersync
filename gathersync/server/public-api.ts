@@ -118,6 +118,8 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
         availability: availability as Record<string, boolean> | undefined,
         rsvpStatus: rsvpStatus as "attending" | "not-attending" | "no-response" | undefined,
       });
+      // Touch parent event so clients pull the updated participant
+      db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
     } else {
       // Create new participant
       await db.createParticipant({
@@ -129,6 +131,8 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
         source: "manual",
         rsvpStatus: (rsvpStatus as "attending" | "not-attending" | "no-response") || "no-response",
       });
+      // Touch parent event so clients pull the new participant
+      db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
     }
 
     res.json({ success: true });
