@@ -90,6 +90,9 @@ export const participants = mysqlTable("participants", {
   source: mysqlEnum("source", ["manual", "contacts", "ai"]),
   phone: varchar("phone", { length: 50 }),
   email: varchar("email", { length: 320 }),
+  designation: varchar("designation", { length: 255 }),
+  organization: varchar("organization", { length: 255 }),
+  leadSource: varchar("leadSource", { length: 255 }),
   rsvpStatus: mysqlEnum("rsvpStatus", ["attending", "not-attending", "no-response"]),
   deletedAt: timestamp("deletedAt"), // Soft delete timestamp
   createdAt: timestamp("createdAt").defaultNow().notNull(),

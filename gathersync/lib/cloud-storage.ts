@@ -84,6 +84,9 @@ export const eventsCloudStorage = {
                 unavailableAllMonth: p.unavailableAllMonth,
                 notes: p.notes,
                 source: p.source,
+                designation: p.designation,
+                organization: p.organization,
+                leadSource: p.leadSource,
                 rsvpStatus: p.rsvpStatus,
                 deletedAt: p.deletedAt?.toISOString(),
               })),
@@ -205,6 +208,9 @@ export const eventsCloudStorage = {
               if (participant.source !== null && participant.source !== undefined) participantPayload.source = participant.source;
               if (participant.phone !== null && participant.phone !== undefined) participantPayload.phone = participant.phone;
               if (participant.email !== null && participant.email !== undefined) participantPayload.email = participant.email;
+              if (participant.designation !== null && participant.designation !== undefined) participantPayload.designation = participant.designation;
+              if (participant.organization !== null && participant.organization !== undefined) participantPayload.organization = participant.organization;
+              if (participant.leadSource !== null && participant.leadSource !== undefined) participantPayload.leadSource = participant.leadSource;
               if (participant.rsvpStatus !== null && participant.rsvpStatus !== undefined) participantPayload.rsvpStatus = participant.rsvpStatus;
               if (participant.deletedAt !== undefined) participantPayload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
               
@@ -309,6 +315,9 @@ export const eventsCloudStorage = {
               if (participant.source !== null && participant.source !== undefined) payload.source = participant.source;
               if (participant.phone !== null && participant.phone !== undefined) payload.phone = participant.phone;
               if (participant.email !== null && participant.email !== undefined) payload.email = participant.email;
+              if (participant.designation !== null && participant.designation !== undefined) payload.designation = participant.designation;
+              if (participant.organization !== null && participant.organization !== undefined) payload.organization = participant.organization;
+              if (participant.leadSource !== null && participant.leadSource !== undefined) payload.leadSource = participant.leadSource;
               if (participant.rsvpStatus !== null && participant.rsvpStatus !== undefined) payload.rsvpStatus = participant.rsvpStatus;
               if ('deletedAt' in participant) payload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
 

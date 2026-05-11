@@ -38,6 +38,8 @@ interface ParticipantWithEvents {
   email?: string;
   designation?: string;
   organization?: string;
+  leadSource?: string;
+  notes?: string;
   eventCount: number;
   events: EventInfo[];
 }
@@ -53,7 +55,7 @@ export default function AdminParticipantsScreen() {
   
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
-  const [sortBy, setSortBy] = useState<'firstName' | 'lastName' | 'phone'>('firstName');
+  const [sortBy, setSortBy] = useState<'firstName' | 'lastName' | 'phone' | 'event' | 'source'>('firstName');
   const [filterEventId, setFilterEventId] = useState<string>('all');
   const [showFilterModal, setShowFilterModal] = useState(false);
   
@@ -70,6 +72,7 @@ export default function AdminParticipantsScreen() {
   const [addEmail, setAddEmail] = useState('');
   const [addDesignation, setAddDesignation] = useState('');
   const [addOrganization, setAddOrganization] = useState('');
+  const [addLeadSource, setAddLeadSource] = useState('');
   const [addEventId, setAddEventId] = useState<string>(eventId || '');
 
   const [isEditingParticipant, setIsEditingParticipant] = useState(false);
@@ -78,6 +81,7 @@ export default function AdminParticipantsScreen() {
   const [editEmail, setEditEmail] = useState('');
   const [editDesignation, setEditDesignation] = useState('');
   const [editOrganization, setEditOrganization] = useState('');
+  const [editLeadSource, setEditLeadSource] = useState('');
   const [editEventId, setEditEventId] = useState<string>(eventId || '');
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [selectedUserForGrant, setSelectedUserForGrant] = useState<{id: number, name: string} | null>(null);
@@ -160,7 +164,13 @@ export default function AdminParticipantsScreen() {
 
   const createParticipantAccount = trpc.admin.createParticipantAccount.useMutation({
     onSuccess: (data) => {
-      const frontendUrl = process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL || "http://localhost:8081";
+      let frontendUrl = process.env.EXPO_PUBLIC_OAUTH_PORTAL_URL;
+      if (!frontendUrl) {
+        frontendUrl = __DEV__ ? "http://localhost:8081" : "https://app.gathersync.com";
+      }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        frontendUrl = window.location.origin;
+      }
       const loginUrl = `${frontendUrl}?loginSuccess=true&token=${data.token}`;
       
       if (Platform.OS === 'web') {
@@ -210,17 +220,19 @@ export default function AdminParticipantsScreen() {
       const participantMap = new Map<string, ParticipantWithEvents>();
       
       // First pass: gather global contact info from ALL events (including archived)
-      const globalInfo = new Map<string, {phone?: string, email?: string, designation?: string, organization?: string}>();
+      const globalInfo = new Map<string, {phone?: string, email?: string, designation?: string, organization?: string, leadSource?: string, notes?: string}>();
       allEvents.forEach(e => e.participants.forEach(p => {
         if (p.deletedAt) return;
         if (!globalInfo.has(p.name)) {
-          globalInfo.set(p.name, { phone: p.phone, email: p.email, designation: p.designation, organization: p.organization });
+          globalInfo.set(p.name, { phone: p.phone, email: p.email, designation: p.designation, organization: p.organization, leadSource: p.leadSource, notes: p.notes });
         } else {
           const current = globalInfo.get(p.name)!;
           if (p.phone && !current.phone) current.phone = p.phone;
           if (p.email && !current.email) current.email = p.email;
           if (p.designation && !current.designation) current.designation = p.designation;
           if (p.organization && !current.organization) current.organization = p.organization;
+          if (p.leadSource && !current.leadSource) current.leadSource = p.leadSource;
+          if (p.notes && !current.notes) current.notes = p.notes;
         }
       }));
 
@@ -230,6 +242,8 @@ export default function AdminParticipantsScreen() {
           ? new Date(event.fixedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : `${event.month}/${event.year}`;
 
+        const isProspectEvent = event.name === "Prospects Directory" && event.archived;
+
         event.participants.forEach(participant => {
           if (participant.deletedAt) return; // Skip soft-deleted participants
           
@@ -237,8 +251,10 @@ export default function AdminParticipantsScreen() {
           
           const existing = participantMap.get(participant.name);
           if (existing) {
-            existing.eventCount += 1;
-            existing.events.push({ id: event.id, name: event.name, date });
+            if (!isProspectEvent) {
+              existing.eventCount += 1;
+              existing.events.push({ id: event.id, name: event.name, date });
+            }
             // Update contact info if available from global info
             if (info.phone && !existing.phone) {
               existing.phone = info.phone;
@@ -252,6 +268,12 @@ export default function AdminParticipantsScreen() {
             if (info.organization && !existing.organization) {
               existing.organization = info.organization;
             }
+            if (info.leadSource && !existing.leadSource) {
+              existing.leadSource = info.leadSource;
+            }
+            if (info.notes && !existing.notes) {
+              existing.notes = info.notes;
+            }
           } else {
             participantMap.set(participant.name, {
               name: participant.name,
@@ -259,8 +281,10 @@ export default function AdminParticipantsScreen() {
               email: info.email || participant.email,
               designation: info.designation || participant.designation,
               organization: info.organization || participant.organization,
-              eventCount: 1,
-              events: [{ id: event.id, name: event.name, date }],
+              leadSource: info.leadSource || participant.leadSource,
+              notes: info.notes || participant.notes,
+              eventCount: isProspectEvent ? 0 : 1,
+              events: isProspectEvent ? [] : [{ id: event.id, name: event.name, date }],
             });
           }
         });
@@ -282,7 +306,11 @@ export default function AdminParticipantsScreen() {
 
     // Filter by Event first
     if (filterEventId !== 'all') {
-      filtered = filtered.filter(p => p.events.some(e => e.id === filterEventId));
+      if (filterEventId === 'prospects') {
+        filtered = filtered.filter(p => p.eventCount === 0);
+      } else {
+        filtered = filtered.filter(p => p.events.some(e => e.id === filterEventId));
+      }
     }
 
     if (searchQuery.trim()) {
@@ -293,6 +321,8 @@ export default function AdminParticipantsScreen() {
         p.email?.toLowerCase().includes(query) ||
         p.designation?.toLowerCase().includes(query) ||
         p.organization?.toLowerCase().includes(query) ||
+        p.leadSource?.toLowerCase().includes(query) ||
+        p.notes?.toLowerCase().includes(query) ||
         p.events.some(e => e.name.toLowerCase().includes(query) || e.date.toLowerCase().includes(query))
       );
     }
@@ -317,6 +347,13 @@ export default function AdminParticipantsScreen() {
           return a.name.localeCompare(b.name);
         }
         return eventA.localeCompare(eventB);
+      } else if (sortBy === 'source') {
+        const sourceA = a.leadSource || '';
+        const sourceB = b.leadSource || '';
+        if (sourceA === sourceB) {
+          return a.name.localeCompare(b.name);
+        }
+        return sourceA.localeCompare(sourceB);
       }
       return 0;
     });
@@ -437,6 +474,7 @@ export default function AdminParticipantsScreen() {
             email: addEmail.trim() || undefined,
             designation: addDesignation.trim() || undefined,
             organization: addOrganization.trim() || undefined,
+            leadSource: addLeadSource.trim() || undefined,
             deletedAt: undefined,
           };
           await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
@@ -452,6 +490,7 @@ export default function AdminParticipantsScreen() {
           email: addEmail.trim() || undefined,
           designation: addDesignation.trim() || undefined,
           organization: addOrganization.trim() || undefined,
+          leadSource: addLeadSource.trim() || undefined,
           availability: {},
           unavailableAllMonth: false,
           source: 'manual',
@@ -491,6 +530,9 @@ export default function AdminParticipantsScreen() {
       const newEmail = editEmail.trim() || undefined;
       const newDesignation = editDesignation.trim() || undefined;
       const newOrganization = editOrganization.trim() || undefined;
+      const newLeadSource = editLeadSource.trim() || undefined;
+
+      let hasUpdatedAny = false;
 
       // Update existing events
       for (const evt of selectedParticipant.events) {
@@ -505,9 +547,32 @@ export default function AdminParticipantsScreen() {
               email: newEmail,
               designation: newDesignation,
               organization: newOrganization,
+              leadSource: newLeadSource,
             };
             await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+            hasUpdatedAny = true;
           }
+        }
+      }
+
+      // If they had no events (somehow), we should probably add them to the prospects directory
+      if (!hasUpdatedAny && selectedParticipant.events.length === 0) {
+        const allEvents = await eventsLocalStorage.getAll();
+        let prospectsEvent = allEvents.find(e => e.name === "Prospects Directory" && e.archived);
+        if (prospectsEvent) {
+           const participantIndex = prospectsEvent.participants.findIndex(p => p.name === oldName);
+           if (participantIndex !== -1) {
+              prospectsEvent.participants[participantIndex] = {
+                ...prospectsEvent.participants[participantIndex],
+                name: newName,
+                phone: newPhone,
+                email: newEmail,
+                designation: newDesignation,
+                organization: newOrganization,
+                leadSource: newLeadSource,
+              };
+              await eventsLocalStorage.update(prospectsEvent.id, prospectsEvent);
+           }
         }
       }
 
@@ -526,6 +591,7 @@ export default function AdminParticipantsScreen() {
                 email: newEmail,
                 designation: newDesignation,
                 organization: newOrganization,
+                leadSource: newLeadSource,
                 deletedAt: undefined,
               };
               await eventsLocalStorage.update(eventToAdd.id, eventToAdd);
@@ -538,6 +604,7 @@ export default function AdminParticipantsScreen() {
               email: newEmail,
               designation: newDesignation,
               organization: newOrganization,
+              leadSource: newLeadSource,
               availability: {},
               unavailableAllMonth: false,
               source: 'manual',
@@ -595,13 +662,15 @@ export default function AdminParticipantsScreen() {
           <ThemedText style={[styles.sortButtonText, { color: filterEventId !== 'all' ? '#fff' : tintColor }]}>
             {filterEventId === 'all' 
               ? 'Filter: All Events' 
-              : `Filter: ${events.find(e => e.id === filterEventId)?.name || 'Event'}`}
+              : filterEventId === 'prospects'
+                ? 'Filter: Prospects Only'
+                : `Filter: ${events.find(e => e.id === filterEventId)?.name || 'Event'}`}
           </ThemedText>
         </Pressable>
         {isDesktop && (
           <View style={styles.sortControls}>
             <ThemedText style={{ fontSize: 14, color: '#999', marginRight: 8 }}>Sort by:</ThemedText>
-            {(['firstName', 'lastName', 'phone', 'event'] as const).map(option => (
+            {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map(option => (
               <Pressable
                 key={option}
                 style={[
@@ -612,7 +681,7 @@ export default function AdminParticipantsScreen() {
                 onPress={() => setSortBy(option)}
               >
                 <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
-                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : 'Event'}
+                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
                 </ThemedText>
               </Pressable>
             ))}
@@ -622,7 +691,7 @@ export default function AdminParticipantsScreen() {
       {!isDesktop && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginBottom: 16 }}>
           <View style={[styles.sortControls, { marginTop: 0 }]}>
-            {(['firstName', 'lastName', 'phone', 'event'] as const).map(option => (
+            {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map(option => (
               <Pressable
                 key={option}
                 style={[
@@ -633,7 +702,7 @@ export default function AdminParticipantsScreen() {
                 onPress={() => setSortBy(option)}
               >
                 <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
-                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : 'Event'}
+                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
                 </ThemedText>
               </Pressable>
             ))}
@@ -697,6 +766,7 @@ export default function AdminParticipantsScreen() {
                 setEditEmail(participant.email || '');
                 setEditDesignation(participant.designation || '');
                 setEditOrganization(participant.organization || '');
+                setEditLeadSource(participant.leadSource || '');
                 setEditEventId(''); // Reset the "Add to Event" dropdown
                 setIsEditingParticipant(false);
               }}
@@ -715,6 +785,12 @@ export default function AdminParticipantsScreen() {
                       <View style={styles.metaItem}>
                         <IconSymbol name="building.2.fill" size={12} color={tintColor} />
                         <ThemedText style={styles.metaText}>{participant.organization}</ThemedText>
+                      </View>
+                    )}
+                    {participant.leadSource && (
+                      <View style={styles.metaItem}>
+                        <IconSymbol name="tag.fill" size={12} color={tintColor} />
+                        <ThemedText style={styles.metaText}>{participant.leadSource}</ThemedText>
                       </View>
                     )}
                     {participant.phone && (
@@ -744,6 +820,12 @@ export default function AdminParticipantsScreen() {
                 ) : activeEvent && activeEvent.participants.some(p => p.name === participant.name) ? (
                   <View style={{ backgroundColor: '#10B98120', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 }}>
                     <ThemedText style={{ color: '#10B981', fontSize: 12, fontWeight: 'bold' }}>Added</ThemedText>
+                  </View>
+                ) : participant.eventCount === 0 ? (
+                  <View style={[styles.eventBadge, { backgroundColor: AdminColors.primaryLight }]}>
+                    <ThemedText style={[styles.eventBadgeText, { color: AdminColors.primary }]}>
+                      Prospect
+                    </ThemedText>
                   </View>
                 ) : (
                   <View style={[styles.eventBadge, { backgroundColor: tintColor }]}>
@@ -937,6 +1019,18 @@ export default function AdminParticipantsScreen() {
                             autoCapitalize="words"
                           />
                         </View>
+
+                        <View style={{ marginTop: 12 }}>
+                          <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Lead Source (Optional)</ThemedText>
+                          <TextInput
+                            style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                            placeholder="e.g. Letterbox, Trade Show, Referral"
+                            placeholderTextColor="#999"
+                            value={editLeadSource}
+                            onChangeText={setEditLeadSource}
+                            autoCapitalize="words"
+                          />
+                        </View>
                       </View>
                       
                       <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -967,8 +1061,26 @@ export default function AdminParticipantsScreen() {
                           )}
                           {selectedParticipant.email && (
                             <View style={styles.metaItem}>
-                              <IconSymbol name="message.fill" size={16} color={tintColor} />
+                              <IconSymbol name="envelope.fill" size={16} color={tintColor} />
                               <ThemedText>{selectedParticipant.email}</ThemedText>
+                            </View>
+                          )}
+                          {selectedParticipant.designation && (
+                            <View style={[styles.metaItem, { marginTop: 4 }]}>
+                              <IconSymbol name="briefcase.fill" size={16} color={tintColor} />
+                              <ThemedText>{selectedParticipant.designation}</ThemedText>
+                            </View>
+                          )}
+                          {selectedParticipant.organization && (
+                            <View style={[styles.metaItem, { marginTop: 4 }]}>
+                              <IconSymbol name="building.2.fill" size={16} color={tintColor} />
+                              <ThemedText>{selectedParticipant.organization}</ThemedText>
+                            </View>
+                          )}
+                          {selectedParticipant.leadSource && (
+                            <View style={[styles.metaItem, { marginTop: 4 }]}>
+                              <IconSymbol name="tag.fill" size={16} color={tintColor} />
+                              <ThemedText>{selectedParticipant.leadSource}</ThemedText>
                             </View>
                           )}
                         </View>
@@ -1256,13 +1368,27 @@ export default function AdminParticipantsScreen() {
                     autoCapitalize="words"
                   />
                 </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Lead Source (Optional)</ThemedText>
+                  <TextInput
+                    style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                    placeholder="e.g. Letterbox, Trade Show, Referral"
+                    placeholderTextColor="#999"
+                    value={addLeadSource}
+                    onChangeText={setAddLeadSource}
+                    autoCapitalize="words"
+                  />
+                </View>
               </View>
 
               <Pressable
                 style={[styles.exportButton, { backgroundColor: tintColor, marginBottom: 20, paddingVertical: 12 }]}
                 onPress={handleAddParticipant}
               >
-                <ThemedText style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Add to Event</ThemedText>
+                <ThemedText style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>
+                  {addEventId === '' ? 'Save Prospect' : 'Add to Event'}
+                </ThemedText>
               </Pressable>
             </ScrollView>
           </Pressable>
@@ -1309,6 +1435,25 @@ export default function AdminParticipantsScreen() {
                   All Events
                 </ThemedText>
                 {filterEventId === 'all' && (
+                  <IconSymbol name="checkmark" size={16} color={tintColor} />
+                )}
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.menuItem,
+                  { borderBottomColor: cardBg, borderBottomWidth: 1 },
+                  filterEventId === 'prospects' && { backgroundColor: tintColor + '15' }
+                ]}
+                onPress={() => {
+                  setFilterEventId('prospects');
+                  setShowFilterModal(false);
+                }}
+              >
+                <ThemedText style={[styles.menuItemText, filterEventId === 'prospects' && { fontWeight: 'bold', color: tintColor }]}>
+                  Prospects Only
+                </ThemedText>
+                {filterEventId === 'prospects' && (
                   <IconSymbol name="checkmark" size={16} color={tintColor} />
                 )}
               </Pressable>

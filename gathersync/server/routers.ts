@@ -68,6 +68,9 @@ export const appRouter = router({
             source: p.source || undefined,
             phone: p.phone || undefined,
             email: p.email || undefined,
+            designation: p.designation || undefined,
+            organization: p.organization || undefined,
+            leadSource: p.leadSource || undefined,
             rsvpStatus: p.rsvpStatus || undefined,
             createdAt: p.createdAt.toISOString(),
             updatedAt: p.updatedAt.toISOString(),
@@ -215,6 +218,9 @@ export const appRouter = router({
           source: z.enum(["manual", "contacts", "ai"]).optional(),
           phone: z.string().optional(),
           email: z.string().optional(),
+          designation: z.string().optional(),
+          organization: z.string().optional(),
+          leadSource: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
           deletedAt: z.date().nullable().optional(),
         })
@@ -236,6 +242,9 @@ export const appRouter = router({
         if (input.source !== undefined) participantData.source = input.source;
         if (input.phone !== undefined) participantData.phone = input.phone;
         if (input.email !== undefined) participantData.email = input.email;
+        if (input.designation !== undefined) participantData.designation = input.designation;
+        if (input.organization !== undefined) participantData.organization = input.organization;
+        if (input.leadSource !== undefined) participantData.leadSource = input.leadSource;
         if (input.rsvpStatus !== undefined) participantData.rsvpStatus = input.rsvpStatus;
         if (input.deletedAt !== undefined) participantData.deletedAt = input.deletedAt;
         
@@ -261,6 +270,9 @@ export const appRouter = router({
           source: z.enum(["manual", "contacts", "ai"]).optional(),
           phone: z.string().optional(),
           email: z.string().optional(),
+          designation: z.string().optional(),
+          organization: z.string().optional(),
+          leadSource: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
           deletedAt: z.date().nullable().optional(),
         })

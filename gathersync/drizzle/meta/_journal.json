@@ -57,6 +57,13 @@
       "when": 1766622393787,
       "tag": "0007_unknown_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1778474210820,
+      "tag": "0008_serious_tiger_shark",
+      "breakpoints": true
     }
   ]
 }

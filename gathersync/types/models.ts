@@ -13,6 +13,7 @@ export interface Participant {
   email?: string; // Email address (from contacts or manual entry)
   designation?: string; // Title or Designation (e.g. Director, Treasurer)
   organization?: string; // Company or Organization
+  leadSource?: string; // Lead source (e.g. Letterbox, Trade Show, Referral)
   rsvpStatus?: 'attending' | 'not-attending' | 'no-response'; // RSVP status for fixed events
   deletedAt?: string; // ISO date string when participant was soft-deleted
 }
