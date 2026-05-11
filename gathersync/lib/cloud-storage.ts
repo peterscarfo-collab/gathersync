@@ -73,6 +73,7 @@ export const eventsCloudStorage = {
               year: event.year,
               fixedDate: event.fixedDate,
               fixedTime: event.fixedTime,
+              hideAttendeeNames: event.hideAttendeeNames,
               createdAt: event.createdAt.toISOString(),
               updatedAt: event.updatedAt.toISOString(),
               participants: participants.map((p) => ({
@@ -180,6 +181,7 @@ export const eventsCloudStorage = {
       if (event.meetingLink !== null && event.meetingLink !== undefined) eventPayload.meetingLink = event.meetingLink;
       if (event.rsvpDeadline !== null && event.rsvpDeadline !== undefined) eventPayload.rsvpDeadline = event.rsvpDeadline;
       if (event.meetingNotes !== null && event.meetingNotes !== undefined) eventPayload.meetingNotes = event.meetingNotes;
+      if (event.hideAttendeeNames !== null && event.hideAttendeeNames !== undefined) eventPayload.hideAttendeeNames = event.hideAttendeeNames;
       if (event.deletedAt !== undefined) eventPayload.deletedAt = event.deletedAt ? new Date(event.deletedAt) : null;
 
       console.log('[CloudStorage] Event payload:', JSON.stringify(eventPayload, null, 2));
@@ -260,6 +262,7 @@ export const eventsCloudStorage = {
       if (updates.meetingLink !== undefined && updates.meetingLink !== null) eventUpdatePayload.meetingLink = updates.meetingLink;
       if (updates.rsvpDeadline !== undefined && updates.rsvpDeadline !== null) eventUpdatePayload.rsvpDeadline = updates.rsvpDeadline;
       if (updates.meetingNotes !== undefined && updates.meetingNotes !== null) eventUpdatePayload.meetingNotes = updates.meetingNotes;
+      if (updates.hideAttendeeNames !== undefined) eventUpdatePayload.hideAttendeeNames = updates.hideAttendeeNames;
       if ('deletedAt' in updates) eventUpdatePayload.deletedAt = updates.deletedAt ? new Date(updates.deletedAt) : null;
 
       console.log('[CloudStorage] Event payload for update:', JSON.stringify(eventUpdatePayload, null, 2));

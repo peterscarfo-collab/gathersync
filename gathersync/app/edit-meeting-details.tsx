@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, Switch } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +31,7 @@ export default function EditMeetingDetailsScreen() {
   const [meetingLink, setMeetingLink] = useState('');
   const [rsvpDeadline, setRsvpDeadline] = useState('');
   const [meetingNotes, setMeetingNotes] = useState('');
+  const [hideAttendeeNames, setHideAttendeeNames] = useState(false);
   const [fixedDate, setFixedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -65,6 +66,7 @@ export default function EditMeetingDetailsScreen() {
       setMeetingLink(loadedEvent.meetingLink || '');
       setRsvpDeadline(loadedEvent.rsvpDeadline || '');
       setMeetingNotes(loadedEvent.meetingNotes || '');
+      setHideAttendeeNames(loadedEvent.hideAttendeeNames || false);
       
       // Initialize fixed date/time if it's a fixed event
       if (loadedEvent.eventType === 'fixed' && loadedEvent.fixedDate && loadedEvent.fixedTime) {
@@ -102,6 +104,7 @@ export default function EditMeetingDetailsScreen() {
         meetingLink: meetingType === 'virtual' ? meetingLink.trim() || undefined : undefined,
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
+        hideAttendeeNames,
         // Update fixed date/time if it's a fixed event
         fixedDate: event.eventType === 'fixed' ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}` : event.fixedDate,
         fixedTime: event.eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : event.fixedTime,
@@ -228,34 +231,64 @@ export default function EditMeetingDetailsScreen() {
                       color: textColor,
                       border: 'none',
                       borderRadius: 12,
-                      appearance: 'none',
                     }}
-                    value={`${String(fixedDate.getHours() % 12 || 12)}:${String(fixedDate.getMinutes()).padStart(2, '0')} ${fixedDate.getHours() >= 12 ? 'PM' : 'AM'}`}
+                    value={fixedDate.getHours() % 12 || 12}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      const isPM = val.includes('PM');
-                      let [hours, minutes] = val.replace(' AM', '').replace(' PM', '').split(':').map(Number);
-                      if (isPM && hours !== 12) hours += 12;
-                      if (!isPM && hours === 12) hours = 0;
-                      
+                      const h = parseInt(e.target.value, 10);
+                      const isPM = fixedDate.getHours() >= 12;
                       const newDate = new Date(fixedDate);
-                      newDate.setHours(hours, minutes);
+                      newDate.setHours(isPM ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h));
                       setFixedDate(newDate);
                     }}
                   >
-                    {Array.from({ length: 24 * 4 }).map((_, i) => {
-                      const totalMinutes = i * 15;
-                      let h = Math.floor(totalMinutes / 60);
-                      const m = totalMinutes % 60;
-                      const ampm = h >= 12 ? 'PM' : 'AM';
-                      const displayH = h % 12 || 12;
-                      const timeString = `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
-                      return (
-                        <option key={timeString} value={timeString}>
-                          {timeString}
-                        </option>
-                      );
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={Math.floor(fixedDate.getMinutes() / 5) * 5}
+                    onChange={(e) => {
+                      const newDate = new Date(fixedDate);
+                      newDate.setMinutes(parseInt(e.target.value, 10));
+                      setFixedDate(newDate);
+                    }}
+                  >
+                    {Array.from({ length: 12 }).map((_, i) => {
+                      const mins = i * 5;
+                      return <option key={mins} value={mins}>{String(mins).padStart(2, '0')}</option>;
                     })}
+                  </select>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={fixedDate.getHours() >= 12 ? 'PM' : 'AM'}
+                    onChange={(e) => {
+                      const isPM = e.target.value === 'PM';
+                      const h = fixedDate.getHours();
+                      const newDate = new Date(fixedDate);
+                      if (isPM && h < 12) newDate.setHours(h + 12);
+                      if (!isPM && h >= 12) newDate.setHours(h - 12);
+                      setFixedDate(newDate);
+                    }}
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
                   </select>
                 </div>
               ) : (
@@ -485,6 +518,27 @@ export default function EditMeetingDetailsScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* Privacy Settings */}
+        <View style={styles.section}>
+          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            Privacy Settings
+          </ThemedText>
+          <View style={[styles.input, { backgroundColor: surfaceColor, borderColor: surfaceColor, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16 }]}>
+            <View style={{ flex: 1, paddingRight: 16 }}>
+              <ThemedText type="defaultSemiBold">Hide Attendee Names</ThemedText>
+              <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 4 }}>
+                If enabled, the public event page will only show the total number of attendees, not their names. (Phone numbers and emails are always hidden).
+              </ThemedText>
+            </View>
+            <Switch
+              value={hideAttendeeNames}
+              onValueChange={setHideAttendeeNames}
+              trackColor={{ false: '#767577', true: tintColor }}
+              thumbColor={Platform.OS === 'ios' ? '#FFFFFF' : hideAttendeeNames ? '#FFFFFF' : '#f4f3f4'}
+            />
+          </View>
         </View>
         </View>
       </ScrollView>
