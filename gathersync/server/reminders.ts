@@ -62,7 +62,6 @@ async function checkAndSendReminders() {
         const meetingDetails = [];
         if (event.meetingType === 'in-person' && event.venueName) {
           meetingDetails.push(`📍 Venue: ${event.venueName}`);
-          if (event.venueAddress) meetingDetails.push(`📍 Address: ${event.venueAddress}`);
         } else if (event.meetingType === 'virtual' && event.meetingLink) {
           meetingDetails.push(`💻 Meeting Link: <a href="${event.meetingLink}">${event.meetingLink}</a>`);
         }

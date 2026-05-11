@@ -1734,4 +1734,18 @@ const styles = StyleSheet.create({
     fontWeight: '600' as any,
     color: AdminColors.gray800,
   },
+  closeButton: {
+    padding: 8,
+  },
+  menuItem: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
 });

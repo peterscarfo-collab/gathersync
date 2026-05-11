@@ -97,7 +97,7 @@ export default function EmailParticipantsScreen() {
   };
 
   const [isSending, setIsSending] = useState(false);
-  const sendInvitationsMutation = trpc.sendInvitations.useMutation();
+  const sendInvitationsMutation = trpc.participants.sendInvitations.useMutation();
 
   const handleSendEmail = async () => {
     if (!event) return;
@@ -127,7 +127,6 @@ export default function EmailParticipantsScreen() {
     const meetingDetails = [];
     if (event.meetingType === 'in-person' && event.venueName) {
       meetingDetails.push(`📍 Venue: ${event.venueName}`);
-      if (event.venueAddress) meetingDetails.push(`📍 Address: ${event.venueAddress}`);
     } else if (event.meetingType === 'virtual' && event.meetingLink) {
       meetingDetails.push(`💻 Meeting Link: ${event.meetingLink}`);
     }
