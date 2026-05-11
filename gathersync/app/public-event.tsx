@@ -11,6 +11,7 @@ import {
   Alert,
   Platform,
   Linking,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -90,7 +91,22 @@ export default function PublicEventScreen() {
     );
   };
 
-  const handleSubmit = async () => {
+  const handleRsvpSelect = async (status: "attending" | "not-attending") => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setRsvpStatus(status);
+    
+    // Auto-submit if we already have their name
+    if (name.trim()) {
+      await submitResponse(status, selectedDays);
+    }
+  };
+
+  const submitResponse = async (
+    currentRsvpStatus: "attending" | "not-attending" | "no-response",
+    currentSelectedDays: number[]
+  ) => {
     if (!event) return;
 
     if (!name.trim()) {
@@ -98,7 +114,7 @@ export default function PublicEventScreen() {
       return;
     }
 
-    if (event.eventType === "flexible" && selectedDays.length === 0) {
+    if (event.eventType === "flexible" && currentSelectedDays.length === 0) {
       Alert.alert("Selection Required", "Please select at least one day you're available.");
       return;
     }
@@ -116,10 +132,10 @@ export default function PublicEventScreen() {
       };
 
       if (event.eventType === "fixed") {
-        payload.rsvpStatus = rsvpStatus;
+        payload.rsvpStatus = currentRsvpStatus;
       } else {
         const availability: Record<string, boolean> = {};
-        selectedDays.forEach((day) => {
+        currentSelectedDays.forEach((day) => {
           availability[day.toString()] = true;
         });
         payload.availability = availability;
@@ -142,11 +158,15 @@ export default function PublicEventScreen() {
       }
 
       setHasResponded(true);
-      Alert.alert(
-        "Response Submitted!",
-        "Thank you for responding. The organizer has been notified.",
-        [{ text: "OK" }]
-      );
+      
+      // Only show alert if they manually clicked submit (not auto-submit)
+      if (!participantName || event.eventType === "flexible") {
+        Alert.alert(
+          "Response Submitted!",
+          "Thank you for responding. The organizer has been notified.",
+          [{ text: "OK" }]
+        );
+      }
     } catch (error) {
       console.error("[PublicEvent] Error submitting response:", error);
       Alert.alert("Error", "Failed to submit your response. Please try again.");
@@ -154,6 +174,8 @@ export default function PublicEventScreen() {
       setSubmitting(false);
     }
   };
+
+  const handleSubmit = () => submitResponse(rsvpStatus, selectedDays);
 
 
   if (loading) {
@@ -192,6 +214,10 @@ export default function PublicEventScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
+        <Image 
+          source={require('@/assets/images/icon.png')} 
+          style={{ width: 48, height: 48, borderRadius: 12, marginBottom: 12 }} 
+        />
         <Text style={styles.logo}>GatherSync</Text>
         <Text style={styles.tagline}>Find the perfect time, together</Text>
       </View>
@@ -252,17 +278,26 @@ export default function PublicEventScreen() {
           </Text>
 
           {/* Name Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Your Name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Enter your name"
-              placeholderTextColor="#999"
-              autoCapitalize="words"
-            />
-          </View>
+          {participantName ? (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Responding as</Text>
+              <View style={[styles.input, { backgroundColor: '#e5e5ea', borderColor: '#d1d1d6' }]}>
+                <Text style={{ fontSize: 16, color: '#1c1c1e', fontWeight: '500' }}>{name}</Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Your Name</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="Enter your name"
+                placeholderTextColor="#999"
+                autoCapitalize="words"
+              />
+            </View>
+          )}
 
           {/* Fixed Event RSVP */}
           {event.eventType === "fixed" && (
@@ -274,7 +309,8 @@ export default function PublicEventScreen() {
                     styles.rsvpButton,
                     rsvpStatus === "attending" && styles.rsvpButtonActive,
                   ]}
-                  onPress={() => setRsvpStatus("attending")}
+                  onPress={() => handleRsvpSelect("attending")}
+                  disabled={submitting}
                 >
                   <Text
                     style={[
@@ -290,7 +326,8 @@ export default function PublicEventScreen() {
                     styles.rsvpButton,
                     rsvpStatus === "not-attending" && styles.rsvpButtonActive,
                   ]}
-                  onPress={() => setRsvpStatus("not-attending")}
+                  onPress={() => handleRsvpSelect("not-attending")}
+                  disabled={submitting}
                 >
                   <Text
                     style={[
@@ -302,6 +339,9 @@ export default function PublicEventScreen() {
                   </Text>
                 </Pressable>
               </View>
+              {submitting && (
+                <ActivityIndicator style={{ marginTop: 16 }} color="#007AFF" />
+              )}
             </View>
           )}
 
@@ -328,18 +368,20 @@ export default function PublicEventScreen() {
             </View>
           )}
 
-          {/* Submit Button */}
-          <Pressable
-            style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>Submit Response</Text>
-            )}
-          </Pressable>
+          {/* Submit Button (Only show for flexible events or if name is missing) */}
+          {(!participantName || event.eventType === "flexible") && (
+            <Pressable
+              style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Submit Response</Text>
+              )}
+            </Pressable>
+          )}
         </View>
       ) : (
         <View style={styles.responseSection}>
@@ -348,9 +390,19 @@ export default function PublicEventScreen() {
             Thank you for responding! The organizer has been notified.
           </Text>
           {event.eventType === "fixed" && (
-            <Text style={styles.successDetail}>
-              Your RSVP: <Text style={styles.successBold}>{rsvpStatus === "attending" ? "Attending" : "Not Attending"}</Text>
-            </Text>
+            <>
+              <Text style={styles.successDetail}>
+                Your RSVP: <Text style={styles.successBold}>{rsvpStatus === "attending" ? "Attending" : "Not Attending"}</Text>
+              </Text>
+              {rsvpStatus === "attending" && event.meetingType === "virtual" && event.meetingLink && (
+                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f0f8ff', borderRadius: 8 }}>
+                  <Text style={{ fontWeight: '600', color: '#007AFF', marginBottom: 8 }}>Meeting Link</Text>
+                  <Pressable onPress={() => Linking.openURL(event.meetingLink!)}>
+                    <Text style={{ color: '#007AFF', textDecorationLine: 'underline' }}>{event.meetingLink}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
           )}
           {event.eventType === "flexible" && selectedDays.length > 0 && (
             <Text style={styles.successDetail}>
@@ -360,6 +412,31 @@ export default function PublicEventScreen() {
         </View>
       )}
 
+      {/* Attendees List */}
+      {event.eventType === "fixed" && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Attendees</Text>
+          {event.participants.filter(p => p.rsvpStatus === "attending").length === 0 ? (
+            <Text style={styles.emptyText}>No attendees yet.</Text>
+          ) : (
+            <View style={styles.attendeesList}>
+              {event.hideAttendeeNames ? (
+                <Text style={styles.attendeeCountText}>
+                  {event.participants.filter(p => p.rsvpStatus === "attending").length} people attending
+                </Text>
+              ) : (
+                event.participants
+                  .filter(p => p.rsvpStatus === "attending")
+                  .map(p => (
+                    <View key={p.id} style={styles.attendeeItem}>
+                      <Text style={styles.attendeeName}>{p.name}</Text>
+                    </View>
+                  ))
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Footer */}
       <View style={styles.footer}>
@@ -640,5 +717,33 @@ const styles = StyleSheet.create({
   footerSubtext: {
     fontSize: 12,
     color: "#999",
+  },
+  attendeesList: {
+    marginTop: 8,
+    gap: 8,
+  },
+  attendeeItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  attendeeName: {
+    fontSize: 16,
+    color: "#1c1c1e",
+    fontWeight: "500",
+  },
+  attendeeCountText: {
+    fontSize: 16,
+    color: "#007AFF",
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 12,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: "#8e8e93",
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingVertical: 16,
   },
 });

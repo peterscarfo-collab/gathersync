@@ -11,6 +11,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { getMonthName, getBestDays } from '@/lib/calendar-utils';
+import { trpc } from '@/lib/trpc';
 import type { Event, Participant } from '@/types/models';
 
 export default function EmailParticipantsScreen() {
@@ -35,6 +36,31 @@ export default function EmailParticipantsScreen() {
     if (!eventId) return;
     const loadedEvent = await eventsLocalStorage.getById(eventId);
     if (loadedEvent) {
+      // Enrich participants with global contact info to ensure email is loaded
+      try {
+        const allEvents = await eventsLocalStorage.getAll();
+        const globalInfo = new Map<string, {phone?: string, email?: string}>();
+        allEvents.forEach(e => e.participants.forEach(p => {
+          if (!globalInfo.has(p.name)) {
+            globalInfo.set(p.name, { phone: p.phone, email: p.email });
+          } else {
+            const current = globalInfo.get(p.name)!;
+            if (p.phone && !current.phone) current.phone = p.phone;
+            if (p.email && !current.email) current.email = p.email;
+          }
+        }));
+
+        loadedEvent.participants.forEach(p => {
+          const info = globalInfo.get(p.name);
+          if (info) {
+            if (!p.phone && info.phone) p.phone = info.phone;
+            if (!p.email && info.email) p.email = info.email;
+          }
+        });
+      } catch (err) {
+        console.error('Failed to enrich participants:', err);
+      }
+
       setEvent(loadedEvent);
       // Pre-select all participants with emails
       const withEmails = new Set(
@@ -70,6 +96,9 @@ export default function EmailParticipantsScreen() {
     }
   };
 
+  const [isSending, setIsSending] = useState(false);
+  const sendInvitationsMutation = trpc.sendInvitations.useMutation();
+
   const handleSendEmail = async () => {
     if (!event) return;
 
@@ -95,41 +124,47 @@ export default function EmailParticipantsScreen() {
       ? `${event.fixedDate}${event.fixedTime ? ' at ' + event.fixedTime : ''}`
       : `${getMonthName(event.month)} ${event.year}`;
 
-    const emails = selected.map(p => p.email).join(', ');
-    const emailBody = 
-      `You're invited to: ${event.name}\n\n` +
-      `When: ${eventType}\n\n` +
-      `${bestDayText}\n\n` +
-      `Please respond with your availability.`;
+    const meetingDetails = [];
+    if (event.meetingType === 'in-person' && event.venueName) {
+      meetingDetails.push(`📍 Venue: ${event.venueName}`);
+      if (event.venueAddress) meetingDetails.push(`📍 Address: ${event.venueAddress}`);
+    } else if (event.meetingType === 'virtual' && event.meetingLink) {
+      meetingDetails.push(`💻 Meeting Link: ${event.meetingLink}`);
+    }
+    const eventDetailsText = `📅 When: ${eventType}\n` +
+      (bestDayText !== 'No availability data yet' ? `⭐ ${bestDayText}\n` : '') +
+      (meetingDetails.length > 0 ? `\n${meetingDetails.join('\n')}\n` : '');
 
-    // On web, copy to clipboard instead of mailto (more reliable)
-    if (Platform.OS === 'web') {
-      const clipboardText = 
-        `TO: ${emails}\n\n` +
-        `SUBJECT: Invitation: ${event.name}\n\n` +
-        `MESSAGE:\n${emailBody}`;
-      
-      try {
-        await Clipboard.setStringAsync(clipboardText);
-        alert(
-          `Email details copied to clipboard!\n\n` +
-          `Recipients: ${emails}\n\n` +
-          `Open your email client and paste (Cmd+V) to send.`
-        );
-      } catch (error) {
-        console.error('Error copying:', error);
-        alert('Could not copy to clipboard. Please try again.');
-      }
-    } else {
-      // On mobile, use mailto link
-      const subject = encodeURIComponent(`Invitation: ${event.name}`);
-      const body = encodeURIComponent(emailBody);
-      const mailtoLink = `mailto:${emails}?subject=${subject}&body=${body}`;
+    const baseUrl = Platform.OS === 'web' 
+      ? window.location.origin
+      : 'https://app.gathersync.com';
 
-      Linking.openURL(mailtoLink).catch(err => {
-        console.error('Error opening email:', err);
-        Alert.alert('Error', 'Could not open email client. Please check your default email settings.');
+    try {
+      setIsSending(true);
+      const result = await sendInvitationsMutation.mutateAsync({
+        eventId: event.id,
+        participantIds: selected.map(p => p.id),
+        eventDetails: eventDetailsText,
+        baseUrl,
       });
+
+      if (Platform.OS === 'web') {
+        alert(`Successfully sent ${result.sentCount} invitation emails!`);
+      } else {
+        Alert.alert('Success', `Successfully sent ${result.sentCount} invitation emails!`);
+      }
+      
+      // Navigate back after successful send
+      router.back();
+    } catch (error) {
+      console.error('Error sending emails:', error);
+      if (Platform.OS === 'web') {
+        alert('Failed to send emails. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to send emails. Please try again.');
+      }
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -277,14 +312,14 @@ export default function EmailParticipantsScreen() {
             style={[
               styles.sendButton,
               { backgroundColor: tintColor },
-              selectedParticipants.size === 0 && styles.sendButtonDisabled,
+              (selectedParticipants.size === 0 || isSending) && styles.sendButtonDisabled,
             ]}
             onPress={handleSendEmail}
-            disabled={selectedParticipants.size === 0}
+            disabled={selectedParticipants.size === 0 || isSending}
           >
             <IconSymbol name="paperplane.fill" size={20} color="#FFFFFF" />
             <ThemedText style={styles.sendButtonText}>
-              Send Email to {selectedParticipants.size} {selectedParticipants.size === 1 ? 'Participant' : 'Participants'}
+              {isSending ? 'Sending...' : `Send Email to ${selectedParticipants.size} ${selectedParticipants.size === 1 ? 'Participant' : 'Participants'}`}
             </ThemedText>
           </Pressable>
         </View>

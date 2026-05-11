@@ -1,5 +1,6 @@
 import { Router } from "express";
 import * as db from "./db";
+import { sendConfirmationEmail } from "./email";
 
 /**
  * Public REST API endpoints (no authentication required)
@@ -120,17 +121,31 @@ publicApiRouter.post("/events/:eventId/participants", async (req, res) => {
       });
       // Touch parent event so clients pull the updated participant
       db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
+      
+      // Send confirmation email if they have an email address
+      if (existingParticipant.email) {
+        const availableDaysCount = availability ? Object.keys(availability).filter(k => (availability as Record<string, boolean>)[k]).length : undefined;
+        sendConfirmationEmail(
+          existingParticipant.email,
+          existingParticipant.name,
+          event.name,
+          rsvpStatus as string,
+          availableDaysCount,
+          event.meetingLink || undefined
+        ).catch(console.error);
+      }
     } else {
       // Create new participant
-      await db.createParticipant({
+      const newParticipant = {
         id: `participant-${Date.now()}`,
         eventId: eventId,
         name: participantName,
         availability: (availability as Record<string, boolean>) || {},
         unavailableAllMonth: false,
-        source: "manual",
+        source: "manual" as const,
         rsvpStatus: (rsvpStatus as "attending" | "not-attending" | "no-response") || "no-response",
-      });
+      };
+      await db.createParticipant(newParticipant);
       // Touch parent event so clients pull the new participant
       db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
     }

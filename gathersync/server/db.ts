@@ -105,6 +105,12 @@ export async function getUserByOpenId(openId: string) {
 /**
  * Events
  */
+export async function getAllEvents() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(schema.events);
+}
+
 export async function getUserEvents(userId: number) {
   const db = await getDb();
   if (!db) return [];

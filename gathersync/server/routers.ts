@@ -5,6 +5,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import * as notifications from "./notifications";
+import { sendInvitationEmail } from "./email";
 import { adminRouter } from "./routers/admin";
 import { trialRouter } from "./routers/trial";
 import { subscriptionRouter } from "./routers/subscription";
@@ -56,6 +57,7 @@ export const appRouter = router({
           meetingLink: event.meetingLink || undefined,
           rsvpDeadline: event.rsvpDeadline || undefined,
           meetingNotes: event.meetingNotes || undefined,
+          hideAttendeeNames: event.hideAttendeeNames || undefined,
           createdAt: event.createdAt.toISOString(),
           updatedAt: event.updatedAt.toISOString(),
           participants: participants.map((p) => ({
@@ -154,6 +156,7 @@ export const appRouter = router({
           meetingLink: z.string().optional(),
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
+          hideAttendeeNames: z.boolean().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )
@@ -188,6 +191,7 @@ export const appRouter = router({
           meetingLink: z.string().optional(),
           rsvpDeadline: z.string().optional(),
           meetingNotes: z.string().optional(),
+          hideAttendeeNames: z.boolean().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )
@@ -304,6 +308,38 @@ export const appRouter = router({
     delete: protectedProcedure
       .input(z.object({ id: z.string() }))
       .mutation(({ input }) => db.deleteParticipant(input.id)),
+
+    sendInvitations: protectedProcedure
+      .input(
+        z.object({
+          eventId: z.string(),
+          participantIds: z.array(z.string()),
+          eventDetails: z.string(),
+          baseUrl: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const event = await db.getEventById(input.eventId);
+        if (!event) throw new Error("Event not found");
+
+        const participants = await db.getEventParticipants(input.eventId);
+        const selectedParticipants = participants.filter(p => input.participantIds.includes(p.id) && p.email);
+
+        const results = await Promise.all(
+          selectedParticipants.map(async (p) => {
+            const personalizedLink = `${input.baseUrl}/public-event?eventId=${event.id}&name=${encodeURIComponent(p.name)}`;
+            return sendInvitationEmail(
+              p.email!,
+              p.name,
+              event.name,
+              input.eventDetails,
+              personalizedLink
+            );
+          })
+        );
+
+        return { success: true, sentCount: results.filter(r => r.success).length };
+      }),
   }),
 
   snapshots: router({

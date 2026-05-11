@@ -8,8 +8,12 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
 import { handleStripeWebhook } from "../webhooks/stripe";
+import { startReminderCron } from "../reminders";
 
 async function startServer() {
+  // Start the reminder cron job
+  startReminderCron();
+
   const app = express();
   const server = createServer(app);
 
