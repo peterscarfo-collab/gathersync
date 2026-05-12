@@ -1,4 +1,4 @@
-import { View, StyleSheet, Pressable, Platform, Image } from 'react-native';
+import { View, StyleSheet, Pressable, Platform, Image, useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -18,9 +18,11 @@ export function DesktopLayout({ children }: DesktopLayoutProps) {
   const surfaceColor = useThemeColor({}, 'surface');
   const textColor = useThemeColor({}, 'text');
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
 
-  // Only show sidebar on web
-  if (Platform.OS !== 'web') {
+  // Only show sidebar on desktop web
+  if (!isDesktop) {
     return <>{children}</>;
   }
 

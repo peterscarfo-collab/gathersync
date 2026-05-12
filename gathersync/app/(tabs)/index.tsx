@@ -21,7 +21,7 @@ import { exportBackup, downloadBackup, importBackup, readBackupFile, getBackupSt
 import * as DocumentPicker from 'expo-document-picker';
 import { generateEventFromTemplate, shouldGenerateForMonth } from '@/lib/recurring-generator';
 import { getLoginUrl } from '@/constants/oauth';
-import { Platform } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import type { Event } from '@/types/models';
 
@@ -36,6 +36,8 @@ export default function EventsScreen() {
   const [showLoginBanner, setShowLoginBanner] = useState(true);
   const [showBackupMenu, setShowBackupMenu] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -855,7 +857,7 @@ export default function EventsScreen() {
         contentContainerStyle={[
           styles.listContent,
           events.length === 0 && styles.listContentEmpty,
-          Platform.OS === 'web' && styles.listContentWeb,
+          isDesktop && styles.listContentWeb,
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -866,7 +868,7 @@ export default function EventsScreen() {
           />
         }
         ListFooterComponent={() => (
-          <View style={[styles.footer, Platform.OS === 'web' && styles.footerWeb]}>
+          <View style={[styles.footer, isDesktop && styles.footerWeb]}>
             <ThemedText style={[styles.footerText, { color: textSecondaryColor }]}>
               © 2026 Peter Scarfo. All rights reserved.
             </ThemedText>

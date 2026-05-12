@@ -58,6 +58,7 @@ export default function AdminParticipantsScreen() {
   const [sortBy, setSortBy] = useState<'firstName' | 'lastName' | 'phone' | 'event' | 'source'>('firstName');
   const [filterEventId, setFilterEventId] = useState<string>('all');
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showSortModal, setShowSortModal] = useState(false);
   
   const [events, setEvents] = useState<Event[]>([]);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
@@ -637,17 +638,19 @@ export default function AdminParticipantsScreen() {
         >
           <IconSymbol name="chevron.left" size={24} color={tintColor} />
         </Pressable>
-        <ThemedText type="title" style={{ flex: 1 }}>Participant Management</ThemedText>
+        <ThemedText type="title" style={{ flex: 1, fontSize: isDesktop ? 32 : 24 }}>
+          {isDesktop ? 'Participant Management' : 'Participants'}
+        </ThemedText>
         <Pressable
-          style={{ backgroundColor: tintColor, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+          style={{ backgroundColor: tintColor, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}
           onPress={() => setShowAddModal(true)}
         >
-          <IconSymbol name="plus" size={24} color="#fff" />
+          <IconSymbol name="plus" size={20} color="#fff" />
         </Pressable>
       </View>
 
       {/* Search and Sort */}
-      <View style={styles.controls}>
+      <View style={[styles.controls, !isDesktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
         <TextInput
           style={[styles.searchInput, { backgroundColor: surfaceColor, color: tintColor, flex: 1 }]}
           placeholder="Search participants..."
@@ -655,89 +658,102 @@ export default function AdminParticipantsScreen() {
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-        <Pressable
-          style={[styles.sortButton, { backgroundColor: filterEventId !== 'all' ? tintColor : surfaceColor }]}
-          onPress={() => setShowFilterModal(true)}
-        >
-          <ThemedText style={[styles.sortButtonText, { color: filterEventId !== 'all' ? '#fff' : tintColor }]}>
-            {filterEventId === 'all' 
-              ? 'Filter: All Events' 
-              : filterEventId === 'prospects'
-                ? 'Filter: Prospects Only'
-                : `Filter: ${events.find(e => e.id === filterEventId)?.name || 'Event'}`}
-          </ThemedText>
-        </Pressable>
-        {isDesktop && (
-          <View style={styles.sortControls}>
-            <ThemedText style={{ fontSize: 14, color: '#999', marginRight: 8 }}>Sort by:</ThemedText>
-            {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map(option => (
-              <Pressable
-                key={option}
-                style={[
-                  styles.sortButton,
-                  { backgroundColor: surfaceColor },
-                  sortBy === option && { backgroundColor: tintColor }
-                ]}
-                onPress={() => setSortBy(option)}
-              >
-                <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
-                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
+        
+        {isDesktop ? (
+          <>
+            <Pressable
+              style={[styles.sortButton, { backgroundColor: filterEventId !== 'all' ? tintColor : surfaceColor }]}
+              onPress={() => setShowFilterModal(true)}
+            >
+              <ThemedText style={[styles.sortButtonText, { color: filterEventId !== 'all' ? '#fff' : tintColor }]}>
+                {filterEventId === 'all' 
+                  ? 'Filter: All Events' 
+                  : filterEventId === 'prospects'
+                    ? 'Filter: Prospects Only'
+                    : `Filter: ${events.find(e => e.id === filterEventId)?.name || 'Event'}`}
+              </ThemedText>
+            </Pressable>
+            <View style={styles.sortControls}>
+              <ThemedText style={{ fontSize: 14, color: '#999', marginRight: 8 }}>Sort by:</ThemedText>
+              {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map(option => (
+                <Pressable
+                  key={option}
+                  style={[
+                    styles.sortButton,
+                    { backgroundColor: surfaceColor },
+                    sortBy === option && { backgroundColor: tintColor }
+                  ]}
+                  onPress={() => setSortBy(option)}
+                >
+                  <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
+                    {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Pressable
+              style={[styles.sortButton, { flex: 1, alignItems: 'center', backgroundColor: filterEventId !== 'all' ? tintColor : surfaceColor }]}
+              onPress={() => setShowFilterModal(true)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <IconSymbol name="line.3.horizontal.decrease.circle" size={16} color={filterEventId !== 'all' ? '#fff' : tintColor} />
+                <ThemedText style={[styles.sortButtonText, { color: filterEventId !== 'all' ? '#fff' : tintColor }]} numberOfLines={1}>
+                  {filterEventId === 'all' 
+                    ? 'All Events' 
+                    : filterEventId === 'prospects'
+                      ? 'Prospects'
+                      : events.find(e => e.id === filterEventId)?.name || 'Event'}
                 </ThemedText>
-              </Pressable>
-            ))}
+              </View>
+            </Pressable>
+            <Pressable
+              style={[styles.sortButton, { flex: 1, alignItems: 'center', backgroundColor: surfaceColor }]}
+              onPress={() => setShowSortModal(true)}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <IconSymbol name="arrow.up.arrow.down" size={16} color={tintColor} />
+                <ThemedText style={[styles.sortButtonText, { color: tintColor }]} numberOfLines={1}>
+                  {sortBy === 'firstName' ? 'First Name' : sortBy === 'lastName' ? 'Last Name' : sortBy === 'phone' ? 'Phone' : sortBy === 'event' ? 'Event' : 'Source'}
+                </ThemedText>
+              </View>
+            </Pressable>
           </View>
         )}
       </View>
-      {!isDesktop && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingHorizontal: 20, marginBottom: 16 }}>
-          <View style={[styles.sortControls, { marginTop: 0 }]}>
-            {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map(option => (
-              <Pressable
-                key={option}
-                style={[
-                  styles.sortButton,
-                  { backgroundColor: surfaceColor },
-                  sortBy === option && { backgroundColor: tintColor }
-                ]}
-                onPress={() => setSortBy(option)}
-              >
-                <ThemedText style={[styles.sortButtonText, sortBy === option && { color: '#fff' }]}>
-                  {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      )}
 
       {/* Summary */}
-      <View style={styles.summary}>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }]}>
-          <ThemedText style={styles.summaryValue}>{participants.length}</ThemedText>
-          <ThemedText style={styles.summaryLabel}>Total Participants</ThemedText>
+      <View style={[styles.summary, !isDesktop && { flexWrap: 'wrap' }]}>
+        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '46%', padding: 12 }]}>
+          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>{participants.length}</ThemedText>
+          <ThemedText style={styles.summaryLabel}>Total</ThemedText>
         </View>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }]}>
-          <ThemedText style={styles.summaryValue}>
+        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '46%', padding: 12 }]}>
+          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>
             {participants.filter(p => p.phone).length}
           </ThemedText>
           <ThemedText style={styles.summaryLabel}>With Phone</ThemedText>
         </View>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }]}>
-          <ThemedText style={styles.summaryValue}>
+        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '100%', padding: 12, flexDirection: 'row', justifyContent: 'space-between' }]}>
+          <ThemedText style={styles.summaryLabel}>With Email</ThemedText>
+          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>
             {participants.filter(p => p.email).length}
           </ThemedText>
-          <ThemedText style={styles.summaryLabel}>With Email</ThemedText>
         </View>
       </View>
 
       {/* Export Button */}
-      <Pressable
-        style={[styles.exportButton, { backgroundColor: tintColor }]}
-        onPress={exportParticipantList}
-      >
-        <IconSymbol name="square.and.arrow.up" size={20} color="#fff" />
-        <ThemedText style={styles.exportButtonText}>Export List</ThemedText>
-      </Pressable>
+      <View style={{ paddingHorizontal: 20, marginBottom: 16, alignItems: isDesktop ? 'flex-start' : 'center' }}>
+        <Pressable
+          style={[styles.exportButton, { backgroundColor: tintColor, marginHorizontal: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 20 }]}
+          onPress={exportParticipantList}
+        >
+          <IconSymbol name="square.and.arrow.up" size={18} color="#fff" />
+          <ThemedText style={[styles.exportButtonText, { fontSize: 14 }]}>Export List</ThemedText>
+        </Pressable>
+      </View>
 
       {/* Participant List */}
       <ScrollView 
@@ -1475,6 +1491,58 @@ export default function AdminParticipantsScreen() {
                     {event.name}
                   </ThemedText>
                   {filterEventId === event.id && (
+                    <IconSymbol name="checkmark" size={16} color={tintColor} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sort Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showSortModal}
+        onRequestClose={() => setShowSortModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSortModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: surfaceColor, width: isDesktop ? 500 : '90%', maxHeight: '80%' }]}
+            onPress={e => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <ThemedText type="subtitle">Sort Participants</ThemedText>
+              <Pressable
+                onPress={() => setShowSortModal(false)}
+                style={styles.closeButton}
+              >
+                <IconSymbol name="xmark" size={24} color={tintColor} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={{ marginTop: 16 }}>
+              {(['firstName', 'lastName', 'phone', 'event', 'source'] as const).map((option) => (
+                <Pressable
+                  key={option}
+                  style={[
+                    styles.menuItem,
+                    { borderBottomColor: cardBg, borderBottomWidth: 1 },
+                    sortBy === option && { backgroundColor: tintColor + '15' }
+                  ]}
+                  onPress={() => {
+                    setSortBy(option);
+                    setShowSortModal(false);
+                  }}
+                >
+                  <ThemedText style={[styles.menuItemText, sortBy === option && { fontWeight: 'bold', color: tintColor }]}>
+                    {option === 'firstName' ? 'First Name' : option === 'lastName' ? 'Last Name' : option === 'phone' ? 'Phone' : option === 'event' ? 'Event' : 'Source'}
+                  </ThemedText>
+                  {sortBy === option && (
                     <IconSymbol name="checkmark" size={16} color={tintColor} />
                   )}
                 </Pressable>

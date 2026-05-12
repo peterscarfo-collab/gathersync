@@ -48,6 +48,14 @@ export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
+    
+    // Check if this is a web callback (which comes with sessionToken directly)
+    const sessionTokenParam = getQueryParam(req, "sessionToken");
+    if (sessionTokenParam) {
+      const frontendUrl = "https://app.gathersync.app";
+      return res.redirect(`${frontendUrl}/oauth/callback?sessionToken=${sessionTokenParam}`);
+    }
+
     if (!code || !state) return res.status(400).json({ error: "Missing params" });
 
     try {

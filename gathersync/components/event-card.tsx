@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { IconSymbol } from './ui/icon-symbol';
@@ -19,6 +19,8 @@ export function EventCard({ event, onPress }: EventCardProps) {
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
   const successColor = useThemeColor({}, 'success');
   const errorColor = useThemeColor({}, 'error');
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
   
   const bestDays = getBestDays(event);
   const hasBestDay = bestDays.length > 0;
@@ -34,6 +36,7 @@ export function EventCard({ event, onPress }: EventCardProps) {
       style={({ pressed }) => [
         styles.container,
         { backgroundColor: surfaceColor },
+        isDesktop && styles.containerDesktop,
         pressed && styles.pressed,
       ]}
     >
@@ -133,13 +136,17 @@ const styles = StyleSheet.create({
   container: {
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: Platform.OS === 'web' ? 0 : 16,
-    marginBottom: Platform.OS === 'web' ? 0 : 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+  },
+  containerDesktop: {
+    marginHorizontal: 0,
+    marginBottom: 0,
   },
   pressed: {
     opacity: 0.7,
