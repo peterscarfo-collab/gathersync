@@ -12,6 +12,7 @@ import { eventsLocalStorage } from '@/lib/local-storage';
 import { getMonthName, getBestDays } from '@/lib/calendar-utils';
 import type { Event, Participant } from '@/types/models';
 import { getEffectiveAttendanceStatus, getParticipantStatus } from '@/lib/participant-status';
+import { trpc } from '@/lib/trpc';
 
 export default function SendMessagesScreen() {
   const router = useRouter();
@@ -178,7 +179,10 @@ export default function SendMessagesScreen() {
     });
   };
 
-  const sendEmail = () => {
+  const [isSending, setIsSending] = useState(false);
+  const sendInvitationsMutation = trpc.participants.sendInvitations.useMutation();
+
+  const sendEmail = async () => {
     if (!event) return;
     const message = getMessageContent();
     const emails = event.participants
@@ -190,10 +194,41 @@ export default function SendMessagesScreen() {
       return;
     }
 
-    const mailtoUrl = `mailto:?bcc=${emails.join(',')}&subject=${encodeURIComponent(event.name)}&body=${encodeURIComponent(message)}`;
-    Linking.openURL(mailtoUrl).catch(() => {
-      Alert.alert('Error', 'Failed to open Email app.');
-    });
+    const selected = event.participants.filter(p => 
+      selectedParticipants.has(p.id) && p.email
+    );
+
+    const baseUrl = Platform.OS === 'web' 
+      ? window.location.origin
+      : 'https://app.gathersync.com';
+
+    try {
+      setIsSending(true);
+      const result = await sendInvitationsMutation.mutateAsync({
+        eventId: event.id,
+        participantIds: selected.map(p => p.id),
+        eventDetails: message,
+        baseUrl,
+      });
+
+      if (Platform.OS === 'web') {
+        alert(`Successfully sent ${result.sentCount} emails!`);
+      } else {
+        Alert.alert('Success', `Successfully sent ${result.sentCount} emails!`);
+      }
+      
+      // Navigate back after successful send
+      router.back();
+    } catch (error) {
+      console.error('Error sending emails:', error);
+      if (Platform.OS === 'web') {
+        alert('Failed to send emails. Please try again.');
+      } else {
+        Alert.alert('Error', 'Failed to send emails. Please try again.');
+      }
+    } finally {
+      setIsSending(false);
+    }
   };
 
   if (!event) {
@@ -353,12 +388,14 @@ export default function SendMessagesScreen() {
         </Pressable>
         
         <Pressable
-          style={[styles.actionButton, { backgroundColor: tintColor, opacity: selectedParticipants.size === 0 ? 0.5 : 1 }]}
+          style={[styles.actionButton, { backgroundColor: tintColor, opacity: (selectedParticipants.size === 0 || isSending) ? 0.5 : 1 }]}
           onPress={sendEmail}
-          disabled={selectedParticipants.size === 0}
+          disabled={selectedParticipants.size === 0 || isSending}
         >
           <IconSymbol name="envelope.fill" size={20} color="#FFFFFF" />
-          <ThemedText style={styles.actionButtonText}>Send Email</ThemedText>
+          <ThemedText style={styles.actionButtonText}>
+            {isSending ? 'Sending...' : 'Send Email'}
+          </ThemedText>
         </Pressable>
       </View>
     </ThemedView>
