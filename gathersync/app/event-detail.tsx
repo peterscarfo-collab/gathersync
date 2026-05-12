@@ -897,8 +897,10 @@ export default function EventDetailScreen() {
               setShowMenu(true);
             }}
             hitSlop={8}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: tintColor + '15', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}
           >
-            <IconSymbol name="ellipsis.circle" size={28} color={tintColor} />
+            <ThemedText style={{ color: tintColor, fontWeight: '600', fontSize: 15 }}>Actions</ThemedText>
+            <IconSymbol name="chevron.down" size={14} color={tintColor} />
           </Pressable>
         </View>
         
