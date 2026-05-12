@@ -890,28 +890,6 @@ export default function EventDetailScreen() {
         )}
 
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-          {/* Share Button */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              handleShareEvent();
-            }}
-            hitSlop={8}
-          >
-            <IconSymbol name="square.and.arrow.up" size={24} color={tintColor} />
-          </Pressable>
-          
-          {/* Forward Button */}
-          <Pressable
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              handleForwardEvent();
-            }}
-            hitSlop={8}
-          >
-            <IconSymbol name="paperplane.fill" size={24} color={tintColor} />
-          </Pressable>
-          
           {/* Menu Button */}
           <Pressable
             onPress={() => {
