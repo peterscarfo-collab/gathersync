@@ -322,7 +322,7 @@ export default function AdminAttendanceEventScreen() {
     const map = getAttendanceMap(event);
     const rows = getActiveParticipants(event)
       .map((participant) => {
-        const state = map[participant.name] || 'unchecked';
+        const state = map[participant.id] || map[participant.name] || 'unchecked';
         const label = state === 'attended' ? 'Attended' : state === 'not-attended' ? 'Did not attend' : 'Unchecked';
         return `<tr><td>${participant.name}</td><td>${label}</td></tr>`;
       })
