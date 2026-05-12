@@ -73,6 +73,72 @@ export default function HelpScreen() {
       ),
     },
     {
+      id: 'event-actions-menu',
+      title: 'The Event Actions Menu',
+      icon: 'list.bullet',
+      content: (
+        <View style={styles.topicContent}>
+          <ThemedText style={styles.paragraph}>
+            In the top right corner of any event, the <ThemedText style={{ fontWeight: 'bold' }}>Actions</ThemedText> button opens a powerful menu with everything you need to manage your gathering. Here is what each option does:
+          </ThemedText>
+          
+          <ThemedText style={[styles.paragraph, { marginTop: 12 }]}>
+            <ThemedText style={{ fontWeight: 'bold', color: '#000' }}>EVENT MANAGEMENT</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Edit Event:</ThemedText> Change the name, date, time, location, or privacy settings.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Copy Event:</ThemedText> Instantly duplicates this event (including all participants) to a new date. Great for recurring meetings!
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Copy Event Details:</ThemedText> Copies a text summary of the event (and the attendee list) to your clipboard so you can paste it into an email or document.
+          </ThemedText>
+
+          <ThemedText style={[styles.paragraph, { marginTop: 12 }]}>
+            <ThemedText style={{ fontWeight: 'bold', color: '#000' }}>PARTICIPANTS & COMMUNICATION</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Take / View Attendance:</ThemedText> Opens a checklist to mark who actually showed up to a Fixed Event.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Invite Participants:</ThemedText> Generates a generic public link you can share anywhere for people to RSVP.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Send Messages:</ThemedText> Send an SMS or Email using your device's native apps (like Apple Mail or Messages).
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Email All Participants:</ThemedText> Uses the automated Resend system to send beautiful, personalized invitations directly from the app.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Import Contact List (CSV):</ThemedText> Bulk-add hundreds of participants at once using a spreadsheet.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Bulk Import Availability:</ThemedText> Upload a spreadsheet containing people's availability for a Flexible Event.
+          </ThemedText>
+
+          <ThemedText style={[styles.paragraph, { marginTop: 12 }]}>
+            <ThemedText style={{ fontWeight: 'bold', color: '#000' }}>SHARE & EXPORT</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Share Event:</ThemedText> Opens your device's native share sheet to send the event link via WhatsApp, iMessage, etc.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Share with Participants:</ThemedText> Sends the event details specifically to the people already on the list.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Export to Calendar:</ThemedText> Downloads an .ics file so you can add the event to your Google Calendar, Outlook, or Apple Calendar.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Export Event to CSV:</ThemedText> Downloads a spreadsheet of all attendees, their contact info, and their RSVP status.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Export Backup (Single Event):</ThemedText> Downloads a raw JSON data file of this specific event for safekeeping.
+          </ThemedText>
+        </View>
+      ),
+    },
+    {
       id: 'templates-recurring',
       title: 'Templates & Recurring Events',
       icon: 'doc.on.doc',

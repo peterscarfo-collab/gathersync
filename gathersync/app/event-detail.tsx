@@ -919,7 +919,7 @@ export default function EventDetailScreen() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 {/* Event Management */}
                 <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
-                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Event Management</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 }}>Event Management</ThemedText>
                 </View>
                 <Pressable
                   style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
@@ -953,7 +953,7 @@ export default function EventDetailScreen() {
 
                 {/* Participants & Communication */}
                 <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
-                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Participants & Communication</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 }}>Participants & Communication</ThemedText>
                 </View>
                 <Pressable
                   style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
@@ -1017,7 +1017,7 @@ export default function EventDetailScreen() {
 
                 {/* Share & Export */}
                 <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
-                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>Share & Export</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 }}>Share & Export</ThemedText>
                 </View>
                 <Pressable
                   style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
@@ -1070,7 +1070,7 @@ export default function EventDetailScreen() {
 
                 {/* System & Status */}
                 <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
-                  <ThemedText style={{ fontSize: 12, fontWeight: '700', color: textSecondaryColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>System & Status</ThemedText>
+                  <ThemedText style={{ fontSize: 13, fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 }}>System & Status</ThemedText>
                 </View>
                 <Pressable
                   style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
