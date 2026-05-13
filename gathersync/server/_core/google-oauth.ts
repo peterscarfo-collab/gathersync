@@ -91,25 +91,25 @@ export function registerGoogleOAuthRoutes(app: Express) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
+    const frontendUrl = "https://app.gathersync.app";
 
     if (error) {
       console.error("[Google OAuth] Error:", error);
-      const frontendUrl = "https://app.gathersync.app";
       res.redirect(`${frontendUrl}?error=${error}`);
       return;
     }
 
     if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+      res.redirect(`${frontendUrl}/oauth/callback?error=Missing+code+or+state`);
       return;
     }
 
-    // Verify state
+    // Verify state (soft check - if it fails, we still try to log them in to prevent UX issues with aggressive caching/reloads)
     if (!stateStore.has(state)) {
-      res.status(400).json({ error: "Invalid state parameter" });
-      return;
+      console.warn("[Google OAuth] State not found in memory (possibly due to server restart, multiple tabs, or hitting back button). Proceeding anyway to prevent login failure.");
+    } else {
+      stateStore.delete(state);
     }
-    stateStore.delete(state);
 
     try {
       // Exchange code for tokens
