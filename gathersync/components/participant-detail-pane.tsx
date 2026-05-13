@@ -39,6 +39,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
   const [email, setEmail] = useState('');
   const [designation, setDesignation] = useState('');
   const [organization, setOrganization] = useState('');
+  const [leadSource, setLeadSource] = useState('');
   const isSavingRef = useRef(false);
   const pendingSaveRef = useRef(false);
 
@@ -100,6 +101,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     setEmail(loadedParticipant.email || '');
     setDesignation(loadedParticipant.designation || '');
     setOrganization(loadedParticipant.organization || '');
+    setLeadSource(loadedParticipant.leadSource || '');
   };
 
   const handleDayPress = (day: number) => {
@@ -249,6 +251,13 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     }
   };
 
+  const handleLeadSourceChange = (text: string) => {
+    setLeadSource(text);
+    if (participant) {
+      participant.leadSource = text || undefined;
+    }
+  };
+
   const handleManualSave = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
@@ -271,6 +280,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
               email: participant?.email || email || undefined,
               designation: participant?.designation || designation || undefined,
               organization: participant?.organization || organization || undefined,
+              leadSource: participant?.leadSource || leadSource || undefined,
             };
             await eventsLocalStorage.update(e.id, e);
           }
@@ -543,6 +553,27 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 value={organization}
                 onChangeText={handleOrganizationChange}
                 placeholder="e.g. Acme Corp, GatherSync"
+                placeholderTextColor={textSecondaryColor}
+                autoCapitalize="words"
+              />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor }]}>
+                Lead Source
+              </ThemedText>
+              <TextInput
+                style={[
+                  styles.contactInput,
+                  {
+                    color: textColor,
+                    borderColor: textSecondaryColor + '40',
+                    backgroundColor: backgroundColor,
+                  },
+                ]}
+                value={leadSource}
+                onChangeText={handleLeadSourceChange}
+                placeholder="e.g. Letterbox, Trade Show, Referral"
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="words"
               />
