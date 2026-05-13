@@ -124,6 +124,7 @@ export interface ContactsImportResult {
     email?: string;
     designation?: string;
     organization?: string;
+    leadSource?: string;
   }>;
   errors: string[];
 }
@@ -183,6 +184,7 @@ export function parseContactsCSV(text: string): ContactsImportResult {
       const email = cells[2] || undefined;
       const designation = cells[3] || undefined;
       const organization = cells[4] || undefined;
+      const leadSource = cells[5] || undefined;
 
       result.participants.push({
         name,
@@ -190,6 +192,7 @@ export function parseContactsCSV(text: string): ContactsImportResult {
         email,
         designation,
         organization,
+        leadSource,
       });
     }
 
@@ -205,9 +208,9 @@ export function parseContactsCSV(text: string): ContactsImportResult {
 }
 
 export function generateContactsImportTemplate(): string {
-  const header = ['Name', 'Phone', 'Email', 'Title/Designation', 'Company/Organization'].join(',');
-  const example1 = ['John Doe', '0412345678', 'john@example.com', 'Director', 'Acme Corp'].join(',');
-  const example2 = ['Sarah Smith', '', 'sarah@example.com', 'VIP', 'GatherSync'].join(',');
+  const header = ['Name', 'Phone', 'Email', 'Title/Designation', 'Company/Organization', 'Lead Source'].join(',');
+  const example1 = ['John Doe', '0412345678', 'john@example.com', 'Director', 'Acme Corp', 'Trade Show'].join(',');
+  const example2 = ['Sarah Smith', '', 'sarah@example.com', 'VIP', 'GatherSync', 'Referral'].join(',');
   
   return [header, example1, example2].join('\n');
 }

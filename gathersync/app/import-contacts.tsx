@@ -108,6 +108,7 @@ export default function ImportContactsScreen() {
         email: p.email,
         designation: p.designation,
         organization: p.organization,
+        leadSource: p.leadSource,
         availability: {},
         unavailableAllMonth: false,
         rsvpStatus: 'no-response',
@@ -204,7 +205,7 @@ export default function ImportContactsScreen() {
             1. Prepare your data in a spreadsheet (Excel, Google Sheets, etc.)
           </ThemedText>
           <ThemedText style={[styles.instruction, { color: textSecondaryColor }]}>
-            2. Columns must be: Name, Phone, Email, Title/Designation, Company/Organization
+            2. Columns must be: Name, Phone, Email, Title/Designation, Company/Organization, Lead Source
           </ThemedText>
           <ThemedText style={[styles.instruction, { color: textSecondaryColor }]}>
             3. Each row represents one participant
@@ -250,7 +251,7 @@ export default function ImportContactsScreen() {
             ]}
             value={importText}
             onChangeText={setImportText}
-            placeholder="Name, Phone, Email&#10;John Doe, 555-1234, john@example.com&#10;Sarah Smith, , sarah@example.com"
+            placeholder="Name, Phone, Email, Title, Company, Lead Source&#10;John Doe, 555-1234, john@example.com, Director, Acme Corp, Trade Show&#10;Sarah Smith, , sarah@example.com, VIP, GatherSync, Referral"
             placeholderTextColor={textSecondaryColor}
             multiline
             numberOfLines={10}
