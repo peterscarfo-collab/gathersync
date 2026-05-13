@@ -744,14 +744,21 @@ export default function AdminParticipantsScreen() {
         </View>
       </View>
 
-      {/* Export Button */}
-      <View style={{ paddingHorizontal: 20, marginBottom: 16, alignItems: isDesktop ? 'flex-start' : 'center' }}>
+      {/* Action Buttons */}
+      <View style={{ paddingHorizontal: 20, marginBottom: 16, flexDirection: 'row', gap: 12, justifyContent: isDesktop ? 'flex-start' : 'center' }}>
         <Pressable
           style={[styles.exportButton, { backgroundColor: tintColor, marginHorizontal: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 20 }]}
+          onPress={() => router.push('/import-contacts?eventId=prospects')}
+        >
+          <IconSymbol name="arrow.down.doc" size={18} color="#fff" />
+          <ThemedText style={[styles.exportButtonText, { fontSize: 14 }]}>Import List</ThemedText>
+        </Pressable>
+        <Pressable
+          style={[styles.exportButton, { backgroundColor: surfaceColor, borderWidth: 1, borderColor: tintColor, marginHorizontal: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 20 }]}
           onPress={exportParticipantList}
         >
-          <IconSymbol name="square.and.arrow.up" size={18} color="#fff" />
-          <ThemedText style={[styles.exportButtonText, { fontSize: 14 }]}>Export List</ThemedText>
+          <IconSymbol name="square.and.arrow.up" size={18} color={tintColor} />
+          <ThemedText style={[styles.exportButtonText, { fontSize: 14, color: tintColor }]}>Export List</ThemedText>
         </Pressable>
       </View>
 

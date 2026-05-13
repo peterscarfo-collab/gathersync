@@ -71,8 +71,29 @@ export default function ImportContactsScreen() {
     setIsProcessing(true);
 
     try {
-      // Get event details
-      const event = await eventsLocalStorage.getById(eventId!);
+      let targetEventId = eventId;
+      let event: Event | undefined;
+
+      if (targetEventId === 'prospects' || !targetEventId) {
+        // Find or create the Prospects Directory
+        const allEvents = await eventsLocalStorage.getAll();
+        event = allEvents.find(e => e.name === "Prospects Directory" && e.archived);
+        
+        if (!event) {
+          event = await eventsLocalStorage.add({
+            name: "Prospects Directory",
+            eventType: "flexible",
+            month: new Date().getMonth() + 1,
+            year: new Date().getFullYear(),
+            participants: [],
+            archived: true,
+          });
+        }
+        targetEventId = event.id;
+      } else {
+        event = await eventsLocalStorage.getById(targetEventId);
+      }
+
       if (!event) {
         if (Platform.OS === 'web') {
           alert('Event not found');
@@ -126,7 +147,7 @@ export default function ImportContactsScreen() {
         updatedAt: new Date().toISOString(),
       };
 
-      await eventsLocalStorage.update(eventId!, updatedEvent);
+      await eventsLocalStorage.update(targetEventId, updatedEvent);
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
