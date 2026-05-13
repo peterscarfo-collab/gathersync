@@ -65,10 +65,36 @@ export function registerOAuthRoutes(app: Express) {
       const sessionToken = await sdk.createSessionToken(userInfo.openId!, { expiresInMs: ONE_YEAR_MS });
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      
+      // Decode the state to get the redirect URI
+      let redirectUri = "https://app.gathersync.app/oauth/callback";
+      try {
+        const decodedState = atob(state);
+        // If it's a valid URL, use it as the base
+        if (decodedState.startsWith("http")) {
+          // Parse the URL to safely add query params
+          const url = new URL(decodedState);
+          // If the state was just the frontend URL, append the callback path
+          if (!url.pathname || url.pathname === "/") {
+            url.pathname = "/oauth/callback";
+          }
+          redirectUri = url.toString();
+        }
+      } catch (e) {
+        console.warn("[OAuth] Failed to decode state parameter, using default redirect URI");
+      }
+      
+      // Append the session token
+      const finalUrl = redirectUri.includes("?") 
+        ? `${redirectUri}&sessionToken=${sessionToken}`
+        : `${redirectUri}?sessionToken=${sessionToken}`;
+        
+      res.redirect(finalUrl);
+    } catch (error: any) {
+      console.error("[OAuth] Callback failed:", error?.response?.data || error);
+      // Pass the error back to the frontend
       const frontendUrl = "https://app.gathersync.app";
-      res.redirect(`${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`);
-    } catch (error) {
-      res.status(500).json({ error: "Callback failed" });
+      res.redirect(`${frontendUrl}/oauth/callback?error=${encodeURIComponent(error?.response?.data?.error || "Callback failed")}`);
     }
   });
 
