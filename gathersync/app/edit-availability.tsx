@@ -33,8 +33,12 @@ export default function EditAvailabilityScreen() {
   const [participant, setParticipant] = useState<Participant | null>(null);
   const [unavailableAllMonth, setUnavailableAllMonth] = useState(false);
   const [notes, setNotes] = useState('');
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [leadSource, setLeadSource] = useState('');
   const isSavingRef = useRef(false);
   const pendingSaveRef = useRef(false);
 
@@ -63,8 +67,12 @@ export default function EditAvailabilityScreen() {
     setParticipant(loadedParticipant);
     setUnavailableAllMonth(loadedParticipant.unavailableAllMonth);
     setNotes(loadedParticipant.notes || '');
+    setName(loadedParticipant.name || '');
     setPhone(loadedParticipant.phone || '');
     setEmail(loadedParticipant.email || '');
+    setDesignation(loadedParticipant.designation || '');
+    setOrganization(loadedParticipant.organization || '');
+    setLeadSource(loadedParticipant.leadSource || '');
   };
 
   const handleDayPress = (day: number) => {
@@ -204,6 +212,38 @@ export default function EditAvailabilityScreen() {
     setNotes(text);
     if (participant) {
       participant.notes = text;
+      saveChanges();
+    }
+  };
+
+  const handleNameChange = (text: string) => {
+    setName(text);
+    if (participant) {
+      participant.name = text;
+      saveChanges();
+    }
+  };
+
+  const handleDesignationChange = (text: string) => {
+    setDesignation(text);
+    if (participant) {
+      participant.designation = text || undefined;
+      saveChanges();
+    }
+  };
+
+  const handleOrganizationChange = (text: string) => {
+    setOrganization(text);
+    if (participant) {
+      participant.organization = text || undefined;
+      saveChanges();
+    }
+  };
+
+  const handleLeadSourceChange = (text: string) => {
+    setLeadSource(text);
+    if (participant) {
+      participant.leadSource = text || undefined;
       saveChanges();
     }
   };
@@ -423,7 +463,83 @@ export default function EditAvailabilityScreen() {
           </ThemedText>
           
           <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor }]}>
-            Phone Number
+            Name
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.contactInput,
+              {
+                color: textColor,
+                borderColor: textSecondaryColor + '40',
+                backgroundColor: backgroundColor,
+              },
+            ]}
+            value={name}
+            onChangeText={handleNameChange}
+            placeholder="Participant Name"
+            placeholderTextColor={textSecondaryColor}
+            autoCapitalize="words"
+          />
+
+          <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>
+            Title or Designation (Optional)
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.contactInput,
+              {
+                color: textColor,
+                borderColor: textSecondaryColor + '40',
+                backgroundColor: backgroundColor,
+              },
+            ]}
+            value={designation}
+            onChangeText={handleDesignationChange}
+            placeholder="e.g. Director, Treasurer, VIP"
+            placeholderTextColor={textSecondaryColor}
+            autoCapitalize="words"
+          />
+
+          <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>
+            Company or Organization (Optional)
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.contactInput,
+              {
+                color: textColor,
+                borderColor: textSecondaryColor + '40',
+                backgroundColor: backgroundColor,
+              },
+            ]}
+            value={organization}
+            onChangeText={handleOrganizationChange}
+            placeholder="e.g. Acme Corp, GatherSync"
+            placeholderTextColor={textSecondaryColor}
+            autoCapitalize="words"
+          />
+
+          <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>
+            Lead Source (Optional)
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.contactInput,
+              {
+                color: textColor,
+                borderColor: textSecondaryColor + '40',
+                backgroundColor: backgroundColor,
+              },
+            ]}
+            value={leadSource}
+            onChangeText={handleLeadSourceChange}
+            placeholder="e.g. Letterbox, Trade Show, Referral"
+            placeholderTextColor={textSecondaryColor}
+            autoCapitalize="words"
+          />
+
+          <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>
+            Phone Number (Optional)
           </ThemedText>
           <TextInput
             style={[
@@ -442,7 +558,7 @@ export default function EditAvailabilityScreen() {
           />
           
           <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor, marginTop: 12 }]}>
-            Email
+            Email (Optional)
           </ThemedText>
           <TextInput
             style={[
