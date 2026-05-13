@@ -334,18 +334,23 @@ export const appRouter = router({
         const participants = await db.getEventParticipants(input.eventId);
         const selectedParticipants = participants.filter(p => input.participantIds.includes(p.id) && p.email);
 
-        const results = await Promise.all(
-          selectedParticipants.map(async (p) => {
-            const personalizedLink = `${input.baseUrl}/public-event?eventId=${event.id}&name=${encodeURIComponent(p.name)}`;
-            return sendInvitationEmail(
-              p.email!,
-              p.name,
-              event.name,
-              input.eventDetails,
-              personalizedLink
-            );
-          })
-        );
+        const results = [];
+        for (const p of selectedParticipants) {
+          const personalizedLink = `${input.baseUrl}/public-event?eventId=${event.id}&name=${encodeURIComponent(p.name)}`;
+          const result = await sendInvitationEmail(
+            p.email!,
+            p.name,
+            event.name,
+            input.eventDetails,
+            personalizedLink
+          );
+          results.push(result);
+          
+          // Add a 600ms delay between emails to respect Resend's 2 requests/second rate limit
+          if (selectedParticipants.length > 1) {
+            await new Promise(resolve => setTimeout(resolve, 600));
+          }
+        }
 
         return { success: true, sentCount: results.filter(r => r.success).length };
       }),

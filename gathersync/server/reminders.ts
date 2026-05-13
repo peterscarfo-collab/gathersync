@@ -84,6 +84,11 @@ async function checkAndSendReminders() {
         
         const result = await sendEmail({ to: p.email, subject, html });
         if (result.success) sentCount++;
+        
+        // Add a 600ms delay between emails to respect Resend's 2 requests/second rate limit
+        if (attendingParticipants.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 600));
+        }
       }
       
       console.log(`[Reminders] Sent ${sentCount} reminders for event: ${event.name}`);
