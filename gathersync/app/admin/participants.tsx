@@ -911,7 +911,7 @@ export default function AdminParticipantsScreen() {
                   </Pressable>
                 </View>
 
-                <ScrollView style={styles.modalBody}>
+                <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
                   {isEditingParticipant ? (
                     <View style={styles.modalSection}>
                       <View style={{ gap: 12, marginBottom: 16 }}>
@@ -1262,7 +1262,7 @@ export default function AdminParticipantsScreen() {
               </Pressable>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
               <View style={{ gap: 12, marginBottom: 16 }}>
                 <View style={isDesktop ? { flexDirection: 'row', gap: 12 } : { gap: 12 }}>
                   <View style={{ flex: 1 }}>
@@ -1780,8 +1780,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
-    paddingBottom: 40,
-    flexShrink: 1,
+    paddingBottom: Platform.OS === 'ios' ? 60 : 40,
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1792,8 +1792,11 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   modalBody: {
+    flex: 1,
+  },
+  modalBodyContent: {
     padding: 24,
-    flexShrink: 1,
+    paddingBottom: 60,
   },
   modalSection: {
     marginBottom: 24,
