@@ -993,7 +993,7 @@ export default function AdminParticipantsScreen() {
                           </View>
                         </View>
 
-                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={isDesktop ? { flexDirection: 'row', gap: 12 } : { gap: 12 }}>
                           <View style={{ flex: 1 }}>
                             <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Phone (Optional)</ThemedText>
                             <TextInput
@@ -1342,7 +1342,7 @@ export default function AdminParticipantsScreen() {
                   </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={isDesktop ? { flexDirection: 'row', gap: 12 } : { gap: 12 }}>
                   <View style={{ flex: 1 }}>
                     <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Phone (Optional)</ThemedText>
                     <TextInput
@@ -1779,8 +1779,9 @@ const styles = StyleSheet.create({
   modalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '80%',
+    maxHeight: '90%',
     paddingBottom: 40,
+    flexShrink: 1,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1792,6 +1793,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 24,
+    flexShrink: 1,
   },
   modalSection: {
     marginBottom: 24,
