@@ -91,7 +91,7 @@ export default function ImportContactsScreen() {
         }
         targetEventId = event.id;
       } else {
-        event = await eventsLocalStorage.getById(targetEventId);
+        event = (await eventsLocalStorage.getById(targetEventId)) || undefined;
       }
 
       if (!event) {
