@@ -1,0 +1,22 @@
+--- server/db.ts
++++ server/db.ts
+@@ -107,6 +107,19 @@
+   return db.select().from(events).where(eq(events.userId, userId));
+ }
+ 
++export async function getInvitedEvents(email: string, userId: number) {
++  const db = await getDb();
++  if (!db) return [];
++
++  // Find events where the user is a participant (by email) but NOT the owner
++  const invitedEvents = await db.select({ event: events })
++    .from(events)
++    .innerJoin(participants, eq(events.id, participants.eventId))
++    .where(and(eq(participants.email, email), ne(events.userId, userId)));
++    
++  return invitedEvents.map(row => row.event);
++}
++
+ export async function getEventById(eventId: string) {
+   const db = await getDb();
+   if (!db) return null;

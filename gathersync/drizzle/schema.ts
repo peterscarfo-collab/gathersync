@@ -79,6 +79,7 @@ export const events = mysqlTable("events", {
   showAttendeeNames: boolean("showAttendeeNames").default(true).notNull(),
   showAttendeeEmails: boolean("showAttendeeEmails").default(false).notNull(),
   showAttendeePhones: boolean("showAttendeePhones").default(false).notNull(),
+  digitalTwinUrl: text("digitalTwinUrl"),
   deletedAt: timestamp("deletedAt"), // Soft delete timestamp
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -98,6 +99,7 @@ export const participants = mysqlTable("participants", {
   organization: varchar("organization", { length: 255 }),
   leadSource: varchar("leadSource", { length: 255 }),
   rsvpStatus: mysqlEnum("rsvpStatus", ["attending", "not-attending", "no-response"]),
+  digitalTwinUrl: text("digitalTwinUrl"),
   deletedAt: timestamp("deletedAt"), // Soft delete timestamp
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

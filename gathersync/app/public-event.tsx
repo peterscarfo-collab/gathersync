@@ -66,8 +66,13 @@ export default function PublicEventScreen() {
               setRsvpStatus(existingParticipant.rsvpStatus || "no-response");
             } else {
               const availableDays = Object.keys(existingParticipant.availability)
-                .filter((day) => existingParticipant.availability[day])
-                .map(Number);
+                .filter((dateStr) => existingParticipant.availability[dateStr])
+                .map(dateStr => {
+                  const parts = dateStr.split('-');
+                  if (parts.length === 3) return parseInt(parts[2], 10);
+                  return parseInt(dateStr, 10);
+                })
+                .filter(d => !isNaN(d));
               setSelectedDays(availableDays);
             }
             // Don't set hasResponded yet - let them update their response
@@ -136,7 +141,8 @@ export default function PublicEventScreen() {
       } else {
         const availability: Record<string, boolean> = {};
         currentSelectedDays.forEach((day) => {
-          availability[day.toString()] = true;
+          const dateStr = `${event.year}-${String(event.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          availability[dateStr] = true;
         });
         payload.availability = availability;
       }
@@ -263,7 +269,45 @@ export default function PublicEventScreen() {
             <Text style={styles.venueName}>{event.venueName}</Text>
           </View>
         )}
+
+        {event.digitalTwinUrl && (
+          <View style={[styles.venueInfo, { marginTop: 16 }]}>
+            <Text style={styles.venueLabel}>🔗 Digital Twin</Text>
+            <Pressable onPress={() => Linking.openURL(event.digitalTwinUrl!)}>
+              <Text style={[styles.venueName, { color: '#007AFF', textDecorationLine: 'underline' }]}>
+                View Profile
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
+
+      {/* Featured Profiles (Participant Digital Twins) */}
+      {event.participants.some(p => p.digitalTwinUrl) && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Featured Profiles</Text>
+          <View style={styles.attendeesList}>
+            {event.participants
+              .filter(p => p.digitalTwinUrl)
+              .map(p => (
+                <View key={p.id} style={[styles.attendeeItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+                  <View>
+                    <Text style={styles.attendeeName}>{p.name}</Text>
+                    {p.designation && (
+                      <Text style={{ fontSize: 14, color: '#666', marginTop: 2 }}>{p.designation}</Text>
+                    )}
+                  </View>
+                  <Pressable 
+                    style={{ backgroundColor: '#007AFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}
+                    onPress={() => Linking.openURL(p.digitalTwinUrl!)}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>View Profile</Text>
+                  </Pressable>
+                </View>
+              ))}
+          </View>
+        </View>
+      )}
 
       {/* Response Section */}
       {!hasResponded ? (
@@ -402,12 +446,38 @@ export default function PublicEventScreen() {
                   </Pressable>
                 </View>
               )}
+              {event.digitalTwinUrl && (
+                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f5f5f7', borderRadius: 8 }}>
+                  <Text style={{ fontWeight: '600', color: '#1c1c1e', marginBottom: 8 }}>Digital Twin Profile</Text>
+                  <Text style={{ color: '#666', marginBottom: 8, fontSize: 14 }}>Learn more about the organizer before the event.</Text>
+                  <Pressable 
+                    style={{ backgroundColor: '#007AFF', padding: 12, borderRadius: 8, alignItems: 'center' }}
+                    onPress={() => Linking.openURL(event.digitalTwinUrl!)}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '600' }}>View Profile</Text>
+                  </Pressable>
+                </View>
+              )}
             </>
           )}
           {event.eventType === "flexible" && selectedDays.length > 0 && (
-            <Text style={styles.successDetail}>
-              You're available on: <Text style={styles.successBold}>{selectedDays.length} days</Text>
-            </Text>
+            <>
+              <Text style={styles.successDetail}>
+                You're available on: <Text style={styles.successBold}>{selectedDays.length} days</Text>
+              </Text>
+              {event.digitalTwinUrl && (
+                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f5f5f7', borderRadius: 8 }}>
+                  <Text style={{ fontWeight: '600', color: '#1c1c1e', marginBottom: 8 }}>Digital Twin Profile</Text>
+                  <Text style={{ color: '#666', marginBottom: 8, fontSize: 14 }}>Learn more about the organizer before the event.</Text>
+                  <Pressable 
+                    style={{ backgroundColor: '#007AFF', padding: 12, borderRadius: 8, alignItems: 'center' }}
+                    onPress={() => Linking.openURL(event.digitalTwinUrl!)}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '600' }}>View Profile</Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
           )}
         </View>
       )}

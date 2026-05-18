@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
-import { FlatList, Pressable, StyleSheet, View, Alert, Modal, ScrollView, Platform } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View, Alert, Modal, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { ProfileIcon } from '@/components/profile-icon';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { eventsLocalStorage, snapshotsLocalStorage, templatesLocalStorage } from '@/lib/local-storage';
@@ -25,6 +26,8 @@ export default function SavesScreen() {
   const [recurringTemplates, setRecurringTemplates] = useState<RecurringEventTemplate[]>([]);
   const [archivedEvents, setArchivedEvents] = useState<any[]>([]);
   const [selectedRecurringTemplate, setSelectedRecurringTemplate] = useState<RecurringEventTemplate | null>(null);
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -279,15 +282,18 @@ export default function SavesScreen() {
         ]}
       >
         <ThemedText type="title">Saves</ThemedText>
-        <Pressable
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push('/about' as any);
-          }}
-          style={styles.aboutButton}
-        >
-          <IconSymbol name="info.circle" size={24} color={tintColor} />
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/about' as any);
+            }}
+            style={styles.aboutButton}
+          >
+            <IconSymbol name="info.circle" size={24} color={tintColor} />
+          </Pressable>
+          {isDesktop && <ProfileIcon />}
+        </View>
       </View>
 
       {/* Segmented Control */}

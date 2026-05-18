@@ -57,8 +57,16 @@ const MAPPING = {
   "chart.bar.fill": "bar-chart",
   "arrow.down.doc": "download",
   "arrow.up.doc": "upload",
+  "arrow.down.doc.fill": "download",
+  "arrow.up.doc.fill": "upload",
+  "externaldrive.fill": "save",
   "wrench.and.screwdriver": "build",
   "arrow.clockwise": "refresh",
+  "eye.fill": "visibility",
+  "list.bullet": "format-list-bulleted",
+  "link": "link",
+  "chevron.down": "expand-more",
+  "xmark.circle.fill": "cancel",
 } as IconMapping;
 
 /**

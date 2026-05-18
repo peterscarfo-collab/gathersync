@@ -50,13 +50,28 @@ export const eventsCloudStorage = {
     try {
       console.log('[CloudStorage] getAll: Creating tRPC client...');
       const client = getTRPCClient();
-      console.log('[CloudStorage] getAll: Calling events.list.query...');
-      const events = await withTimeout(
-        client.events.list.query(),
-        10000, // 10 second timeout
-        'Fetch events list'
-      );
-      console.log('[CloudStorage] getAll: Received', events.length, 'events');
+      console.log('[CloudStorage] getAll: Calling events.list.query and events.listInvited.query...');
+      
+      const [ownedEvents, invitedEvents] = await Promise.all([
+        withTimeout(client.events.list.query(), 10000, 'Fetch owned events list'),
+        withTimeout(client.events.listInvited.query(), 10000, 'Fetch invited events list').catch(err => {
+          console.error('[CloudStorage] Failed to fetch invited events, continuing with owned only:', err);
+          return [];
+        })
+      ]);
+      
+      // Combine and deduplicate events by ID
+      const allEventsMap = new Map();
+      ownedEvents.forEach(e => allEventsMap.set(e.id, { ...e, isInvited: false }));
+      invitedEvents.forEach(e => {
+        if (!allEventsMap.has(e.id)) {
+          allEventsMap.set(e.id, { ...e, isInvited: true });
+        }
+      });
+      
+      const events = Array.from(allEventsMap.values());
+      
+      console.log('[CloudStorage] getAll: Received', events.length, 'total events');
       
       // Fetch participants for all events in parallel
       console.log('[CloudStorage] Fetching participants for all events in parallel...');
@@ -67,6 +82,8 @@ export const eventsCloudStorage = {
             
             return {
               id: event.id,
+              userId: event.userId,
+              isInvited: event.isInvited,
               name: event.name,
               eventType: event.eventType || 'flexible',
               month: event.month,
@@ -91,6 +108,7 @@ export const eventsCloudStorage = {
                 designation: p.designation,
                 organization: p.organization,
                 leadSource: p.leadSource,
+                digitalTwinUrl: p.digitalTwinUrl,
                 rsvpStatus: p.rsvpStatus,
                 deletedAt: p.deletedAt?.toISOString(),
               })),
@@ -219,6 +237,7 @@ export const eventsCloudStorage = {
               if (participant.designation !== null && participant.designation !== undefined) participantPayload.designation = participant.designation;
               if (participant.organization !== null && participant.organization !== undefined) participantPayload.organization = participant.organization;
               if (participant.leadSource !== null && participant.leadSource !== undefined) participantPayload.leadSource = participant.leadSource;
+              if (participant.digitalTwinUrl !== null && participant.digitalTwinUrl !== undefined) participantPayload.digitalTwinUrl = participant.digitalTwinUrl;
               if (participant.rsvpStatus !== null && participant.rsvpStatus !== undefined) participantPayload.rsvpStatus = participant.rsvpStatus;
               if (participant.deletedAt !== undefined) participantPayload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
               
@@ -330,6 +349,7 @@ export const eventsCloudStorage = {
               if (participant.designation !== null && participant.designation !== undefined) payload.designation = participant.designation;
               if (participant.organization !== null && participant.organization !== undefined) payload.organization = participant.organization;
               if (participant.leadSource !== null && participant.leadSource !== undefined) payload.leadSource = participant.leadSource;
+              if (participant.digitalTwinUrl !== null && participant.digitalTwinUrl !== undefined) payload.digitalTwinUrl = participant.digitalTwinUrl;
               if (participant.rsvpStatus !== null && participant.rsvpStatus !== undefined) payload.rsvpStatus = participant.rsvpStatus;
               if ('deletedAt' in participant) payload.deletedAt = participant.deletedAt ? new Date(participant.deletedAt) : null;
 

@@ -31,6 +31,7 @@ export default function EditMeetingDetailsScreen() {
   const [meetingLink, setMeetingLink] = useState('');
   const [rsvpDeadline, setRsvpDeadline] = useState('');
   const [meetingNotes, setMeetingNotes] = useState('');
+  const [digitalTwinUrl, setDigitalTwinUrl] = useState('');
   const [showAttendeeNames, setShowAttendeeNames] = useState(true);
   const [showAttendeeEmails, setShowAttendeeEmails] = useState(false);
   const [showAttendeePhones, setShowAttendeePhones] = useState(false);
@@ -68,6 +69,7 @@ export default function EditMeetingDetailsScreen() {
       setMeetingLink(loadedEvent.meetingLink || '');
       setRsvpDeadline(loadedEvent.rsvpDeadline || '');
       setMeetingNotes(loadedEvent.meetingNotes || '');
+      setDigitalTwinUrl(loadedEvent.digitalTwinUrl || '');
       setShowAttendeeNames(loadedEvent.showAttendeeNames ?? true);
       setShowAttendeeEmails(loadedEvent.showAttendeeEmails ?? false);
       setShowAttendeePhones(loadedEvent.showAttendeePhones ?? false);
@@ -108,6 +110,7 @@ export default function EditMeetingDetailsScreen() {
         meetingLink: meetingType === 'virtual' ? meetingLink.trim() || undefined : undefined,
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
+        digitalTwinUrl: digitalTwinUrl.trim() || undefined,
         showAttendeeNames,
         showAttendeeEmails,
         showAttendeePhones,
@@ -523,6 +526,25 @@ export default function EditMeetingDetailsScreen() {
             multiline
             numberOfLines={4}
             textAlignVertical="top"
+          />
+        </View>
+
+        {/* Digital Twin URL */}
+        <View style={styles.section}>
+          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            GetBizCard Digital Twin URL (Optional)
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.input,
+              { backgroundColor: surfaceColor, color: textColor, borderColor: surfaceColor },
+            ]}
+            placeholder="e.g., https://getbizcard.com/your-name"
+            placeholderTextColor={textSecondaryColor}
+            value={digitalTwinUrl}
+            onChangeText={setDigitalTwinUrl}
+            keyboardType="url"
+            autoCapitalize="none"
           />
         </View>
 

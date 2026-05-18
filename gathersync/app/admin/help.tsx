@@ -274,7 +274,7 @@ export default function HelpScreen() {
             Your event data is safely stored on your device, but it's important to know how the backup system works:
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            <ThemedText style={{ fontWeight: 'bold' }}>Export / Import Backup:</ThemedText> From the main Events screen, you can export your entire database as a JSON file to your device. You can then use this file to restore your data later via "Import Backup". <ThemedText style={{ fontStyle: 'italic' }}>Note: Importing a backup completely overwrites your current data.</ThemedText>
+            <ThemedText style={{ fontWeight: 'bold' }}>Export / Import Backup:</ThemedText> From the new <ThemedText style={{ fontWeight: 'bold' }}>Backup</ThemedText> tab on your dashboard, you can download a full backup of your entire site (all events, templates, and snapshots) as a secure JSON file. You can also restore your site from a previous backup file here. <ThemedText style={{ fontStyle: 'italic' }}>Note: Importing a backup completely overwrites your current data.</ThemedText>
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             <ThemedText style={{ fontWeight: 'bold' }}>Single Event Backup:</ThemedText> Have an important event with a lot of transactions? Open that specific event, click the menu ("..."), and select <ThemedText style={{ fontWeight: 'bold' }}>Export Backup (Single Event)</ThemedText>. This lets you save the state of just one event without affecting the rest of your app.

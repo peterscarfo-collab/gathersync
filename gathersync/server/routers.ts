@@ -130,6 +130,11 @@ export const appRouter = router({
 
   events: router({
     list: protectedProcedure.query(({ ctx }) => db.getUserEvents(ctx.user.id)),
+    
+    listInvited: protectedProcedure.query(({ ctx }) => {
+      if (!ctx.user.email || !ctx.user.name) return [];
+      return db.getInvitedEvents(ctx.user.email, ctx.user.name, ctx.user.id);
+    }),
 
     get: protectedProcedure
       .input(z.object({ id: z.string() }))
@@ -234,6 +239,7 @@ export const appRouter = router({
           designation: z.string().optional(),
           organization: z.string().optional(),
           leadSource: z.string().optional(),
+          digitalTwinUrl: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
           deletedAt: z.date().nullable().optional(),
         })
@@ -258,6 +264,7 @@ export const appRouter = router({
         if (input.designation !== undefined) participantData.designation = input.designation;
         if (input.organization !== undefined) participantData.organization = input.organization;
         if (input.leadSource !== undefined) participantData.leadSource = input.leadSource;
+        if (input.digitalTwinUrl !== undefined) participantData.digitalTwinUrl = input.digitalTwinUrl;
         if (input.rsvpStatus !== undefined) participantData.rsvpStatus = input.rsvpStatus;
         if (input.deletedAt !== undefined) participantData.deletedAt = input.deletedAt;
         
@@ -286,6 +293,7 @@ export const appRouter = router({
           designation: z.string().optional(),
           organization: z.string().optional(),
           leadSource: z.string().optional(),
+          digitalTwinUrl: z.string().optional(),
           rsvpStatus: z.enum(["attending", "not-attending", "no-response"]).optional(),
           deletedAt: z.date().nullable().optional(),
         })

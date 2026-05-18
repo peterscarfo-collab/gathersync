@@ -186,7 +186,7 @@ export class EventsLocalStorage {
         ...changes,
         id, // Preserve original ID
         createdAt: events[index].createdAt, // Preserve creation time
-        updatedAt: now(), // Update modification time
+        updatedAt: changes.updatedAt || now(), // Preserve cloud timestamp if syncing, otherwise update
         // Ready to sync to cloud
       };
       

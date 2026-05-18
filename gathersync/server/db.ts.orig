@@ -1,4 +1,4 @@
-import { and, eq, ne, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -116,27 +116,6 @@ export async function getUserEvents(userId: number) {
   if (!db) return [];
 
   return db.select().from(events).where(eq(events.userId, userId));
-}
-
-export async function getInvitedEvents(email: string, name: string, userId: number) {
-  const db = await getDb();
-  if (!db) return [];
-
-  // Find events where the user is a participant (by email OR exact name match) but NOT the owner
-  const invitedEvents = await db.select({ event: events })
-    .from(events)
-    .innerJoin(participants, eq(events.id, participants.eventId))
-    .where(
-      and(
-        or(
-          eq(participants.email, email),
-          eq(participants.name, name)
-        ),
-        ne(events.userId, userId)
-      )
-    );
-    
-  return invitedEvents.map(row => row.event);
 }
 
 export async function getEventById(eventId: string) {

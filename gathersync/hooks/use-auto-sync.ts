@@ -340,9 +340,15 @@ export function useAutoSync() {
             const cloudUpdated = new Date(cloudEvent.updatedAt).getTime();
             
             if (localUpdated > cloudUpdated) {
-              console.log('[AutoSync] Updating event in cloud:', localEvent.id, localEvent.name);
-              await eventsCloudStorage.update(localEvent.id, localEvent);
-              successCount++;
+              // Only push to cloud if we own the event
+              if (localEvent.isInvited) {
+                console.log('[AutoSync] Skipping push for invited event:', localEvent.id, localEvent.name);
+                successCount++;
+              } else {
+                console.log('[AutoSync] Updating event in cloud:', localEvent.id, localEvent.name);
+                await eventsCloudStorage.update(localEvent.id, localEvent);
+                successCount++;
+              }
             } else {
               console.log('[AutoSync] Skipping event (cloud is newer):', localEvent.id, localEvent.name);
               successCount++;

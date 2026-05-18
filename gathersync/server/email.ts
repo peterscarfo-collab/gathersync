@@ -8,6 +8,10 @@ const FROM_EMAIL = process.env.FROM_EMAIL || 'GatherSync <noreply@gathersync.app
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   if (!resend) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[Email] Cannot send email: RESEND_API_KEY is not configured in production environment.');
+      return { success: false, error: new Error('Email service is not configured') };
+    }
     console.log('[Email Mock] Would send email to:', to);
     console.log('[Email Mock] Subject:', subject);
     console.log('[Email Mock] HTML:', html);
@@ -15,14 +19,20 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
   }
 
   try {
-    const data = await resend.emails.send({
+    const response = await resend.emails.send({
       from: FROM_EMAIL,
       to,
       subject,
       html,
     });
-    console.log('[Email] Sent email to', to, 'ID:', data.data?.id);
-    return { success: true, id: data.data?.id };
+    
+    if (response.error) {
+      console.error('[Email] Resend API Error:', response.error);
+      return { success: false, error: response.error };
+    }
+    
+    console.log('[Email] Sent email to', to, 'ID:', response.data?.id);
+    return { success: true, id: response.data?.id };
   } catch (error) {
     console.error('[Email] Failed to send email to', to, error);
     return { success: false, error };

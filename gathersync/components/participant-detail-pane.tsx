@@ -40,6 +40,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
   const [designation, setDesignation] = useState('');
   const [organization, setOrganization] = useState('');
   const [leadSource, setLeadSource] = useState('');
+  const [digitalTwinUrl, setDigitalTwinUrl] = useState('');
   const isSavingRef = useRef(false);
   const pendingSaveRef = useRef(false);
 
@@ -102,6 +103,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     setDesignation(loadedParticipant.designation || '');
     setOrganization(loadedParticipant.organization || '');
     setLeadSource(loadedParticipant.leadSource || '');
+    setDigitalTwinUrl(loadedParticipant.digitalTwinUrl || '');
   };
 
   const handleDayPress = (day: number) => {
@@ -258,14 +260,31 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     }
   };
 
-  const handleManualSave = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  const handleDigitalTwinUrlChange = (text: string) => {
+    setDigitalTwinUrl(text);
+    if (participant) {
+      participant.digitalTwinUrl = text || undefined;
+    }
+  };
+
+  const saveChanges = async (syncGlobally = false) => {
+    if (!event || !participant) return;
     
-    // First, save the local changes
-    await saveChanges();
+    const updatedEvent = {
+      ...event,
+      updatedAt: new Date().toISOString(),
+    };
     
-    // Then, if name, phone or email changed, update across all events globally
-    if (originalName) {
+    setEvent(updatedEvent);
+    setParticipant({ ...participant });
+    
+    await eventsLocalStorage.update(eventId, updatedEvent);
+    if (onEventUpdated) onEventUpdated(updatedEvent);
+    
+    // Sync globally if requested
+    const eventsToSyncToCloud = [updatedEvent];
+    
+    if (syncGlobally && originalName) {
       try {
         const allEvents = await eventsLocalStorage.getAll();
         for (const e of allEvents) {
@@ -281,37 +300,17 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
               designation: participant?.designation || designation || undefined,
               organization: participant?.organization || organization || undefined,
               leadSource: participant?.leadSource || leadSource || undefined,
+              digitalTwinUrl: participant?.digitalTwinUrl || digitalTwinUrl || undefined,
             };
             await eventsLocalStorage.update(e.id, e);
+            eventsToSyncToCloud.push(e);
           }
         }
+        setOriginalName(participant?.name || name); // update the reference
       } catch (err) {
         console.error('Failed to sync participant details globally:', err);
       }
     }
-    
-    setOriginalName(participant?.name || name); // update the reference
-
-    if (Platform.OS === 'web') {
-      alert('Edits saved successfully!');
-    } else {
-      Alert.alert('Success', 'Edits saved successfully!');
-    }
-  };
-
-  const saveChanges = async () => {
-    if (!event || !participant) return;
-    
-    const updatedEvent = {
-      ...event,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    setEvent(updatedEvent);
-    setParticipant({ ...participant });
-    
-    await eventsLocalStorage.update(eventId, updatedEvent);
-    if (onEventUpdated) onEventUpdated(updatedEvent);
     
     if (isSavingRef.current) {
       pendingSaveRef.current = true;
@@ -323,7 +322,10 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     
     if (isAuthenticated) {
       try {
-        await eventsCloudStorage.update(eventId, updatedEvent);
+        // Sync all modified events to cloud
+        await Promise.all(
+          eventsToSyncToCloud.map(e => eventsCloudStorage.update(e.id, e))
+        );
       } catch (error) {
         console.error('[EditAvailability] Failed to push to cloud:', error);
       }
@@ -333,7 +335,20 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
     
     if (pendingSaveRef.current) {
       pendingSaveRef.current = false;
-      saveChanges();
+      saveChanges(syncGlobally);
+    }
+  };
+
+  const handleManualSave = async () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    // Save local changes and sync globally
+    await saveChanges(true);
+
+    if (Platform.OS === 'web') {
+      alert('Edits saved successfully!');
+    } else {
+      Alert.alert('Success', 'Edits saved successfully!');
     }
   };
 
@@ -510,6 +525,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 ]}
                 value={name}
                 onChangeText={handleNameChange}
+                onBlur={() => saveChanges(false)}
                 placeholder="Participant Name"
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="words"
@@ -531,6 +547,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 ]}
                 value={designation}
                 onChangeText={handleDesignationChange}
+                onBlur={() => saveChanges(false)}
                 placeholder="e.g. Director, Treasurer, VIP"
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="words"
@@ -552,6 +569,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 ]}
                 value={organization}
                 onChangeText={handleOrganizationChange}
+                onBlur={() => saveChanges(false)}
                 placeholder="e.g. Acme Corp, GatherSync"
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="words"
@@ -573,9 +591,33 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 ]}
                 value={leadSource}
                 onChangeText={handleLeadSourceChange}
+                onBlur={() => saveChanges(false)}
                 placeholder="e.g. Letterbox, Trade Show, Referral"
                 placeholderTextColor={textSecondaryColor}
                 autoCapitalize="words"
+              />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+              <ThemedText style={[styles.fieldLabel, { color: textSecondaryColor }]}>
+                Digital Twin URL
+              </ThemedText>
+              <TextInput
+                style={[
+                  styles.contactInput,
+                  {
+                    color: textColor,
+                    borderColor: textSecondaryColor + '40',
+                    backgroundColor: backgroundColor,
+                  },
+                ]}
+                value={digitalTwinUrl}
+                onChangeText={handleDigitalTwinUrlChange}
+                onBlur={() => saveChanges(false)}
+                placeholder="https://getbizcard.com/your-name"
+                placeholderTextColor={textSecondaryColor}
+                keyboardType="url"
+                autoCapitalize="none"
               />
             </View>
 
@@ -595,6 +637,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                   ]}
                   value={phone}
                   onChangeText={handlePhoneChange}
+                  onBlur={() => saveChanges(false)}
                   placeholder="+1 234 567 8900"
                   placeholderTextColor={textSecondaryColor}
                   keyboardType="phone-pad"
@@ -616,6 +659,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                   ]}
                   value={email}
                   onChangeText={handleEmailChange}
+                  onBlur={() => saveChanges(false)}
                   placeholder="john@example.com"
                   placeholderTextColor={textSecondaryColor}
                   keyboardType="email-address"
@@ -640,6 +684,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
               ]}
               value={notes}
               onChangeText={handleNotesChange}
+              onBlur={() => saveChanges(false)}
               placeholder="Add notes (e.g., 'Can only come after 6pm')..."
               placeholderTextColor={textSecondaryColor}
               multiline

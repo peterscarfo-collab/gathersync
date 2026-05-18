@@ -51,6 +51,7 @@ export default function CreateEventScreen() {
   const [meetingLink, setMeetingLink] = useState(params.meetingLink || '');
   const [rsvpDeadline, setRsvpDeadline] = useState(params.rsvpDeadline || '');
   const [meetingNotes, setMeetingNotes] = useState(params.meetingNotes || '');
+  const [digitalTwinUrl, setDigitalTwinUrl] = useState('');
 
   const { user, isAuthenticated } = useAuth();
   const tintColor = useThemeColor({}, 'tint');
@@ -146,6 +147,7 @@ export default function CreateEventScreen() {
         meetingLink: meetingType === 'virtual' ? meetingLink.trim() || undefined : undefined,
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
+        digitalTwinUrl: digitalTwinUrl.trim() || undefined,
       };
 
       // Save locally first (use addWithId to preserve our generated ID)
@@ -655,6 +657,32 @@ export default function CreateEventScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* Digital Twin URL */}
+        <View style={styles.section}>
+          <ThemedText type="defaultSemiBold" style={styles.label}>
+            GetBizCard Digital Twin URL (Optional)
+          </ThemedText>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: surfaceColor,
+                color: textColor,
+                borderColor: surfaceColor,
+              },
+            ]}
+            placeholder="e.g., https://getbizcard.com/your-name"
+            placeholderTextColor={textSecondaryColor}
+            value={digitalTwinUrl}
+            onChangeText={setDigitalTwinUrl}
+            keyboardType="url"
+            autoCapitalize="none"
+          />
+          <ThemedText style={[styles.helperText, { color: textSecondaryColor }]}>
+            Attach your Digital Twin to this event invite.
+          </ThemedText>
         </View>
 
         <View style={styles.section}>

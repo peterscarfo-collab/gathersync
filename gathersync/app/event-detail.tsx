@@ -215,6 +215,9 @@ export default function EventDetailScreen() {
     } else if (event.meetingType === 'virtual' && event.meetingLink) {
       meetingDetails.push(`Meeting Link: ${event.meetingLink}`);
     }
+    if (event.digitalTwinUrl) {
+      meetingDetails.push(`Digital Twin: ${event.digitalTwinUrl}`);
+    }
 
     // Create web link for event viewing and RSVP
     const baseUrl = Platform.OS === 'web' 
@@ -256,7 +259,9 @@ export default function EventDetailScreen() {
         ? `${event.fixedDate}${event.fixedTime ? ' at ' + event.fixedTime : ''}`
         : `${getMonthName(event.month)} ${event.year}`;
 
-      return `Hi ${participant.name},\n\n📅 ${event.name}\n${eventInfo}${event.venueName ? `\n📍 ${event.venueName}` : ''}\n\nView and update your availability:\n${webUrl}`;
+      const digitalTwinText = event.digitalTwinUrl ? `\n\nView my Digital Twin profile:\n${event.digitalTwinUrl}` : '';
+
+      return `Hi ${participant.name},\n\n📅 ${event.name}\n${eventInfo}${event.venueName ? `\n📍 ${event.venueName}` : ''}\n\nView and update your availability:\n${webUrl}${digitalTwinText}`;
     });
 
     // Combine all messages
@@ -350,6 +355,7 @@ export default function EventDetailScreen() {
         meetingLink: event.meetingLink || '',
         rsvpDeadline: event.rsvpDeadline || '',
         meetingNotes: event.meetingNotes || '',
+        digitalTwinUrl: event.digitalTwinUrl || '',
         participants: JSON.stringify(event.participants.map(p => p.name)),
       },
     });
@@ -710,6 +716,25 @@ export default function EventDetailScreen() {
                 </View>
               </View>
             )}
+
+            {event.digitalTwinUrl && (
+              <View style={[styles.detailRow, { backgroundColor: surfaceColor }]}>
+                <IconSymbol name="link" size={20} color={tintColor} />
+                <View style={styles.detailContent}>
+                  <ThemedText style={[styles.detailLabel, { color: textSecondaryColor }]}>Digital Twin</ThemedText>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      Linking.openURL(event.digitalTwinUrl!);
+                    }}
+                  >
+                    <ThemedText type="defaultSemiBold" style={{ color: tintColor }}>
+                      View Digital Twin Profile
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
+            )}
             
             {/* Empty state when no meeting details */}
             {!event.teamLeader && !event.meetingType && !event.rsvpDeadline && !event.meetingNotes && (
@@ -899,6 +924,7 @@ export default function EventDetailScreen() {
             hitSlop={8}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: tintColor + '15', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}
           >
+            <IconSymbol name="ellipsis.circle" size={16} color={tintColor} />
             <ThemedText style={{ color: tintColor, fontWeight: '600', fontSize: 15 }}>Actions</ThemedText>
             <IconSymbol name="chevron.down" size={14} color={tintColor} />
           </Pressable>

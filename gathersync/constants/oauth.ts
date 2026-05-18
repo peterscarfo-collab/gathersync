@@ -18,18 +18,31 @@ export const APP_ID = env.appId;
 export const API_BASE_URL = env.apiBaseUrl;
 
 export function getApiBaseUrl(): string {
-  if (API_BASE_URL) {
-    return API_BASE_URL.replace(/\/$/, "");
-  }
-
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
     const { protocol, hostname } = window.location;
+    
+    // 1. Bulletproof Production Check: If we are on the live site, ALWAYS use the production API
+    if (hostname.includes("gathersync.app") || hostname.includes("netlify.app")) {
+      return "https://gathersync-api.onrender.com";
+    }
+
+    // 2. Localhost Check: If we are on localhost, ALWAYS use localhost API
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:3000";
+    }
+
     const apiHostname = hostname.replace(/^8081-/, "3000-");
     if (apiHostname !== hostname) {
       return `${protocol}//${apiHostname}`;
     }
   }
-  return "";
+
+  // 3. Fallback to Environment Variable
+  if (API_BASE_URL) {
+    return API_BASE_URL.replace(/\/$/, "");
+  }
+
+  return "https://gathersync-api.onrender.com";
 }
 
 const encodeState = (value: string) => {
@@ -40,10 +53,10 @@ const encodeState = (value: string) => {
 };
 
 export function getLoginUrl() {
-  const redirectUri = Linking.createURL("api/oauth/callback", { scheme: env.deepLinkScheme });
+  const redirectUri = Linking.createURL("oauth/callback", { scheme: env.deepLinkScheme });
   
-  // Use the API_BASE_URL if available, otherwise fallback to localhost
-  const baseUrl = API_BASE_URL ? API_BASE_URL.replace(/\/$/, "") : "http://localhost:3000";
+  let baseUrl = getApiBaseUrl();
+  
   const url = new URL(`${baseUrl}/api/auth/google`);
   
   url.searchParams.set("appId", APP_ID);

@@ -11,8 +11,10 @@ import {
   Alert,
   ActivityIndicator,
   useWindowDimensions,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
@@ -21,7 +23,9 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/use-auth';
+import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage } from '@/lib/local-storage';
+import { eventsCloudStorage } from '@/lib/cloud-storage';
 import { trpc } from '@/lib/trpc';
 import { AdminColors } from '@/constants/admin-theme';
 import type { Event, Participant } from '@/types/models';
@@ -39,6 +43,7 @@ interface ParticipantWithEvents {
   designation?: string;
   organization?: string;
   leadSource?: string;
+  digitalTwinUrl?: string;
   notes?: string;
   eventCount: number;
   events: EventInfo[];
@@ -51,7 +56,8 @@ export default function AdminParticipantsScreen() {
   const tintColor = useThemeColor({}, 'tint');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2a2a2a' }, 'background');
   const surfaceColor = useThemeColor({ light: '#fff', dark: '#1a1a1a' }, 'background');
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const { syncStatus } = useAutoSync();
   
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -74,6 +80,7 @@ export default function AdminParticipantsScreen() {
   const [addDesignation, setAddDesignation] = useState('');
   const [addOrganization, setAddOrganization] = useState('');
   const [addLeadSource, setAddLeadSource] = useState('');
+  const [addDigitalTwinUrl, setAddDigitalTwinUrl] = useState('');
   const [addEventId, setAddEventId] = useState<string>(eventId || '');
 
   const [isEditingParticipant, setIsEditingParticipant] = useState(false);
@@ -83,9 +90,17 @@ export default function AdminParticipantsScreen() {
   const [editDesignation, setEditDesignation] = useState('');
   const [editOrganization, setEditOrganization] = useState('');
   const [editLeadSource, setEditLeadSource] = useState('');
+  const [editDigitalTwinUrl, setEditDigitalTwinUrl] = useState('');
   const [editEventId, setEditEventId] = useState<string>(eventId || '');
   const [showGrantModal, setShowGrantModal] = useState(false);
   const [selectedUserForGrant, setSelectedUserForGrant] = useState<{id: number, name: string} | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
+  }, [eventId]);
 
   const { data: matchedUsers, isLoading: isLoadingUser, refetch: refetchUsers } = trpc.admin.searchUsers.useQuery(
     { query: selectedParticipant?.email || selectedParticipant?.name || '' },
@@ -196,9 +211,18 @@ export default function AdminParticipantsScreen() {
 
   const matchedUser = matchedUsers && matchedUsers.length > 0 ? matchedUsers[0] : null;
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [eventId])
+  );
+
+  // Reload data when sync completes
   useEffect(() => {
-    loadData();
-  }, [eventId]);
+    if (syncStatus === 'synced') {
+      loadData();
+    }
+  }, [syncStatus]);
 
   useEffect(() => {
     applySearchAndSort();
@@ -221,11 +245,11 @@ export default function AdminParticipantsScreen() {
       const participantMap = new Map<string, ParticipantWithEvents>();
       
       // First pass: gather global contact info from ALL events (including archived)
-      const globalInfo = new Map<string, {phone?: string, email?: string, designation?: string, organization?: string, leadSource?: string, notes?: string}>();
+      const globalInfo = new Map<string, {phone?: string, email?: string, designation?: string, organization?: string, leadSource?: string, digitalTwinUrl?: string, notes?: string}>();
       allEvents.forEach(e => e.participants.forEach(p => {
         if (p.deletedAt) return;
         if (!globalInfo.has(p.name)) {
-          globalInfo.set(p.name, { phone: p.phone, email: p.email, designation: p.designation, organization: p.organization, leadSource: p.leadSource, notes: p.notes });
+          globalInfo.set(p.name, { phone: p.phone, email: p.email, designation: p.designation, organization: p.organization, leadSource: p.leadSource, digitalTwinUrl: p.digitalTwinUrl, notes: p.notes });
         } else {
           const current = globalInfo.get(p.name)!;
           if (p.phone && !current.phone) current.phone = p.phone;
@@ -233,6 +257,7 @@ export default function AdminParticipantsScreen() {
           if (p.designation && !current.designation) current.designation = p.designation;
           if (p.organization && !current.organization) current.organization = p.organization;
           if (p.leadSource && !current.leadSource) current.leadSource = p.leadSource;
+          if (p.digitalTwinUrl && !current.digitalTwinUrl) current.digitalTwinUrl = p.digitalTwinUrl;
           if (p.notes && !current.notes) current.notes = p.notes;
         }
       }));
@@ -272,6 +297,9 @@ export default function AdminParticipantsScreen() {
             if (info.leadSource && !existing.leadSource) {
               existing.leadSource = info.leadSource;
             }
+            if (info.digitalTwinUrl && !existing.digitalTwinUrl) {
+              existing.digitalTwinUrl = info.digitalTwinUrl;
+            }
             if (info.notes && !existing.notes) {
               existing.notes = info.notes;
             }
@@ -283,6 +311,7 @@ export default function AdminParticipantsScreen() {
               designation: info.designation || participant.designation,
               organization: info.organization || participant.organization,
               leadSource: info.leadSource || participant.leadSource,
+              digitalTwinUrl: info.digitalTwinUrl || participant.digitalTwinUrl,
               notes: info.notes || participant.notes,
               eventCount: isProspectEvent ? 0 : 1,
               events: isProspectEvent ? [] : [{ id: event.id, name: event.name, date }],
@@ -373,6 +402,13 @@ export default function AdminParticipantsScreen() {
           // Reactivate soft-deleted participant
           activeEvent.participants[existingParticipantIndex].deletedAt = undefined;
           await eventsLocalStorage.update(activeEvent.id, activeEvent);
+          if (isAuthenticated) {
+            try {
+              await eventsCloudStorage.update(activeEvent.id, activeEvent);
+            } catch (error) {
+              console.error('[AdminParticipants] Failed to push to cloud:', error);
+            }
+          }
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           loadData(); // Refresh the list
         } else {
@@ -396,6 +432,13 @@ export default function AdminParticipantsScreen() {
         };
         activeEvent.participants.push(newParticipant);
         await eventsLocalStorage.update(activeEvent.id, activeEvent);
+        if (isAuthenticated) {
+          try {
+            await eventsCloudStorage.update(activeEvent.id, activeEvent);
+          } catch (error) {
+            console.error('[AdminParticipants] Failed to push to cloud:', error);
+          }
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadData(); // Refresh the list
       }
@@ -441,6 +484,7 @@ export default function AdminParticipantsScreen() {
 
     try {
       let targetEventId = addEventId;
+      let eventToSyncToCloud = null;
 
       // If no event selected, find or create the hidden "Prospects Directory" event
       if (!targetEventId) {
@@ -456,6 +500,14 @@ export default function AdminParticipantsScreen() {
             participants: [],
             archived: true,
           });
+          
+          if (isAuthenticated) {
+            try {
+              await eventsCloudStorage.add(prospectsEvent);
+            } catch (error) {
+              console.error('[AdminParticipants] Failed to push new prospects event to cloud:', error);
+            }
+          }
         }
         targetEventId = prospectsEvent.id;
       }
@@ -468,17 +520,19 @@ export default function AdminParticipantsScreen() {
       if (existingIndex !== -1) {
         if (eventToUpdate.participants[existingIndex].deletedAt) {
           // Reactivate and update
-          eventToUpdate.participants[existingIndex] = {
-            ...eventToUpdate.participants[existingIndex],
-            name: addName.trim(),
-            phone: addPhone.trim() || undefined,
-            email: addEmail.trim() || undefined,
-            designation: addDesignation.trim() || undefined,
-            organization: addOrganization.trim() || undefined,
-            leadSource: addLeadSource.trim() || undefined,
-            deletedAt: undefined,
-          };
+            eventToUpdate.participants[existingIndex] = {
+              ...eventToUpdate.participants[existingIndex],
+              name: addName.trim(),
+              phone: addPhone.trim() || undefined,
+              email: addEmail.trim() || undefined,
+              designation: addDesignation.trim() || undefined,
+              organization: addOrganization.trim() || undefined,
+              leadSource: addLeadSource.trim() || undefined,
+              digitalTwinUrl: addDigitalTwinUrl.trim() || undefined,
+              deletedAt: undefined,
+            };
           await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+          eventToSyncToCloud = eventToUpdate;
         } else {
           Alert.alert('Info', 'Participant is already in this event.');
           return;
@@ -492,6 +546,7 @@ export default function AdminParticipantsScreen() {
           designation: addDesignation.trim() || undefined,
           organization: addOrganization.trim() || undefined,
           leadSource: addLeadSource.trim() || undefined,
+          digitalTwinUrl: addDigitalTwinUrl.trim() || undefined,
           availability: {},
           unavailableAllMonth: false,
           source: 'manual',
@@ -500,6 +555,15 @@ export default function AdminParticipantsScreen() {
 
         eventToUpdate.participants.push(newParticipant);
         await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+        eventToSyncToCloud = eventToUpdate;
+      }
+      
+      if (isAuthenticated && eventToSyncToCloud) {
+        try {
+          await eventsCloudStorage.update(eventToSyncToCloud.id, eventToSyncToCloud);
+        } catch (error) {
+          console.error('[AdminParticipants] Failed to push to cloud:', error);
+        }
       }
 
       setAddName('');
@@ -507,6 +571,8 @@ export default function AdminParticipantsScreen() {
       setAddEmail('');
       setAddDesignation('');
       setAddOrganization('');
+      setAddLeadSource('');
+      setAddDigitalTwinUrl('');
       setAddEventId('');
       setShowAddModal(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -532,8 +598,10 @@ export default function AdminParticipantsScreen() {
       const newDesignation = editDesignation.trim() || undefined;
       const newOrganization = editOrganization.trim() || undefined;
       const newLeadSource = editLeadSource.trim() || undefined;
+      const newDigitalTwinUrl = editDigitalTwinUrl.trim() || undefined;
 
       let hasUpdatedAny = false;
+      const eventsToSyncToCloud = [];
 
       // Update existing events
       for (const evt of selectedParticipant.events) {
@@ -549,8 +617,10 @@ export default function AdminParticipantsScreen() {
               designation: newDesignation,
               organization: newOrganization,
               leadSource: newLeadSource,
+              digitalTwinUrl: newDigitalTwinUrl,
             };
             await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+            eventsToSyncToCloud.push(eventToUpdate);
             hasUpdatedAny = true;
           }
         }
@@ -571,8 +641,10 @@ export default function AdminParticipantsScreen() {
                 designation: newDesignation,
                 organization: newOrganization,
                 leadSource: newLeadSource,
+                digitalTwinUrl: newDigitalTwinUrl,
               };
               await eventsLocalStorage.update(prospectsEvent.id, prospectsEvent);
+              eventsToSyncToCloud.push(prospectsEvent);
            }
         }
       }
@@ -593,9 +665,11 @@ export default function AdminParticipantsScreen() {
                 designation: newDesignation,
                 organization: newOrganization,
                 leadSource: newLeadSource,
+                digitalTwinUrl: newDigitalTwinUrl,
                 deletedAt: undefined,
               };
               await eventsLocalStorage.update(eventToAdd.id, eventToAdd);
+              eventsToSyncToCloud.push(eventToAdd);
             }
           } else {
             const newParticipant: Participant = {
@@ -606,6 +680,7 @@ export default function AdminParticipantsScreen() {
               designation: newDesignation,
               organization: newOrganization,
               leadSource: newLeadSource,
+              digitalTwinUrl: newDigitalTwinUrl,
               availability: {},
               unavailableAllMonth: false,
               source: 'manual',
@@ -613,7 +688,19 @@ export default function AdminParticipantsScreen() {
             };
             eventToAdd.participants.push(newParticipant);
             await eventsLocalStorage.update(eventToAdd.id, eventToAdd);
+            eventsToSyncToCloud.push(eventToAdd);
           }
+        }
+      }
+
+      // Sync all modified events to cloud
+      if (isAuthenticated && eventsToSyncToCloud.length > 0) {
+        try {
+          await Promise.all(
+            eventsToSyncToCloud.map(e => eventsCloudStorage.update(e.id, e))
+          );
+        } catch (error) {
+          console.error('[AdminParticipants] Failed to push to cloud:', error);
         }
       }
 
@@ -766,6 +853,9 @@ export default function AdminParticipantsScreen() {
       <ScrollView 
         style={styles.participantList}
         contentContainerStyle={isDesktop ? styles.participantListGrid : undefined}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {filteredParticipants.length === 0 ? (
           <View style={styles.emptyState}>
@@ -790,6 +880,7 @@ export default function AdminParticipantsScreen() {
                 setEditDesignation(participant.designation || '');
                 setEditOrganization(participant.organization || '');
                 setEditLeadSource(participant.leadSource || '');
+                setEditDigitalTwinUrl(participant.digitalTwinUrl || '');
                 setEditEventId(''); // Reset the "Add to Event" dropdown
                 setIsEditingParticipant(false);
               }}
@@ -1052,6 +1143,19 @@ export default function AdminParticipantsScreen() {
                             value={editLeadSource}
                             onChangeText={setEditLeadSource}
                             autoCapitalize="words"
+                          />
+                        </View>
+
+                        <View style={{ marginTop: 12 }}>
+                          <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Digital Twin URL (Optional)</ThemedText>
+                          <TextInput
+                            style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                            placeholder="https://getbizcard.com/your-name"
+                            placeholderTextColor="#999"
+                            value={editDigitalTwinUrl}
+                            onChangeText={setEditDigitalTwinUrl}
+                            keyboardType="url"
+                            autoCapitalize="none"
                           />
                         </View>
                       </View>
@@ -1401,6 +1505,19 @@ export default function AdminParticipantsScreen() {
                     value={addLeadSource}
                     onChangeText={setAddLeadSource}
                     autoCapitalize="words"
+                  />
+                </View>
+
+                <View style={{ marginTop: 12 }}>
+                  <ThemedText style={{ marginBottom: 4, fontWeight: '500', fontSize: 13 }}>Digital Twin URL (Optional)</ThemedText>
+                  <TextInput
+                    style={[styles.searchInput, { backgroundColor: cardBg, color: tintColor, paddingVertical: 8, paddingHorizontal: 12, fontSize: 14 }]}
+                    placeholder="https://getbizcard.com/your-name"
+                    placeholderTextColor="#999"
+                    value={addDigitalTwinUrl}
+                    onChangeText={setAddDigitalTwinUrl}
+                    keyboardType="url"
+                    autoCapitalize="none"
                   />
                 </View>
               </View>

@@ -15,11 +15,14 @@ export interface Participant {
   organization?: string; // Company or Organization
   leadSource?: string; // Lead source (e.g. Letterbox, Trade Show, Referral)
   rsvpStatus?: 'attending' | 'not-attending' | 'no-response'; // RSVP status for fixed events
+  digitalTwinUrl?: string; // Optional URL to GetBizCard digital twin
   deletedAt?: string; // ISO date string when participant was soft-deleted
 }
 
 export interface Event {
   id: string;
+  userId?: number;
+  isInvited?: boolean;
   name: string;
   eventType: 'flexible' | 'fixed'; // Type of event
   month: number; // 1-12
@@ -49,6 +52,7 @@ export interface Event {
   showAttendeeNames?: boolean; // Privacy setting: if true, show names on public page
   showAttendeeEmails?: boolean; // Privacy setting: if true, show emails on public page
   showAttendeePhones?: boolean; // Privacy setting: if true, show phones on public page
+  digitalTwinUrl?: string; // Optional URL to GetBizCard digital twin
   attendanceRecords?: AttendanceRecord[]; // Attendance tracking for completed events
   deletedAt?: string; // ISO date string when event was soft-deleted
 }

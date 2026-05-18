@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, ScrollView, View, Pressable, Platform, Alert } from 'react-native';
+import { StyleSheet, ScrollView, View, Pressable, Platform, Alert, useWindowDimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { ProfileIcon } from '@/components/profile-icon';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/use-auth';
@@ -19,6 +20,8 @@ export default function AdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated } = useAuth();
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
   
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,13 +191,14 @@ export default function AdminScreen() {
     <DesktopLayout>
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top + 40, 80) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 40, 80), flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
         <View>
           <ThemedText style={styles.headerTitle}>Dashboard</ThemedText>
           <ThemedText style={styles.headerSubtitle}>
             Welcome back, {user?.name || user?.email || 'User'}
           </ThemedText>
         </View>
+        {isDesktop && <ProfileIcon />}
       </View>
 
       {/* Statistics Cards */}

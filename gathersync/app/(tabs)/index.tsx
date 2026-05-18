@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { DesktopLayout } from '@/components/desktop-layout';
 import { EventCard } from '@/components/event-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { ProfileIcon } from '@/components/profile-icon';
 import { OnboardingModal } from '@/components/onboarding-modal';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/hooks/use-auth';
@@ -31,6 +32,7 @@ export default function EventsScreen() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const { syncStatus, isOnline, createEvent: autoCreateEvent, updateEvent: autoUpdateEvent, deleteEvent: autoDeleteEvent, bidirectionalSync } = useAutoSync();
   const [events, setEvents] = useState<Event[]>([]);
+  const [invitedEvents, setInvitedEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showLoginBanner, setShowLoginBanner] = useState(true);
@@ -94,33 +96,41 @@ export default function EventsScreen() {
       
       const loadedEvents = await eventsLocalStorage.getAll();
       console.log('[EventsScreen] Loaded', loadedEvents.length, 'events');
+      
+      // Separate owned events and invited events
+      const ownedEvents = loadedEvents.filter(e => !e.isInvited);
+      const invited = loadedEvents.filter(e => e.isInvited);
+      
       // Filter out archived events from main list
-      const activeEvents = loadedEvents.filter(e => !e.archived);
+      const activeEvents = ownedEvents.filter(e => !e.archived);
+      const activeInvited = invited.filter(e => !e.archived);
+      
       // Sort by date (chronological order)
-      activeEvents.sort((a, b) => {
-        // Fixed events: sort by fixedDate and fixedTime
+      const sortEvents = (a: Event, b: Event) => {
         if (a.eventType === 'fixed' && b.eventType === 'fixed') {
           const dateA = new Date(a.fixedDate + 'T' + a.fixedTime);
           const dateB = new Date(b.fixedDate + 'T' + b.fixedTime);
           return dateA.getTime() - dateB.getTime();
         }
-        // Flexible events: sort by year and month
         if (a.eventType === 'flexible' && b.eventType === 'flexible') {
           if (a.year !== b.year) return a.year - b.year;
           return a.month - b.month;
         }
-        // Mixed: fixed events come before flexible events with same year/month
         if (a.eventType === 'fixed') {
           const dateA = new Date(a.fixedDate + 'T' + a.fixedTime);
-          const dateB = new Date(b.year, b.month - 1, 15); // Mid-month for comparison
+          const dateB = new Date(b.year, b.month - 1, 15);
           return dateA.getTime() - dateB.getTime();
         }
-        // b is fixed, a is flexible
         const dateA = new Date(a.year, a.month - 1, 15);
         const dateB = new Date(b.fixedDate + 'T' + b.fixedTime);
         return dateA.getTime() - dateB.getTime();
-      });
+      };
+      
+      activeEvents.sort(sortEvents);
+      activeInvited.sort(sortEvents);
+      
       setEvents(activeEvents);
+      setInvitedEvents(activeInvited);
     } catch (error) {
       console.error('[EventsScreen] Failed to load events:', error);
     } finally {
@@ -604,7 +614,7 @@ export default function EventsScreen() {
             );
           })()}
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <Pressable
             style={[styles.headerButton, { backgroundColor: tintColor + '15' }]}
             onPress={() => setShowBackupMenu(!showBackupMenu)}
@@ -620,6 +630,7 @@ export default function EventsScreen() {
               Templates
             </ThemedText>
           </Pressable>
+          {isDesktop && <ProfileIcon />}
         </View>
       </View>
 
@@ -853,10 +864,10 @@ export default function EventsScreen() {
         renderItem={({ item }) => (
           <EventCard event={item} onPress={() => handleEventPress(item)} />
         )}
-        ListEmptyComponent={loading ? null : renderEmpty}
+        ListEmptyComponent={loading && invitedEvents.length === 0 ? null : (events.length === 0 && invitedEvents.length === 0 ? renderEmpty : null)}
         contentContainerStyle={[
           styles.listContent,
-          events.length === 0 && styles.listContentEmpty,
+          events.length === 0 && invitedEvents.length === 0 && styles.listContentEmpty,
           isDesktop && styles.listContentWeb,
         ]}
         showsVerticalScrollIndicator={false}
@@ -867,16 +878,35 @@ export default function EventsScreen() {
             tintColor={tintColor}
           />
         }
+        ListHeaderComponent={() => (
+          <>
+            {events.length > 0 && (
+              <ThemedText style={[styles.sectionTitle, { marginTop: 0 }]}>My Events</ThemedText>
+            )}
+          </>
+        )}
         ListFooterComponent={() => (
-          <View style={[styles.footer, isDesktop && styles.footerWeb]}>
-            <ThemedText style={[styles.footerText, { color: textSecondaryColor }]}>
-              © 2026 Peter Scarfo. All rights reserved.
-            </ThemedText>
-          </View>
+          <>
+            {invitedEvents.length > 0 && (
+              <View style={{ marginTop: 24, marginBottom: 24 }}>
+                <ThemedText style={styles.sectionTitle}>Events I'm Invited To</ThemedText>
+                {invitedEvents.map(item => (
+                  <View key={item.id} style={{ marginBottom: 16 }}>
+                    <EventCard event={item} onPress={() => handleEventPress(item)} />
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={[styles.footer, isDesktop && styles.footerWeb]}>
+              <ThemedText style={[styles.footerText, { color: textSecondaryColor }]}>
+                © 2026 Peter Scarfo. All rights reserved.
+              </ThemedText>
+            </View>
+          </>
         )}
       />
 
-      {events.length > 0 && (
+      {(events.length > 0 || invitedEvents.length > 0) && (
         <Pressable
           style={[
             styles.fab,
@@ -907,6 +937,12 @@ export default function EventsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+    marginLeft: 16,
   },
   header: {
     flexDirection: 'row',

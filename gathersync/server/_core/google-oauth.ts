@@ -7,7 +7,16 @@ import crypto from "crypto";
 // Environment variables
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = "https://gathersync-api.onrender.com/api/auth/google/callback";
+
+// Use local URLs in development, otherwise use production URLs
+const isDev = process.env.NODE_ENV === 'development';
+const GOOGLE_REDIRECT_URI = isDev 
+  ? "http://localhost:3000/api/auth/google/callback" 
+  : "https://gathersync-api.onrender.com/api/auth/google/callback";
+
+const FRONTEND_URL = isDev
+  ? "http://localhost:8081"
+  : "https://app.gathersync.app";
 
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
   throw new Error("Google OAuth not configured");
@@ -91,16 +100,15 @@ export function registerGoogleOAuthRoutes(app: Express) {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
     const error = getQueryParam(req, "error");
-    const frontendUrl = "https://app.gathersync.app";
 
     if (error) {
       console.error("[Google OAuth] Error:", error);
-      res.redirect(`${frontendUrl}?error=${error}`);
+      res.redirect(`${FRONTEND_URL}?error=${error}`);
       return;
     }
 
     if (!code || !state) {
-      res.redirect(`${frontendUrl}/oauth/callback?error=Missing+code+or+state`);
+      res.redirect(`${FRONTEND_URL}/oauth/callback?error=Missing+code+or+state`);
       return;
     }
 
@@ -160,8 +168,7 @@ export function registerGoogleOAuthRoutes(app: Express) {
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
       // Redirect to frontend with token in URL
-      const frontendUrl = "https://app.gathersync.app";
-      res.redirect(`${frontendUrl}/oauth/callback?sessionToken=${sessionToken}`);
+      res.redirect(`${FRONTEND_URL}/oauth/callback?sessionToken=${sessionToken}`);
     } catch (error) {
       console.error("[Google OAuth] Callback failed:", error);
       res.status(500).json({ error: "OAuth callback failed" });
