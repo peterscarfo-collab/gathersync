@@ -18,6 +18,11 @@ import * as Haptics from "expo-haptics";
 import { Event, Participant } from "@/types/models";
 import { getMonthName } from "@/lib/calendar-utils";
 import { getApiBaseUrl } from "@/constants/oauth";
+import {
+  getFeaturedParticipants,
+  getTwinLinkLabel,
+  resolveHostProfile,
+} from "@/lib/public-event-utils";
 
 export default function PublicEventScreen() {
   const params = useLocalSearchParams();
@@ -206,105 +211,153 @@ export default function PublicEventScreen() {
 
   const daysInMonth = new Date(event.year, event.month, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const hostProfile = resolveHostProfile(event);
+  const featuredParticipants = getFeaturedParticipants(event, hostProfile);
+  const attendingCount = event.participants.filter((p) => p.rsvpStatus === "attending").length;
+  const webContainer = Platform.OS === "web" ? styles.webContainer : undefined;
+
+  const openUrl = (url: string) => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    Linking.openURL(url);
+  };
 
   return (
     <ScrollView
       style={styles.scrollView}
       contentContainerStyle={[
         styles.scrollContent,
+        webContainer,
         {
-          paddingTop: Math.max(insets.top, 20) + 20,
+          paddingTop: Math.max(insets.top, 20) + 12,
           paddingBottom: Math.max(insets.bottom, 20) + 20,
         },
       ]}
     >
-      {/* Header */}
+      {/* Compact branding */}
       <View style={styles.header}>
-        <Image 
-          source={require('@/assets/images/icon.png')} 
-          style={{ width: 48, height: 48, borderRadius: 12, marginBottom: 12 }} 
+        <Image
+          source={require("@/assets/images/icon.png")}
+          style={{ width: 36, height: 36, borderRadius: 10, marginBottom: 8 }}
         />
-        <Text style={styles.logo}>GatherSync</Text>
-        <Text style={styles.tagline}>Find the perfect time, together</Text>
+        <Text style={styles.logoSmall}>GatherSync</Text>
       </View>
 
-      {/* Event Card */}
+      {/* Event hero */}
       <View style={styles.eventCard}>
+        {event.meetingType && (
+          <View
+            style={[
+              styles.typeBadge,
+              event.meetingType === "virtual" && styles.typeBadgeVirtual,
+            ]}
+          >
+            <Text style={styles.typeBadgeText}>
+              {event.meetingType === "virtual" ? "Virtual" : "In person"}
+            </Text>
+          </View>
+        )}
         <Text style={styles.eventName}>{event.name}</Text>
-        {event.eventType === 'fixed' && event.fixedDate ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' }}>
-            <Text style={styles.eventDate}>
-              {new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
+        {event.eventType === "fixed" && event.fixedDate ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
+            <Text style={styles.eventDatePrimary}>
+              {new Date(event.fixedDate + "T12:00:00").toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric",
               })}
             </Text>
             {event.fixedTime && (
-              <>
-                <Text style={[styles.eventDate, { marginHorizontal: 8 }]}>
-                  •
-                </Text>
-                <Text style={styles.eventDate}>
-                  {(() => {
-                    const [hours, minutes] = event.fixedTime.split(':').map(Number);
-                    const ampm = hours >= 12 ? 'PM' : 'AM';
-                    const displayHours = hours % 12 || 12;
-                    return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
-                  })()}
-                </Text>
-              </>
+              <Text style={styles.eventTimePrimary}>
+                {(() => {
+                  const [hours, minutes] = event.fixedTime.split(":").map(Number);
+                  const ampm = hours >= 12 ? "PM" : "AM";
+                  const displayHours = hours % 12 || 12;
+                  return `${displayHours}:${String(minutes).padStart(2, "0")} ${ampm}`;
+                })()}
+              </Text>
             )}
           </View>
         ) : (
-          <Text style={styles.eventDate}>
+          <Text style={styles.eventDatePrimary}>
             {getMonthName(event.month)} {event.year}
           </Text>
         )}
 
+        {event.teamLeader && (
+          <Text style={styles.hostedBy}>
+            Hosted by <Text style={styles.hostedByName}>{event.teamLeader}</Text>
+          </Text>
+        )}
+
         {event.venueName && (
-          <View style={styles.venueInfo}>
-            <Text style={styles.venueLabel}>📍 Venue</Text>
-            <Text style={styles.venueName}>{event.venueName}</Text>
+          <View style={styles.detailBlock}>
+            <Text style={styles.detailLabel}>Venue</Text>
+            <Text style={styles.detailValue}>{event.venueName}</Text>
           </View>
         )}
 
-        {event.digitalTwinUrl && (
-          <View style={[styles.venueInfo, { marginTop: 16 }]}>
-            <Text style={styles.venueLabel}>🔗 Digital Twin</Text>
-            <Pressable onPress={() => Linking.openURL(event.digitalTwinUrl!)}>
-              <Text style={[styles.venueName, { color: '#007AFF', textDecorationLine: 'underline' }]}>
-                View Profile
-              </Text>
-            </Pressable>
+        {event.rsvpDeadline && (
+          <View style={styles.detailBlock}>
+            <Text style={styles.detailLabel}>RSVP by</Text>
+            <Text style={styles.detailValue}>{event.rsvpDeadline}</Text>
+          </View>
+        )}
+
+        {event.meetingNotes && (
+          <View style={[styles.detailBlock, styles.notesBlock]}>
+            <Text style={styles.notesText}>{event.meetingNotes}</Text>
           </View>
         )}
       </View>
 
-      {/* Featured Profiles (Participant Digital Twins) */}
-      {event.participants.some(p => p.digitalTwinUrl) && (
+      {/* Host Digital Twin — prominent CTA */}
+      {hostProfile && (
+        <View style={styles.hostCard}>
+          <Text style={styles.hostEyebrow}>Meet your host</Text>
+          <Text style={styles.hostName}>{hostProfile.name}</Text>
+          {hostProfile.subtitle ? (
+            <Text style={styles.hostSubtitle}>{hostProfile.subtitle}</Text>
+          ) : null}
+          <Text style={styles.hostBlurb}>
+            Watch a quick intro before you RSVP — learn what to expect and who is hosting.
+          </Text>
+          <Pressable
+            style={styles.hostButton}
+            onPress={() => openUrl(hostProfile.digitalTwinUrl)}
+          >
+            <Text style={styles.hostButtonText}>
+              {getTwinLinkLabel(hostProfile.digitalTwinUrl)}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Other featured profiles */}
+      {featuredParticipants.length > 0 && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Featured Profiles</Text>
+          <Text style={styles.cardTitle}>Featured profiles</Text>
           <View style={styles.attendeesList}>
-            {event.participants
-              .filter(p => p.digitalTwinUrl)
-              .map(p => (
-                <View key={p.id} style={[styles.attendeeItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
-                  <View>
-                    <Text style={styles.attendeeName}>{p.name}</Text>
-                    {p.designation && (
-                      <Text style={{ fontSize: 14, color: '#666', marginTop: 2 }}>{p.designation}</Text>
-                    )}
-                  </View>
-                  <Pressable 
-                    style={{ backgroundColor: '#007AFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}
-                    onPress={() => Linking.openURL(p.digitalTwinUrl!)}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>View Profile</Text>
-                  </Pressable>
+            {featuredParticipants.map((p) => (
+              <View key={p.id} style={styles.featuredRow}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={styles.attendeeName}>{p.name}</Text>
+                  {(p.designation || p.organization) && (
+                    <Text style={styles.featuredSubtitle}>
+                      {[p.designation, p.organization].filter(Boolean).join(" · ")}
+                    </Text>
+                  )}
                 </View>
-              ))}
+                <Pressable
+                  style={styles.featuredButton}
+                  onPress={() => openUrl(p.digitalTwinUrl!)}
+                >
+                  <Text style={styles.featuredButtonText}>View profile</Text>
+                </Pressable>
+              </View>
+            ))}
           </View>
         </View>
       )}
@@ -439,22 +492,26 @@ export default function PublicEventScreen() {
                 Your RSVP: <Text style={styles.successBold}>{rsvpStatus === "attending" ? "Attending" : "Not Attending"}</Text>
               </Text>
               {rsvpStatus === "attending" && event.meetingType === "virtual" && event.meetingLink && (
-                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f0f8ff', borderRadius: 8 }}>
-                  <Text style={{ fontWeight: '600', color: '#007AFF', marginBottom: 8 }}>Meeting Link</Text>
-                  <Pressable onPress={() => Linking.openURL(event.meetingLink!)}>
-                    <Text style={{ color: '#007AFF', textDecorationLine: 'underline' }}>{event.meetingLink}</Text>
+                <View style={styles.infoCallout}>
+                  <Text style={styles.infoCalloutTitle}>Meeting link</Text>
+                  <Pressable onPress={() => openUrl(event.meetingLink!)}>
+                    <Text style={styles.infoCalloutLink}>{event.meetingLink}</Text>
                   </Pressable>
                 </View>
               )}
-              {event.digitalTwinUrl && (
-                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f5f5f7', borderRadius: 8 }}>
-                  <Text style={{ fontWeight: '600', color: '#1c1c1e', marginBottom: 8 }}>Digital Twin Profile</Text>
-                  <Text style={{ color: '#666', marginBottom: 8, fontSize: 14 }}>Learn more about the organizer before the event.</Text>
-                  <Pressable 
-                    style={{ backgroundColor: '#007AFF', padding: 12, borderRadius: 8, alignItems: 'center' }}
-                    onPress={() => Linking.openURL(event.digitalTwinUrl!)}
+              {hostProfile && (
+                <View style={[styles.infoCallout, { marginTop: 16 }]}>
+                  <Text style={styles.infoCalloutTitle}>Thanks for RSVPing!</Text>
+                  <Text style={styles.infoCalloutBody}>
+                    Want to know more about {hostProfile.name} before the event?
+                  </Text>
+                  <Pressable
+                    style={[styles.hostButton, { marginTop: 12 }]}
+                    onPress={() => openUrl(hostProfile.digitalTwinUrl)}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '600' }}>View Profile</Text>
+                    <Text style={styles.hostButtonText}>
+                      {getTwinLinkLabel(hostProfile.digitalTwinUrl)}
+                    </Text>
                   </Pressable>
                 </View>
               )}
@@ -465,15 +522,16 @@ export default function PublicEventScreen() {
               <Text style={styles.successDetail}>
                 You're available on: <Text style={styles.successBold}>{selectedDays.length} days</Text>
               </Text>
-              {event.digitalTwinUrl && (
-                <View style={{ marginTop: 16, padding: 16, backgroundColor: '#f5f5f7', borderRadius: 8 }}>
-                  <Text style={{ fontWeight: '600', color: '#1c1c1e', marginBottom: 8 }}>Digital Twin Profile</Text>
-                  <Text style={{ color: '#666', marginBottom: 8, fontSize: 14 }}>Learn more about the organizer before the event.</Text>
-                  <Pressable 
-                    style={{ backgroundColor: '#007AFF', padding: 12, borderRadius: 8, alignItems: 'center' }}
-                    onPress={() => Linking.openURL(event.digitalTwinUrl!)}
+              {hostProfile && (
+                <View style={[styles.infoCallout, { marginTop: 16 }]}>
+                  <Text style={styles.infoCalloutTitle}>Learn about your host</Text>
+                  <Pressable
+                    style={[styles.hostButton, { marginTop: 12 }]}
+                    onPress={() => openUrl(hostProfile.digitalTwinUrl)}
                   >
-                    <Text style={{ color: '#fff', fontWeight: '600' }}>View Profile</Text>
+                    <Text style={styles.hostButtonText}>
+                      {getTwinLinkLabel(hostProfile.digitalTwinUrl)}
+                    </Text>
                   </Pressable>
                 </View>
               )}
@@ -485,7 +543,9 @@ export default function PublicEventScreen() {
       {/* Attendees List */}
       {event.eventType === "fixed" && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Attendees</Text>
+          <Text style={styles.cardTitle}>
+            Attending{attendingCount > 0 ? ` (${attendingCount})` : ""}
+          </Text>
           {event.participants.filter(p => p.rsvpStatus === "attending").length === 0 ? (
             <Text style={styles.emptyText}>No attendees yet.</Text>
           ) : (
@@ -531,6 +591,11 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  webContainer: {
+    maxWidth: 480,
+    width: "100%",
+    alignSelf: "center",
+  },
   container: {
     flex: 1,
     justifyContent: "center",
@@ -556,7 +621,13 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 20,
+  },
+  logoSmall: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#8e8e93",
+    letterSpacing: 0.3,
   },
   logo: {
     fontSize: 32,
@@ -567,6 +638,171 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 14,
     color: "#666",
+  },
+  typeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#e8f4fd",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 12,
+  },
+  typeBadgeVirtual: {
+    backgroundColor: "#f0ebff",
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#007AFF",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  eventDatePrimary: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#1c1c1e",
+    marginBottom: 4,
+  },
+  eventTimePrimary: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#007AFF",
+    marginBottom: 8,
+  },
+  hostedBy: {
+    fontSize: 15,
+    color: "#666",
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  hostedByName: {
+    fontWeight: "600",
+    color: "#1c1c1e",
+  },
+  detailBlock: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#e5e5ea",
+  },
+  detailLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8e8e93",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 16,
+    color: "#1c1c1e",
+    fontWeight: "500",
+  },
+  notesBlock: {
+    backgroundColor: "#f9f9fb",
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 10,
+    borderTopWidth: 0,
+  },
+  notesText: {
+    fontSize: 15,
+    color: "#444",
+    lineHeight: 22,
+  },
+  hostCard: {
+    backgroundColor: "#1a2744",
+    borderRadius: 16,
+    padding: 22,
+    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  hostEyebrow: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#8eb4ff",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+  hostName: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#fff",
+    marginBottom: 4,
+  },
+  hostSubtitle: {
+    fontSize: 14,
+    color: "#b8c9e8",
+    marginBottom: 12,
+  },
+  hostBlurb: {
+    fontSize: 14,
+    color: "#d0daf0",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  hostButton: {
+    backgroundColor: "#007AFF",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    alignItems: "center",
+  },
+  hostButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  featuredRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  featuredSubtitle: {
+    fontSize: 13,
+    color: "#666",
+    marginTop: 2,
+  },
+  featuredButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  featuredButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  infoCallout: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: "#f0f8ff",
+    borderRadius: 12,
+  },
+  infoCalloutTitle: {
+    fontWeight: "600",
+    color: "#1c1c1e",
+    marginBottom: 6,
+    fontSize: 15,
+  },
+  infoCalloutBody: {
+    color: "#666",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  infoCalloutLink: {
+    color: "#007AFF",
+    textDecorationLine: "underline",
+    fontSize: 14,
   },
   eventCard: {
     backgroundColor: "#fff",
@@ -824,9 +1060,9 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 20,
-    marginTop: 24,
+    marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

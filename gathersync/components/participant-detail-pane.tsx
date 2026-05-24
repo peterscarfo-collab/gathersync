@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, KeyboardAvoidingView } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, TextInput, View, KeyboardAvoidingView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
@@ -269,14 +269,35 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
 
   const saveChanges = async (syncGlobally = false) => {
     if (!event || !participant) return;
-    
+
+    const updatedParticipants = event.participants.map((p) =>
+      p.id === participant.id
+        ? {
+            ...p,
+            name: name.trim() || p.name,
+            phone: phone.trim() || undefined,
+            email: email.trim() || undefined,
+            designation: designation.trim() || undefined,
+            organization: organization.trim() || undefined,
+            leadSource: leadSource.trim() || undefined,
+            digitalTwinUrl: digitalTwinUrl.trim() || undefined,
+            notes: notes.trim() || undefined,
+            unavailableAllMonth,
+            availability: participant.availability,
+            rsvpStatus: participant.rsvpStatus,
+          }
+        : p
+    );
+    const updatedParticipant = updatedParticipants.find((p) => p.id === participant.id)!;
+
     const updatedEvent = {
       ...event,
+      participants: updatedParticipants,
       updatedAt: new Date().toISOString(),
     };
-    
+
     setEvent(updatedEvent);
-    setParticipant({ ...participant });
+    setParticipant(updatedParticipant);
     
     await eventsLocalStorage.update(eventId, updatedEvent);
     if (onEventUpdated) onEventUpdated(updatedEvent);
@@ -294,13 +315,13 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
           if (participantIndex !== -1) {
             e.participants[participantIndex] = {
               ...e.participants[participantIndex],
-              name: participant?.name || name,
-              phone: participant?.phone || phone || undefined,
-              email: participant?.email || email || undefined,
-              designation: participant?.designation || designation || undefined,
-              organization: participant?.organization || organization || undefined,
-              leadSource: participant?.leadSource || leadSource || undefined,
-              digitalTwinUrl: participant?.digitalTwinUrl || digitalTwinUrl || undefined,
+              name: updatedParticipant.name,
+              phone: updatedParticipant.phone,
+              email: updatedParticipant.email,
+              designation: updatedParticipant.designation,
+              organization: updatedParticipant.organization,
+              leadSource: updatedParticipant.leadSource,
+              digitalTwinUrl: updatedParticipant.digitalTwinUrl,
             };
             await eventsLocalStorage.update(e.id, e);
             eventsToSyncToCloud.push(e);
@@ -398,12 +419,12 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
           contentContainerStyle={styles.contentContainer}
           keyboardShouldPersistTaps="handled"
         >
-          {/* RSVP for Fixed Events */}
-          {event.eventType === 'fixed' && (
-            <View style={[styles.rsvpCard, { backgroundColor: surfaceColor }]}>
-              <ThemedText type="defaultSemiBold" style={styles.rsvpTitle}>
-                RSVP Status
-              </ThemedText>
+          {/* RSVP for All Events */}
+          <View style={[styles.rsvpCard, { backgroundColor: surfaceColor }]}>
+            <ThemedText type="defaultSemiBold" style={styles.rsvpTitle}>
+              RSVP Status
+            </ThemedText>
+            {event.eventType === 'fixed' && (
               <ThemedText style={[styles.rsvpSubtitle, { color: textSecondaryColor }]}>
                 {event.fixedDate && new Date(event.fixedDate + 'T00:00:00').toLocaleDateString('en-US', { 
                   weekday: 'long', 
@@ -413,6 +434,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 })}
                 {event.fixedTime && ` at ${event.fixedTime}`}
               </ThemedText>
+            )}
               <View style={styles.rsvpButtons}>
                 <Pressable
                   style={[
@@ -482,7 +504,6 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 </Pressable>
               </View>
             </View>
-          )}
 
           {/* Unavailable All Month Toggle (only for flexible events) */}
           {event.eventType === 'flexible' && (
@@ -619,6 +640,19 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 keyboardType="url"
                 autoCapitalize="none"
               />
+              <ThemedText style={{ fontSize: 12, color: textSecondaryColor, marginTop: 6, lineHeight: 17 }}>
+                Shown on the public RSVP page as a Featured Profile (or host card if you are the only profile with a link).
+              </ThemedText>
+              {digitalTwinUrl.trim() ? (
+                <Pressable
+                  onPress={() => Linking.openURL(digitalTwinUrl.trim())}
+                  style={{ marginTop: 8 }}
+                >
+                  <ThemedText style={{ color: tintColor, fontWeight: '600', fontSize: 14 }}>
+                    Open Digital Twin ↗
+                  </ThemedText>
+                </Pressable>
+              ) : null}
             </View>
 
             <View style={styles.inputRow}>
