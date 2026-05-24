@@ -7,57 +7,33 @@ export interface HostProfile {
   participantId?: string;
 }
 
-/** Resolve the primary host Digital Twin for the public RSVP page. */
-export function resolveHostProfile(event: Event): HostProfile | null {
-  const findLeader = () =>
-    event.teamLeader
-      ? event.participants.find(
-          (p) => p.name.toLowerCase() === event.teamLeader!.toLowerCase()
-        )
-      : undefined;
-
-  if (event.digitalTwinUrl) {
-    const leader = findLeader();
-    return {
-      name: event.teamLeader || leader?.name || 'Your host',
-      subtitle: formatSubtitle(leader),
-      digitalTwinUrl: event.digitalTwinUrl,
-      participantId: leader?.id,
-    };
-  }
-
-  const leader = findLeader();
-  if (leader?.digitalTwinUrl) {
-    return {
-      name: leader.name,
-      subtitle: formatSubtitle(leader),
-      digitalTwinUrl: leader.digitalTwinUrl,
-      participantId: leader.id,
-    };
-  }
-
-  const withTwin = event.participants.filter((p) => p.digitalTwinUrl);
-  if (withTwin.length === 1) {
-    const p = withTwin[0];
-    return {
-      name: p.name,
-      subtitle: formatSubtitle(p),
-      digitalTwinUrl: p.digitalTwinUrl!,
-      participantId: p.id,
-    };
-  }
-
-  return null;
+/** Digital Twin URL for the event host (team leader or event-level link only). */
+export function getTeamLeaderDigitalTwinUrl(event: Event): string | undefined {
+  if (event.digitalTwinUrl) return event.digitalTwinUrl;
+  if (!event.teamLeader) return undefined;
+  const leader = event.participants.find(
+    (p) => p.name.toLowerCase() === event.teamLeader!.toLowerCase()
+  );
+  return leader?.digitalTwinUrl;
 }
 
-/** Other participants with Digital Twin links (excludes the host card). */
-export function getFeaturedParticipants(
-  event: Event,
-  host: HostProfile | null
-): Participant[] {
-  return event.participants.filter(
-    (p) => p.digitalTwinUrl && p.id !== host?.participantId
-  );
+/** Resolve the primary host Digital Twin for the public RSVP page. */
+export function resolveHostProfile(event: Event): HostProfile | null {
+  const twinUrl = getTeamLeaderDigitalTwinUrl(event);
+  if (!twinUrl) return null;
+
+  const leader = event.teamLeader
+    ? event.participants.find(
+        (p) => p.name.toLowerCase() === event.teamLeader!.toLowerCase()
+      )
+    : undefined;
+
+  return {
+    name: event.teamLeader || leader?.name || 'Your host',
+    subtitle: formatSubtitle(leader),
+    digitalTwinUrl: twinUrl,
+    participantId: leader?.id,
+  };
 }
 
 function formatSubtitle(participant?: Participant): string | undefined {

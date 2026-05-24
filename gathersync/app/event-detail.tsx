@@ -15,10 +15,11 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage as eventsLocalStorage, snapshotsLocalStorage as snapshotsLocalStorage } from '@/lib/local-storage';
-import { getMonthName, generateId, getBestDays } from '@/lib/calendar-utils';
+import { getMonthName, generateId, getBestDays, formatDate, applyRsvpFromAvailability } from '@/lib/calendar-utils';
 import { exportToCalendar } from '@/lib/calendar-export';
 import { exportSingleEventBackup, downloadBackup } from '@/lib/backup';
 import { getEffectiveAttendanceStatus, getParticipantStatus, getRsvpCounts, getStatusBadge, hasRecordedAttendance, ParticipantStatus } from '@/lib/participant-status';
+import { getTeamLeaderDigitalTwinUrl } from '@/lib/public-event-utils';
 import type { Event, Participant } from '@/types/models';
 
 export default function EventDetailScreen() {
@@ -38,6 +39,7 @@ export default function EventDetailScreen() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
   const [rsvpFilter, setRsvpFilter] = useState<'attending' | 'not-attending' | 'no-response' | null>(null);
+  const [participantSearchQuery, setParticipantSearchQuery] = useState('');
   const [isEditingReminder, setIsEditingReminder] = useState(false);
   const [editedReminder, setEditedReminder] = useState('');
 
@@ -56,14 +58,15 @@ export default function EventDetailScreen() {
       // Enrich participants with global contact info across all events
       try {
         const allEvents = await eventsLocalStorage.getAll();
-        const globalInfo = new Map<string, {phone?: string, email?: string}>();
+        const globalInfo = new Map<string, {phone?: string, email?: string, digitalTwinUrl?: string}>();
         allEvents.forEach(e => e.participants.forEach(p => {
           if (!globalInfo.has(p.name)) {
-            globalInfo.set(p.name, { phone: p.phone, email: p.email });
+            globalInfo.set(p.name, { phone: p.phone, email: p.email, digitalTwinUrl: p.digitalTwinUrl });
           } else {
             const current = globalInfo.get(p.name)!;
             if (p.phone && !current.phone) current.phone = p.phone;
             if (p.email && !current.email) current.email = p.email;
+            if (p.digitalTwinUrl && !current.digitalTwinUrl) current.digitalTwinUrl = p.digitalTwinUrl;
           }
         }));
 
@@ -72,8 +75,20 @@ export default function EventDetailScreen() {
           if (info) {
             if (!p.phone && info.phone) p.phone = info.phone;
             if (!p.email && info.email) p.email = info.email;
+            if (!p.digitalTwinUrl && info.digitalTwinUrl) p.digitalTwinUrl = info.digitalTwinUrl;
           }
         });
+
+        // Also enrich Team Leader if they are in the global participant list
+        if (loadedEvent.teamLeader) {
+          const info = globalInfo.get(loadedEvent.teamLeader);
+          if (info) {
+            // If they are in the global list, ALWAYS use their global phone/email
+            // This fixes retroactive issues where the name was changed but old phone remained
+            if (info.phone) loadedEvent.teamLeaderPhone = info.phone;
+            else loadedEvent.teamLeaderPhone = undefined; // Clear it if they don't have a phone globally
+          }
+        }
       } catch (err) {
         console.error('Failed to enrich participants:', err);
       }
@@ -295,6 +310,35 @@ export default function EventDetailScreen() {
     });
   };
 
+  const handleCustomEmailBlast = () => {
+    if (!event) return;
+    
+    const emails = event.participants
+      .filter(p => !p.deletedAt && p.email)
+      .map(p => p.email);
+      
+    if (emails.length === 0) {
+      if (Platform.OS === 'web') {
+        alert('No participants have email addresses saved.');
+      } else {
+        Alert.alert('No Emails', 'No participants have email addresses saved.');
+      }
+      return;
+    }
+
+    const bccString = emails.join(',');
+    const subject = encodeURIComponent(`Update regarding ${event.name}`);
+    const mailtoUrl = `mailto:?bcc=${bccString}&subject=${subject}`;
+    
+    if (Platform.OS === 'web') {
+      window.location.href = mailtoUrl;
+    } else {
+      Linking.openURL(mailtoUrl).catch(() => {
+        Alert.alert('Error', 'Failed to open email client.');
+      });
+    }
+  };
+
   const handleExportEventCSV = () => {
     if (!event) return;
     router.push({
@@ -377,51 +421,126 @@ export default function EventDetailScreen() {
     Alert.alert('Success', 'Event snapshot saved!');
   };
 
-  const handleFinalizeDate = async () => {
-    if (!event) return;
-
-    const bestDays = getBestDays(event);
-    if (bestDays.length === 0) {
-      Alert.alert('No Available Days', 'No participants have marked their availability yet.');
-      return;
+  const getChosenFlexibleDate = (): string | null => {
+    if (!event) return null;
+    if (selectedDay !== null) {
+      return formatDate(event.year, event.month, selectedDay);
     }
+    const bestDays = getBestDays(event);
+    return bestDays.length > 0 ? bestDays[0].date : null;
+  };
 
-    const bestDay = bestDays[0];
-    const [year, month, day] = bestDay.date.split('-').map(Number);
-    const dateStr = new Date(year, month - 1, day).toLocaleDateString('en-US', {
+  const formatChosenDateLabel = (dateIso: string) => {
+    const [year, month, day] = dateIso.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
+  };
+
+  const handleConfirmDateAsFixed = async () => {
+    if (!event || event.eventType !== 'flexible') return;
+
+    const chosenDate = getChosenFlexibleDate();
+    if (!chosenDate) {
+      Alert.alert('No Available Days', 'No participants have marked their availability yet.');
+      return;
+    }
+
+    const [year, month, day] = chosenDate.split('-').map(Number);
+    const dateLabel = formatChosenDateLabel(chosenDate);
+    const availableOnDay = event.participants.filter(p => {
+      if (p.deletedAt || !p.availability) return false;
+      if (Array.isArray(p.availability)) return p.availability.includes(chosenDate);
+      return p.availability[chosenDate] === true;
+    }).length;
+    const total = event.participants.filter(p => !p.deletedAt).length;
+
+    const message =
+      `Lock in ${dateLabel}?\n\n` +
+      `${availableOnDay} of ${total} participants are available on this day.\n\n` +
+      `The event will convert to a Fixed Event with RSVP statuses. ` +
+      `After the meeting, use Take Attendance, then Archive from Actions.`;
+
+    const performConfirm = async () => {
+      const updatedParticipants = applyRsvpFromAvailability(event.participants, chosenDate);
+      await autoUpdateEvent(eventId!, {
+        ...event,
+        eventType: 'fixed',
+        month,
+        year,
+        fixedDate: chosenDate,
+        fixedTime: event.fixedTime || '18:00',
+        finalizedDate: chosenDate,
+        finalized: false,
+        archived: false,
+        participants: updatedParticipants,
+        updatedAt: new Date().toISOString(),
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSelectedDay(null);
+
+      if (Platform.OS === 'web') {
+        window.alert(`Date confirmed: ${dateLabel}\n\nThis is now a Fixed Event. Take attendance after the meeting, then archive when done.`);
+      } else {
+        Alert.alert(
+          'Date Confirmed',
+          `This is now a Fixed Event for ${dateLabel}. Take attendance after the meeting, then archive when done.`
+        );
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) await performConfirm();
+    } else {
+      Alert.alert('Confirm Date & Convert to Fixed Event', message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm Date', onPress: performConfirm },
+      ]);
+    }
+  };
+
+  const handleFinalizeDate = async () => {
+    if (!event) return;
+
+    if (event.eventType === 'flexible') {
+      Alert.alert(
+        'Confirm the date first',
+        'Convert this flexible event to a Fixed Event before archiving. Use "Confirm Date & Convert to Fixed Event" in Actions.'
+      );
+      return;
+    }
+
+    if (!event.fixedDate) {
+      Alert.alert('No date set', 'This fixed event does not have a date yet.');
+      return;
+    }
+
+    const dateLabel = formatChosenDateLabel(event.fixedDate);
 
     Alert.alert(
-      'Finalize Event Date',
-      `Lock in ${dateStr}?\n\n${bestDay.availableCount} out of ${event.participants.length} participants available.\n\nThis will archive the event and mark it as complete.`,
+      'Archive After Meeting',
+      `Archive "${event.name}" for ${dateLabel}?\n\nUse this after you've taken attendance. The event moves to Archive in Saves.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Finalize',
+          text: 'Archive',
           onPress: async () => {
             await autoUpdateEvent(eventId!, {
               ...event,
               finalized: true,
-              finalizedDate: bestDay.date,
+              finalizedDate: event.fixedDate,
               archived: true,
               updatedAt: new Date().toISOString(),
             });
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert(
-              'Event Finalized!',
-              `Date locked in: ${dateStr}`,
-              [
-                {
-                  text: 'OK',
-                  onPress: () => router.back(),
-                },
-              ]
-            );
+            Alert.alert('Event Archived', `${dateLabel} is now in your Archive.`, [
+              { text: 'OK', onPress: () => router.back() },
+            ]);
           },
         },
       ]
@@ -480,6 +599,8 @@ export default function EventDetailScreen() {
     event.eventType === 'fixed' && event.fixedDate ? getRsvpCounts(event) : null;
   const fixedEventHasAttendance =
     event.eventType === 'fixed' && event.fixedDate ? hasRecordedAttendance(event) : false;
+
+  const teamLeaderDigitalTwinUrl = event ? getTeamLeaderDigitalTwinUrl(event) : undefined;
 
   const renderMeetingAndReminderSections = () => (
     <>
@@ -587,8 +708,23 @@ export default function EventDetailScreen() {
                     <ThemedText style={{ color: textSecondaryColor, marginTop: 2 }}>{event.teamLeaderPhone}</ThemedText>
                   )}
                 </View>
-                {event.teamLeaderPhone && (
+                {(event.teamLeaderPhone || teamLeaderDigitalTwinUrl) && (
                   <View style={styles.participantActions}>
+                    {teamLeaderDigitalTwinUrl && (
+                      <Pressable
+                        style={[styles.quickActionButton, { backgroundColor: tintColor }]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          Linking.openURL(teamLeaderDigitalTwinUrl);
+                        }}
+                        hitSlop={4}
+                        accessibilityLabel="Open Digital Twin profile"
+                      >
+                        <IconSymbol name="person.text.rectangle" size={14} color="#fff" />
+                      </Pressable>
+                    )}
+                    {event.teamLeaderPhone && (
+                      <>
                     <Pressable
                       style={[styles.quickActionButton, { backgroundColor: tintColor }]}
                       onPress={() => {
@@ -609,6 +745,8 @@ export default function EventDetailScreen() {
                     >
                       <IconSymbol name="message.fill" size={14} color="#fff" />
                     </Pressable>
+                      </>
+                    )}
                   </View>
                 )}
               </View>
@@ -763,8 +901,8 @@ export default function EventDetailScreen() {
                   fixedEventHasAttendance 
                     ? getEffectiveAttendanceStatus(p, event) === rsvpFilter
                     : rsvpFilter === 'no-response' ? (!p.rsvpStatus || p.rsvpStatus === 'no-response') : p.rsvpStatus === rsvpFilter
-                ))).length;
-                return `${count}${rsvpFilter ? ' (Filtered)' : ''}`;
+                )) && p.name.toLowerCase().includes(participantSearchQuery.toLowerCase())).length;
+                return `${count}${rsvpFilter || participantSearchQuery ? ' (Filtered)' : ''}`;
               })()}
             </ThemedText>
             {rsvpFilter && (
@@ -777,6 +915,23 @@ export default function EventDetailScreen() {
               </Pressable>
             )}
           </View>
+
+          {event.participants.length > 0 && (
+            <TextInput
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                  borderColor: textSecondaryColor + '40',
+                },
+              ]}
+              placeholder="Search participants..."
+              placeholderTextColor={textSecondaryColor}
+              value={participantSearchQuery}
+              onChangeText={setParticipantSearchQuery}
+            />
+          )}
 
           {event.participants.length === 0 ? (
             <View style={[styles.emptyParticipants, { backgroundColor: surfaceColor }]}>
@@ -795,7 +950,7 @@ export default function EventDetailScreen() {
                   fixedEventHasAttendance 
                     ? getEffectiveAttendanceStatus(p, event) === rsvpFilter
                     : rsvpFilter === 'no-response' ? (!p.rsvpStatus || p.rsvpStatus === 'no-response') : p.rsvpStatus === rsvpFilter
-                )))
+                )) && p.name.toLowerCase().includes(participantSearchQuery.toLowerCase()))
                 .map((participant) => (
                 <Pressable
                   key={participant.id}
@@ -842,6 +997,43 @@ export default function EventDetailScreen() {
                       )}
                     </View>
                     <View style={styles.participantActions}>
+                      {participant.digitalTwinUrl && (
+                        <Pressable
+                          style={[styles.quickActionButton, { backgroundColor: tintColor }]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            Linking.openURL(participant.digitalTwinUrl!);
+                          }}
+                          hitSlop={4}
+                          accessibilityLabel="Open Digital Twin profile"
+                        >
+                          <IconSymbol name="person.text.rectangle" size={14} color="#fff" />
+                        </Pressable>
+                      )}
+                      {participant.phone && (
+                        <>
+                          <Pressable
+                            style={[styles.quickActionButton, { backgroundColor: tintColor }]}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              Linking.openURL(`tel:${participant.phone}`);
+                            }}
+                            hitSlop={4}
+                          >
+                            <IconSymbol name="phone.fill" size={14} color="#fff" />
+                          </Pressable>
+                          <Pressable
+                            style={[styles.quickActionButton, { backgroundColor: tintColor }]}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              Linking.openURL(`sms:${participant.phone}`);
+                            }}
+                            hitSlop={4}
+                          >
+                            <IconSymbol name="message.fill" size={14} color="#fff" />
+                          </Pressable>
+                        </>
+                      )}
                       <View style={[styles.statusBadge, { backgroundColor: getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).color + '20' }]}>
                         <ThemedText style={[styles.statusBadgeText, { color: getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).color }]}>
                           {getStatusBadge(getEffectiveAttendanceStatus(participant, event) as ParticipantStatus).icon}
@@ -1008,17 +1200,7 @@ export default function EventDetailScreen() {
                     router.push({ pathname: '/send-messages' as any, params: { eventId: event.id } });
                   }}
                 >
-                  <ThemedText style={styles.menuItemText}>Send Messages</ThemedText>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                  onPress={() => {
-                    setShowMenu(false);
-                    handleEmailParticipants();
-                  }}
-                >
-                  <ThemedText style={styles.menuItemText}>Email All Participants</ThemedText>
+                  <ThemedText style={styles.menuItemText}>Send Messages (SMS/Email)</ThemedText>
                 </Pressable>
                 
                 <Pressable
@@ -1107,16 +1289,32 @@ export default function EventDetailScreen() {
                 >
                   <ThemedText style={styles.menuItemText}>Save Snapshot</ThemedText>
                 </Pressable>
-                
-                <Pressable
-                  style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
-                  onPress={() => {
-                    setShowMenu(false);
-                    handleFinalizeDate();
-                  }}
-                >
-                  <ThemedText style={styles.menuItemText}>Finalize Date & Archive</ThemedText>
-                </Pressable>
+
+                {event.eventType === 'flexible' && !event.archived && (
+                  <Pressable
+                    style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20', backgroundColor: tintColor + '08' }]}
+                    onPress={() => {
+                      setShowMenu(false);
+                      handleConfirmDateAsFixed();
+                    }}
+                  >
+                    <ThemedText style={[styles.menuItemText, { color: tintColor, fontWeight: '700' }]}>
+                      Confirm Date & Convert to Fixed Event
+                    </ThemedText>
+                  </Pressable>
+                )}
+
+                {event.eventType === 'fixed' && !event.archived && (
+                  <Pressable
+                    style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
+                    onPress={() => {
+                      setShowMenu(false);
+                      handleFinalizeDate();
+                    }}
+                  >
+                    <ThemedText style={styles.menuItemText}>Archive After Meeting</ThemedText>
+                  </Pressable>
+                )}
                 
                 <Pressable
                   style={[styles.menuItem, { borderBottomColor: textSecondaryColor + '20' }]}
@@ -1260,10 +1458,51 @@ export default function EventDetailScreen() {
                           {fixedEventHasAttendance ? fixedEventRsvpCounts?.noResponse.length : event.participants.filter(p => !p.deletedAt && (!p.rsvpStatus || p.rsvpStatus === 'no-response')).length}
                         </ThemedText>
                         <ThemedText style={[styles.rsvpSummaryLabel, { color: textSecondaryColor }]}>
-                          {rsvpFilter === 'no-response' ? 'Selected: No Response' : (fixedEventHasAttendance ? 'Unchecked' : 'No Response')}
+                          {rsvpFilter === 'no-response' ? (fixedEventHasAttendance ? 'Selected: Unchecked' : 'Selected: No Response') : (fixedEventHasAttendance ? 'Unchecked' : 'No Response')}
                         </ThemedText>
                       </Pressable>
                     </View>
+                    
+                    {/* Minimum Attendance / Quorum Progress */}
+                    {event.quorumType && (
+                      <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: textSecondaryColor + '20' }}>
+                        {(() => {
+                          const attendingCount = fixedEventHasAttendance 
+                            ? (fixedEventRsvpCounts?.attending.length || 0) 
+                            : event.participants.filter(p => !p.deletedAt && p.rsvpStatus === 'attending').length;
+                          
+                          let requiredCount = 0;
+                          if (event.quorumType === 'number' && event.quorumValue) {
+                            requiredCount = event.quorumValue;
+                          } else if (event.quorumType === 'percentage' && event.quorumValue) {
+                            const totalInvited = event.participants.filter(p => !p.deletedAt).length;
+                            requiredCount = Math.ceil((event.quorumValue / 100) * totalInvited);
+                          }
+                          
+                          const hasQuorum = attendingCount >= requiredCount;
+                          const progress = requiredCount > 0 ? Math.min(100, (attendingCount / requiredCount) * 100) : 100;
+                          
+                          return (
+                            <View>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>
+                                  Minimum Attendance (Quorum)
+                                </ThemedText>
+                                <ThemedText style={{ fontSize: 13, color: hasQuorum ? successColor : textSecondaryColor, fontWeight: '600' }}>
+                                  {attendingCount} / {requiredCount} {hasQuorum ? '✓' : ''}
+                                </ThemedText>
+                              </View>
+                              <View style={{ height: 6, backgroundColor: textSecondaryColor + '20', borderRadius: 3, overflow: 'hidden' }}>
+                                <View style={{ height: '100%', width: `${progress}%`, backgroundColor: hasQuorum ? successColor : tintColor, borderRadius: 3 }} />
+                              </View>
+                              <ThemedText style={{ fontSize: 12, color: textSecondaryColor, marginTop: 6 }}>
+                                {event.quorumType === 'percentage' ? `Based on ${event.quorumValue}% of ${event.participants.filter(p => !p.deletedAt).length} total invited.` : `Fixed requirement of ${event.quorumValue} attendees.`}
+                              </ThemedText>
+                            </View>
+                          );
+                        })()}
+                      </View>
+                    )}
                   </View>
                 </View>
               </>
@@ -1278,6 +1517,85 @@ export default function EventDetailScreen() {
 
                 {/* Calendar Grid */}
                 <CalendarGrid event={event} onDayPress={handleDayPress} />
+
+                {event.eventType === 'flexible' && !event.archived && getChosenFlexibleDate() && (
+                  <Pressable
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      borderRadius: 12,
+                      backgroundColor: tintColor + '12',
+                      borderWidth: 1,
+                      borderColor: tintColor + '40',
+                    }}
+                    onPress={handleConfirmDateAsFixed}
+                  >
+                    <ThemedText type="defaultSemiBold" style={{ color: tintColor, marginBottom: 4 }}>
+                      Ready to lock in a date?
+                    </ThemedText>
+                    <ThemedText style={{ fontSize: 14, opacity: 0.75, marginBottom: 10 }}>
+                      {selectedDay !== null
+                        ? `Confirm ${formatChosenDateLabel(formatDate(event.year, event.month, selectedDay))} and convert to a Fixed Event.`
+                        : `Best day: ${formatChosenDateLabel(getChosenFlexibleDate()!)} — tap a calendar day to choose a different date.`}
+                    </ThemedText>
+                    <ThemedText style={{ color: tintColor, fontWeight: '700' }}>
+                      Confirm Date & Convert to Fixed Event →
+                    </ThemedText>
+                  </Pressable>
+                )}
+                
+                {/* Minimum Attendance / Quorum Progress for Flexible Events */}
+                {event.quorumType && (
+                  <View style={[styles.section, { marginTop: 16 }]}>
+                    <View style={[styles.rsvpSummaryCard, { backgroundColor: surfaceColor }]}>
+                      {(() => {
+                        // For flexible events, we look at the day with the highest attendance
+                        const dayCounts: Record<string, number> = {};
+                        event.participants.forEach(p => {
+                          if (!p.deletedAt && p.availability) {
+                            Object.entries(p.availability).forEach(([dateStr, isAvailable]) => {
+                              if (isAvailable) {
+                                dayCounts[dateStr] = (dayCounts[dateStr] || 0) + 1;
+                              }
+                            });
+                          }
+                        });
+                        
+                        const maxAttendingCount = Object.values(dayCounts).length > 0 ? Math.max(...Object.values(dayCounts)) : 0;
+                        
+                        let requiredCount = 0;
+                        if (event.quorumType === 'number' && event.quorumValue) {
+                          requiredCount = event.quorumValue;
+                        } else if (event.quorumType === 'percentage' && event.quorumValue) {
+                          const totalInvited = event.participants.filter(p => !p.deletedAt).length;
+                          requiredCount = Math.ceil((event.quorumValue / 100) * totalInvited);
+                        }
+                        
+                        const hasQuorum = maxAttendingCount >= requiredCount;
+                        const progress = requiredCount > 0 ? Math.min(100, (maxAttendingCount / requiredCount) * 100) : 100;
+                        
+                        return (
+                          <View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                              <ThemedText style={{ fontSize: 13, fontWeight: '600' }}>
+                                Minimum Attendance (Quorum)
+                              </ThemedText>
+                              <ThemedText style={{ fontSize: 13, color: hasQuorum ? successColor : textSecondaryColor, fontWeight: '600' }}>
+                                Best Day: {maxAttendingCount} / {requiredCount} {hasQuorum ? '✓' : ''}
+                              </ThemedText>
+                            </View>
+                            <View style={{ height: 6, backgroundColor: textSecondaryColor + '20', borderRadius: 3, overflow: 'hidden' }}>
+                              <View style={{ height: '100%', width: `${progress}%`, backgroundColor: hasQuorum ? successColor : tintColor, borderRadius: 3 }} />
+                            </View>
+                            <ThemedText style={{ fontSize: 12, color: textSecondaryColor, marginTop: 6 }}>
+                              {event.quorumType === 'percentage' ? `Based on ${event.quorumValue}% of ${event.participants.filter(p => !p.deletedAt).length} total invited.` : `Fixed requirement of ${event.quorumValue} attendees.`}
+                            </ThemedText>
+                          </View>
+                        );
+                      })()}
+                    </View>
+                  </View>
+                )}
               </>
             )}
 
@@ -1293,6 +1611,10 @@ export default function EventDetailScreen() {
                   day={selectedDay} 
                   onClose={() => setSelectedDay(null)} 
                   onUpdate={() => loadEvent()}
+                  onParticipantPress={(id) => {
+                    setSelectedDay(null);
+                    setSelectedParticipantId(id);
+                  }}
                 />
               ) : selectedParticipantId !== null ? (
                 <ParticipantDetailPane
@@ -1460,6 +1782,14 @@ const styles = StyleSheet.create({
   participantsList: {
     gap: 8,
     marginBottom: 16,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    fontSize: 14,
   },
   participantCard: {
     flexDirection: 'row',

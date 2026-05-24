@@ -641,7 +641,7 @@ export function ParticipantDetailPane({ eventId, participantId, onClose, onEvent
                 autoCapitalize="none"
               />
               <ThemedText style={{ fontSize: 12, color: textSecondaryColor, marginTop: 6, lineHeight: 17 }}>
-                Shown on the public RSVP page as a Featured Profile (or host card if you are the only profile with a link).
+                Opens from the person icon next to phone in the participant list. Host profiles also appear on the public RSVP page when the team leader has a link.
               </ThemedText>
               {digitalTwinUrl.trim() ? (
                 <Pressable

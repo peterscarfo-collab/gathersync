@@ -19,7 +19,6 @@ import { Event, Participant } from "@/types/models";
 import { getMonthName } from "@/lib/calendar-utils";
 import { getApiBaseUrl } from "@/constants/oauth";
 import {
-  getFeaturedParticipants,
   getTwinLinkLabel,
   resolveHostProfile,
 } from "@/lib/public-event-utils";
@@ -212,7 +211,6 @@ export default function PublicEventScreen() {
   const daysInMonth = new Date(event.year, event.month, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const hostProfile = resolveHostProfile(event);
-  const featuredParticipants = getFeaturedParticipants(event, hostProfile);
   const attendingCount = event.participants.filter((p) => p.rsvpStatus === "attending").length;
   const webContainer = Platform.OS === "web" ? styles.webContainer : undefined;
 
@@ -332,33 +330,6 @@ export default function PublicEventScreen() {
               {getTwinLinkLabel(hostProfile.digitalTwinUrl)}
             </Text>
           </Pressable>
-        </View>
-      )}
-
-      {/* Other featured profiles */}
-      {featuredParticipants.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Featured profiles</Text>
-          <View style={styles.attendeesList}>
-            {featuredParticipants.map((p) => (
-              <View key={p.id} style={styles.featuredRow}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={styles.attendeeName}>{p.name}</Text>
-                  {(p.designation || p.organization) && (
-                    <Text style={styles.featuredSubtitle}>
-                      {[p.designation, p.organization].filter(Boolean).join(" · ")}
-                    </Text>
-                  )}
-                </View>
-                <Pressable
-                  style={styles.featuredButton}
-                  onPress={() => openUrl(p.digitalTwinUrl!)}
-                >
-                  <Text style={styles.featuredButtonText}>View profile</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
         </View>
       )}
 
