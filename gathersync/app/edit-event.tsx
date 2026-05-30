@@ -166,6 +166,7 @@ export default function EditEventScreen() {
         fixedTime: eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : undefined,
         updatedAt: new Date().toISOString(),
         teamLeader: teamLeader.trim() || undefined,
+        ...(teamLeader.trim() !== (event.teamLeader || '') ? { teamLeaderPhone: undefined } : {}),
         meetingType,
         venueName: meetingType === 'in-person' ? venueName.trim() || undefined : undefined,
         venueContact: meetingType === 'in-person' ? venueContact.trim() || undefined : undefined,

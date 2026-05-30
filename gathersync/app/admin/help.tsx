@@ -67,7 +67,7 @@ export default function HelpScreen() {
             • <ThemedText style={{ fontWeight: 'bold' }}>Fixed Events:</ThemedText> Best when you already know the exact date and time. Invitees can quickly RSVP (Attending, Not Attending).
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            <ThemedText style={{ fontWeight: 'bold' }}>To create an event:</ThemedText> Go to the Events tab, click the "+" button, and follow the wizard. You can add locations, virtual meeting links, and a Team Leader.
+            <ThemedText style={{ fontWeight: 'bold' }}>To create an event:</ThemedText> Go to the Events tab, click the "+" button, and follow the wizard. You can add locations, virtual meeting links, a Team Leader, and set a <ThemedText style={{ fontWeight: 'bold' }}>Minimum Attendance (Quorum)</ThemedText> to ensure the event only proceeds if enough people can make it.
           </ThemedText>
         </View>
       ),
@@ -139,6 +139,24 @@ export default function HelpScreen() {
       ),
     },
     {
+      id: 'receiving-invitations',
+      title: 'Receiving & Responding to Invitations',
+      icon: 'envelope.fill',
+      content: (
+        <View style={styles.topicContent}>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Events I'm Invited To:</ThemedText> When you are invited to an event and RSVP using your email address, that event will automatically appear on your main GatherSync dashboard under a special "Events I'm Invited To" section.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Managing Your Record:</ThemedText> You can click on any invited event from your dashboard to view the full details. From there, you can click on your own name in the participant list to edit your record and update your availability.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Editing Details:</ThemedText> You have full control over your own profile for that event. If the organizer added you as "Peter S", you can edit your name to your full name, add your phone number, update your Digital Twin URL, or add notes (e.g., "Can only arrive after 6pm"). Any changes you make will automatically sync back to the organizer's dashboard!
+          </ThemedText>
+        </View>
+      ),
+    },
+    {
       id: 'templates-recurring',
       title: 'Templates & Recurring Events',
       icon: 'doc.on.doc',
@@ -178,7 +196,10 @@ export default function HelpScreen() {
             3. Select <ThemedText style={{ fontWeight: 'bold' }}>Import Contact List (CSV)</ThemedText>.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            4. Prepare a spreadsheet with columns: <ThemedText style={{ fontStyle: 'italic' }}>Name, Phone, Email, Title/Designation, Company/Organization</ThemedText>.
+            4. Prepare a spreadsheet with columns: <ThemedText style={{ fontStyle: 'italic' }}>Name, Phone, Email, Title/Designation, Company/Organization, Lead Source, Day 1, Day 2, Day 3</ThemedText>.
+          </ThemedText>
+          <ThemedText style={[styles.paragraph, { fontSize: 13, fontStyle: 'italic' }]}>
+            Note: For flexible events, you can include Day 1, Day 2, and Day 3 columns with day numbers (e.g., 12, 14, 16) to automatically mark those days as available for the participant.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             5. Copy/paste the data or select the file directly to instantly import everyone. GatherSync will automatically skip duplicates.
@@ -199,7 +220,7 @@ export default function HelpScreen() {
             <ThemedText style={{ fontWeight: 'bold' }}>Custom Reminders:</ThemedText> On the event details page, you can draft a "Reminder Message". This message will be automatically prepended whenever you share the event link.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            <ThemedText style={{ fontWeight: 'bold' }}>Send Messages (SMS/Email):</ThemedText> From the event menu, select "Send Messages". Here you can quickly filter participants (e.g. "Select All Attending" or "Select No Response") and launch your phone's native Email or SMS app with a pre-filled invitation template!
+            <ThemedText style={{ fontWeight: 'bold' }}>Send Messages (SMS/Native/App):</ThemedText> From the event menu, select "Send Messages". Here you can quickly filter participants and choose to send them an SMS, a Native Email (which opens your default email client with their addresses in Bcc), or an App Email (which uses GatherSync's built-in system to send beautiful, personalized invitations).
           </ThemedText>
         </View>
       ),
@@ -250,6 +271,24 @@ export default function HelpScreen() {
             The <ThemedText style={{ fontWeight: 'bold' }}>Participant Management</ThemedText> screen is your master directory and built-in CRM. If you edit a participant's phone number or Title here, it syncs globally across all their events!
           </ThemedText>
           <ThemedText style={[styles.paragraph, { marginTop: 8 }]}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Searching, Filtering & Sorting:</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Search:</ThemedText> Find people by name, phone, email, title, company, lead source, notes, or event name.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Filter by Event:</ThemedText> Use "Filter: All Events" to choose a specific event or "Prospects Only".
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Contact Filters:</ThemedText> Click Total, With Phone, With Email, or With Source to filter. Counts update to match your current event filter and search.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Missing Data:</ThemedText> Amber cards below show database gaps — No Phone, No Email, No Source, No Company. Click to list only those contacts and export for cleanup. Missing fields show on each card in amber italic (e.g. No phone).
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Sort:</ThemedText> Sort by First Name, Last Name, Phone, Event, or Lead Source. Last Name puts people with a surname first; single-name contacts appear at the end.
+          </ThemedText>
+          <ThemedText style={[styles.paragraph, { marginTop: 8 }]}>
             <ThemedText style={{ fontWeight: 'bold' }}>Using the Prospecting System:</ThemedText>
           </ThemedText>
           <ThemedText style={styles.paragraph}>
@@ -260,6 +299,21 @@ export default function HelpScreen() {
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             • <ThemedText style={{ fontWeight: 'bold' }}>Upgrade to User:</ThemedText> Open a prospect's details and scroll to the bottom. Click "Create Account & Send Link" to instantly generate a free GatherSync account and get a magic login link to email them!
+          </ThemedText>
+          <ThemedText style={[styles.paragraph, { marginTop: 8 }]}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Actions Menu (Bulk Operations):</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            Click the <ThemedText style={{ fontWeight: 'bold' }}>Actions</ThemedText> button (⋯) to work with everyone in your current filtered view:
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Add Filtered to Event...</ThemedText> — Bulk-add visible contacts to an event (e.g. invite letterbox-drop prospects to a virtual event).
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Export Filtered List (CSV)</ThemedText> — Download only the people currently shown.
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Import Contact List (CSV)</ThemedText> — Bulk import new prospects or contacts.
           </ThemedText>
         </View>
       ),

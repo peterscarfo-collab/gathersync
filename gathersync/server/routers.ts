@@ -168,6 +168,9 @@ export const appRouter = router({
           showAttendeeNames: z.boolean().optional(),
           showAttendeeEmails: z.boolean().optional(),
           showAttendeePhones: z.boolean().optional(),
+          digitalTwinUrl: z.string().optional(),
+          quorumType: z.enum(["number", "percentage"]).optional(),
+          quorumValue: z.number().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )
@@ -206,6 +209,9 @@ export const appRouter = router({
           showAttendeeNames: z.boolean().optional(),
           showAttendeeEmails: z.boolean().optional(),
           showAttendeePhones: z.boolean().optional(),
+          digitalTwinUrl: z.string().optional(),
+          quorumType: z.enum(["number", "percentage"]).optional(),
+          quorumValue: z.number().optional(),
           deletedAt: z.date().nullable().optional(),
         })
       )
@@ -430,6 +436,34 @@ export const appRouter = router({
     unregister: protectedProcedure
       .input(z.object({ token: z.string() }))
       .mutation(({ input }) => db.unregisterPushToken(input.token)),
+  }),
+
+  influencers: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const rows = await db.getUserInfluencerProspects(ctx.user.id);
+      return rows.map(r => r.prospectData);
+    }),
+
+    upsert: protectedProcedure
+      .input(z.object({ prospect: z.record(z.string(), z.unknown()) }))
+      .mutation(async ({ ctx, input }) => {
+        await db.upsertInfluencerProspect(ctx.user.id, input.prospect);
+        return { success: true };
+      }),
+
+    syncAll: protectedProcedure
+      .input(z.object({ prospects: z.array(z.record(z.string(), z.unknown())) }))
+      .mutation(async ({ ctx, input }) => {
+        const count = await db.syncInfluencerProspects(ctx.user.id, input.prospects);
+        return { success: true, count };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteInfluencerProspect(input.id, ctx.user.id);
+        return { success: true };
+      }),
   }),
 
   // Admin routes for subscription management

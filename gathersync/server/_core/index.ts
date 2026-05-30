@@ -9,8 +9,10 @@ import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
 import { handleStripeWebhook } from "../webhooks/stripe";
 import { startReminderCron } from "../reminders";
+import { ensureInfluencerProspectsTable } from "../db";
 
 async function startServer() {
+  await ensureInfluencerProspectsTable();
   // Start the reminder cron job
   startReminderCron();
 

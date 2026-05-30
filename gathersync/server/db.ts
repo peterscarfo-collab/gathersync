@@ -1,4 +1,4 @@
-import { and, eq, ne, or } from "drizzle-orm";
+import { and, eq, ne, or, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -8,11 +8,13 @@ import {
   eventSnapshots,
   groupTemplates,
   pushTokens,
+  influencerProspects,
   type InsertEvent,
   type InsertParticipant,
   type InsertEventSnapshot,
   type InsertGroupTemplate,
   type InsertPushToken,
+  type InsertInfluencerProspectRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -29,6 +31,32 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+/** Creates influencerProspects table on TiDB/MySQL if missing — runs on every server start. */
+export async function ensureInfluencerProspectsTable(): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Skipping influencerProspects setup — DATABASE_URL not configured");
+    return;
+  }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS influencerProspects (
+        id varchar(64) NOT NULL,
+        userId int NOT NULL,
+        prospectData json NOT NULL,
+        deletedAt timestamp NULL,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY influencerProspects_userId_idx (userId)
+      )
+    `);
+    console.log("[Database] influencerProspects table ready");
+  } catch (error) {
+    console.error("[Database] Failed to ensure influencerProspects table:", error);
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -314,4 +342,78 @@ export async function getEventParticipantTokens(eventId: string, excludeUserId?:
   }
 
   return tokens;
+}
+
+/**
+ * Influencer / prospect outreach pipeline
+ */
+export async function getUserInfluencerProspects(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(influencerProspects)
+    .where(and(eq(influencerProspects.userId, userId), isNull(influencerProspects.deletedAt)));
+}
+
+export async function upsertInfluencerProspect(userId: number, prospect: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const id = String(prospect.id || "");
+  if (!id) throw new Error("Prospect id is required");
+
+  const row: InsertInfluencerProspectRow = {
+    id,
+    userId,
+    prospectData: prospect,
+    deletedAt: null,
+    updatedAt: prospect.updatedAt ? new Date(String(prospect.updatedAt)) : new Date(),
+  };
+
+  await db
+    .insert(influencerProspects)
+    .values(row)
+    .onDuplicateKeyUpdate({
+      set: {
+        prospectData: row.prospectData,
+        deletedAt: null,
+        updatedAt: row.updatedAt,
+      },
+    });
+
+  return id;
+}
+
+export async function syncInfluencerProspects(userId: number, prospects: Record<string, unknown>[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  for (const prospect of prospects) {
+    await upsertInfluencerProspect(userId, prospect);
+  }
+
+  const incomingIds = new Set(prospects.map(p => String(p.id)).filter(Boolean));
+  const existing = await getUserInfluencerProspects(userId);
+  for (const row of existing) {
+    if (!incomingIds.has(row.id)) {
+      await db
+        .update(influencerProspects)
+        .set({ deletedAt: new Date() })
+        .where(and(eq(influencerProspects.id, row.id), eq(influencerProspects.userId, userId)));
+    }
+  }
+
+  return prospects.length;
+}
+
+export async function deleteInfluencerProspect(prospectId: string, userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(influencerProspects)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(influencerProspects.id, prospectId), eq(influencerProspects.userId, userId)));
 }

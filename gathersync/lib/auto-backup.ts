@@ -17,6 +17,7 @@ export interface AutoBackup {
     events: any[];
     snapshots: any[];
     templates: any[];
+    influencers: any[];
   };
 }
 
@@ -31,6 +32,8 @@ export async function createAutoBackup(reason: string): Promise<string> {
     const events = await eventsStorage.getAll();
     const snapshots = await snapshotsStorage.getAll();
     const templates = await templatesStorage.getAll();
+    const influencersJson = await AsyncStorage.getItem('@gathersync_influencers');
+    const influencers = influencersJson ? JSON.parse(influencersJson) : [];
     
     const backup: AutoBackup = {
       id: `auto_${Date.now()}`,
@@ -40,6 +43,7 @@ export async function createAutoBackup(reason: string): Promise<string> {
         events,
         snapshots,
         templates,
+        influencers,
       },
     };
     
@@ -47,6 +51,7 @@ export async function createAutoBackup(reason: string): Promise<string> {
       events: events.length,
       snapshots: snapshots.length,
       templates: templates.length,
+      influencers: influencers.length,
     });
     
     // Get existing backups

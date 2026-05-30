@@ -40,7 +40,7 @@ export default function AdminScreen() {
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(
         'Are you sure you want to reset all data? This will:\n\n' +
-        '• Delete all local events, snapshots, and templates\n' +
+        '• Delete all local events, snapshots, templates, and influencer pipeline\n' +
         '• Delete all your cloud data\n' +
         '\nThis action cannot be undone.'
       );
@@ -49,7 +49,7 @@ export default function AdminScreen() {
       Alert.alert(
         'Reset All Data',
         'Are you sure you want to reset all data? This will:\n\n' +
-        '• Delete all local events, snapshots, and templates\n' +
+        '• Delete all local events, snapshots, templates, and influencer pipeline\n' +
         '• Delete all your cloud data\n' +
         '\nThis action cannot be undone.',
         [
@@ -77,6 +77,7 @@ export default function AdminScreen() {
         '@gathersync_events',
         '@gathersync_snapshots',
         '@gathersync_templates',
+        '@gathersync_influencers',
         '@gathersync_last_sync',
       ]);
       
@@ -347,6 +348,27 @@ export default function AdminScreen() {
             </View>
             <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
           </Pressable>
+
+          {user?.role === 'admin' && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionCard,
+                pressed && styles.actionCardPressed,
+              ]}
+              onPress={() => handleNavigation('/admin/influencers')}
+            >
+              <View style={[styles.actionIconContainer, { backgroundColor: AdminColors.primaryLight }]}>
+                <IconSymbol name="paperplane.fill" size={28} color={AdminColors.primary} />
+              </View>
+              <View style={styles.actionContent}>
+                <ThemedText style={styles.actionTitle}>Influencer Outreach</ThemedText>
+                <ThemedText style={styles.actionDescription}>
+                  Pipeline, playbook, and outreach emails
+                </ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
+            </Pressable>
+          )}
 
           <Pressable
             style={({ pressed }) => [

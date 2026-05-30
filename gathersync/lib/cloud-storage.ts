@@ -1,4 +1,4 @@
-import type { Event, Participant, EventSnapshot, GroupTemplate } from '@/types/models';
+import type { Event, Participant, EventSnapshot, GroupTemplate, InfluencerProspect } from '@/types/models';
 import { QueryClient } from '@tanstack/react-query';
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
@@ -474,5 +474,47 @@ export const templatesCloudStorage = {
       console.error('Failed to delete template:', error);
       throw error;
     }
+  },
+};
+
+export const influencersCloudStorage = {
+  async getAll(): Promise<InfluencerProspect[]> {
+    try {
+      const client = getTRPCClient();
+      const rows = await withTimeout(
+        client.influencers.list.query(),
+        15000,
+        'Fetch influencer prospects'
+      );
+      return rows as InfluencerProspect[];
+    } catch (error) {
+      console.error('[CloudStorage] Failed to fetch influencer prospects:', error);
+      return [];
+    }
+  },
+
+  async upsert(prospect: InfluencerProspect): Promise<void> {
+    const client = getTRPCClient();
+    await withTimeout(
+      client.influencers.upsert.mutate({ prospect: prospect as unknown as Record<string, unknown> }),
+      15000,
+      `Upsert influencer ${prospect.name}`
+    );
+  },
+
+  async syncAll(prospects: InfluencerProspect[]): Promise<void> {
+    const client = getTRPCClient();
+    await withTimeout(
+      client.influencers.syncAll.mutate({
+        prospects: prospects.map(p => p as unknown as Record<string, unknown>),
+      }),
+      60000,
+      'Sync all influencer prospects'
+    );
+  },
+
+  async delete(id: string): Promise<void> {
+    const client = getTRPCClient();
+    await withTimeout(client.influencers.delete.mutate({ id }), 15000, 'Delete influencer prospect');
   },
 };

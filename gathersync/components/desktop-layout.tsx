@@ -32,6 +32,7 @@ export function DesktopLayout({ children }: DesktopLayoutProps) {
     { id: 'saves', label: 'Saves', icon: 'bookmark.fill' as const, path: '/saves' },
     { id: 'backup', label: 'Backup', icon: 'externaldrive.fill' as const, path: '/backup' },
     { id: 'profile', label: 'Profile', icon: 'person.fill' as const, path: '/profile' },
+    { id: 'user-manual', label: 'User Manual', icon: 'book.fill' as const, path: '/user-manual' },
   ];
 
   const handleNavigation = (path: string) => {

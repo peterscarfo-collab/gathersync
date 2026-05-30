@@ -91,7 +91,7 @@ export default function ImportContactsScreen() {
         }
         targetEventId = event.id;
       } else {
-        event = await eventsLocalStorage.getById(targetEventId);
+        event = (await eventsLocalStorage.getById(targetEventId)) || undefined;
       }
 
       if (!event) {
@@ -122,18 +122,30 @@ export default function ImportContactsScreen() {
       }
 
       // Add participants to event
-      const newParticipants: Participant[] = result.participants.map(p => ({
-        id: generateId(),
-        name: p.name,
-        phone: p.phone,
-        email: p.email,
-        designation: p.designation,
-        organization: p.organization,
-        leadSource: p.leadSource,
-        availability: {},
-        unavailableAllMonth: false,
-        rsvpStatus: 'no-response',
-      }));
+      const newParticipants: Participant[] = result.participants.map(p => {
+        const availability: Record<string, boolean> = {};
+        
+        if (event?.eventType === 'flexible' && event.year && event.month) {
+          const days = [p.day1, p.day2, p.day3].filter((d): d is number => d !== undefined && d >= 1 && d <= 31);
+          days.forEach(day => {
+            const dateStr = `${event.year}-${String(event.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            availability[dateStr] = true;
+          });
+        }
+
+        return {
+          id: generateId(),
+          name: p.name,
+          phone: p.phone,
+          email: p.email,
+          designation: p.designation,
+          organization: p.organization,
+          leadSource: p.leadSource,
+          availability,
+          unavailableAllMonth: false,
+          rsvpStatus: 'no-response',
+        };
+      });
 
       // Merge new participants, avoiding duplicates by name
       const existingNames = new Set(event.participants.map(p => p.name.toLowerCase()));
@@ -272,7 +284,7 @@ export default function ImportContactsScreen() {
             ]}
             value={importText}
             onChangeText={setImportText}
-            placeholder="Name, Phone, Email, Title, Company, Lead Source&#10;John Doe, 555-1234, john@example.com, Director, Acme Corp, Trade Show&#10;Sarah Smith, , sarah@example.com, VIP, GatherSync, Referral"
+            placeholder="Name, Phone, Email, Title, Company, Lead Source, Day 1, Day 2, Day 3&#10;John Doe, 555-1234, john@example.com, Director, Acme Corp, Trade Show, 12, 14, 16&#10;Sarah Smith, , sarah@example.com, VIP, GatherSync, Referral, 5, 10, "
             placeholderTextColor={textSecondaryColor}
             multiline
             numberOfLines={10}

@@ -14,9 +14,10 @@ interface DayDetailPaneProps {
   day: number;
   onClose?: () => void;
   onUpdate?: () => void;
+  onParticipantPress?: (participantId: string) => void;
 }
 
-export function DayDetailPane({ eventId, day, onClose, onUpdate }: DayDetailPaneProps) {
+export function DayDetailPane({ eventId, day, onClose, onUpdate, onParticipantPress }: DayDetailPaneProps) {
   const [event, setEvent] = useState<Event | null>(null);
   const [dayAvailability, setDayAvailability] = useState<DayAvailability | null>(null);
   const [filter, setFilter] = useState<'all' | 'available' | 'unavailable' | 'no-response'>('all');
@@ -42,37 +43,6 @@ export function DayDetailPane({ eventId, day, onClose, onUpdate }: DayDetailPane
     
     setEvent(loadedEvent);
     setDayAvailability(availability);
-  };
-
-  const toggleAvailability = async (participantId: string) => {
-    if (!event || !dayAvailability) return;
-
-    const participant = event.participants.find(p => p.id === participantId);
-    if (!participant) return;
-
-    const dateStr = dayAvailability.date;
-    const hasStatus = dateStr in participant.availability;
-    const currentStatus = participant.availability[dateStr];
-    
-    // Toggle: undefined -> true (Available), true -> false (Unavailable), false -> undefined (No Response)
-    if (!hasStatus) {
-      participant.availability[dateStr] = true;
-    } else if (currentStatus === true) {
-      participant.availability[dateStr] = false;
-    } else {
-      delete participant.availability[dateStr];
-    }
-
-    await eventsLocalStorage.update(eventId, {
-      ...event,
-      updatedAt: new Date().toISOString(),
-    });
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    loadData();
-    if (onUpdate) {
-      onUpdate();
-    }
   };
 
   if (!event || !dayAvailability) {
@@ -195,7 +165,11 @@ export function DayDetailPane({ eventId, day, onClose, onUpdate }: DayDetailPane
               <Pressable
                 key={participant.id}
                 style={[styles.participantCard, { backgroundColor: surfaceColor }]}
-                onPress={() => toggleAvailability(participant.id)}
+                onPress={() => {
+                  if (onParticipantPress) {
+                    onParticipantPress(participant.id);
+                  }
+                }}
               >
                 <View style={styles.participantInfo}>
                   <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>

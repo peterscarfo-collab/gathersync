@@ -53,6 +53,8 @@ export interface Event {
   showAttendeeEmails?: boolean; // Privacy setting: if true, show emails on public page
   showAttendeePhones?: boolean; // Privacy setting: if true, show phones on public page
   digitalTwinUrl?: string; // Optional URL to GetBizCard digital twin
+  quorumType?: 'number' | 'percentage'; // Minimum attendance requirement type
+  quorumValue?: number; // Minimum attendance requirement value
   attendanceRecords?: AttendanceRecord[]; // Attendance tracking for completed events
   deletedAt?: string; // ISO date string when event was soft-deleted
 }
@@ -119,4 +121,87 @@ export interface BestDay {
 export interface AttendanceRecord {
   date: string; // ISO date string when attendance was recorded
   attendees: string[]; // Names of participants who attended
+  statuses?: Record<string, string>; // Map of participant ID or name to their attendance status ('attended', 'not-attended', 'unchecked')
+}
+
+export type InfluencerProspectType =
+  | 'mastermind'
+  | 'skool'
+  | 'bni'
+  | 'real_estate'
+  | 'sales_team'
+  | 'group_coach'
+  | 'podcast'
+  | 'meetup'
+  | 'franchise'
+  | 'ai_peer_group'
+  | 'directory_prospect'
+  | 'other';
+
+export type InfluencerPriorityTier = 'A' | 'B' | 'C';
+
+/** High-level outreach track — filter the pipeline without splitting storage */
+export type OutreachTrack = 'influencer' | 'prospect';
+
+export type InfluencerStatus =
+  | 'research'
+  | 'contacted'
+  | 'follow_up_1'
+  | 'follow_up_2'
+  | 'interested'
+  | 'lifetime_granted'
+  | 'active'
+  | 'declined'
+  | 'not_a_fit';
+
+export interface InfluencerProspect {
+  id: string;
+  name: string;
+  platform?: string;
+  handleUrl?: string;
+  niche?: string;
+  followersOrMembers?: string;
+  recurringGroup: boolean;
+  groupNameFrequency?: string;
+  prospectType: InfluencerProspectType;
+  /** Influencer = LinkedIn/HeyGen niche outreach; Prospect = directory / phone-first contacts */
+  outreachTrack?: OutreachTrack;
+  scoreOutOf25?: number;
+  priorityTier: InfluencerPriorityTier;
+  contactEmail?: string;
+  contactPhone?: string;
+  websiteUrl?: string;
+  contactLinkedIn?: string;
+  outreachDate?: string;
+  /** When the full LinkedIn DM (video + links) was sent after they accepted */
+  fullDmSentDate?: string;
+  followUp1Date?: string;
+  followUp2Date?: string;
+  status: InfluencerStatus;
+  lifetimeProGranted: boolean;
+  grantDate?: string;
+  onboardingCallDone: boolean;
+  deliverableAgreed?: string;
+  deliverableDone: boolean;
+  referralLink?: string;
+  signupsFromRef?: number;
+  /** Revenue attributed to this prospect (subscription, lifetime, etc.) */
+  saleAmount?: number;
+  saleDate?: string;
+  saleNotes?: string;
+  /** What you offer this prospect — merged into scripts and DMs */
+  giftOffer?: string;
+  /** Editable HeyGen script saved per prospect */
+  heyGenScriptDraft?: string;
+  /** Editable LinkedIn first-touch message saved per prospect */
+  linkedInDmDraft?: string;
+  /** SMS / text message draft for directory prospects (phone-first outreach) */
+  smsDraft?: string;
+  /** HeyGen (or other) personalized intro video URL for LinkedIn outreach */
+  personalVideoUrl?: string;
+  notes?: string;
+  participantDirectoryId?: string;
+  addedToParticipantDirectoryAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }

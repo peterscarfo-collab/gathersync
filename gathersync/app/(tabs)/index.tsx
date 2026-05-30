@@ -881,7 +881,7 @@ export default function EventsScreen() {
         ListHeaderComponent={() => (
           <>
             {events.length > 0 && (
-              <ThemedText style={[styles.sectionTitle, { marginTop: 0 }]}>My Events</ThemedText>
+              <ThemedText style={[styles.sectionTitle, { marginTop: 16 }]}>My Events</ThemedText>
             )}
           </>
         )}
@@ -1012,6 +1012,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
+  },
+  manualButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  manualButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  manualButtonContent: {
+    flex: 1,
+  },
+  manualButtonTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 2,
   },
   fab: {
     position: 'absolute',

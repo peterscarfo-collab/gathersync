@@ -32,10 +32,14 @@ export default function EditMeetingDetailsScreen() {
   const [rsvpDeadline, setRsvpDeadline] = useState('');
   const [meetingNotes, setMeetingNotes] = useState('');
   const [digitalTwinUrl, setDigitalTwinUrl] = useState('');
+  const [quorumType, setQuorumType] = useState<'none' | 'number' | 'percentage'>('none');
+  const [quorumValue, setQuorumValue] = useState('');
   const [showAttendeeNames, setShowAttendeeNames] = useState(true);
   const [showAttendeeEmails, setShowAttendeeEmails] = useState(false);
   const [showAttendeePhones, setShowAttendeePhones] = useState(false);
   const [fixedDate, setFixedDate] = useState<Date>(new Date());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showTeamLeaderPicker, setShowTeamLeaderPicker] = useState(false);
@@ -46,6 +50,14 @@ export default function EditMeetingDetailsScreen() {
   const surfaceColor = useThemeColor({}, 'surface');
   const textColor = useThemeColor({}, 'text');
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
+  
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 5 }, (_, i) => currentYear + i);
   
   // Use auto-sync for proper event updates
   const { updateEvent: autoUpdateEvent } = useAutoSync();
@@ -70,6 +82,8 @@ export default function EditMeetingDetailsScreen() {
       setRsvpDeadline(loadedEvent.rsvpDeadline || '');
       setMeetingNotes(loadedEvent.meetingNotes || '');
       setDigitalTwinUrl(loadedEvent.digitalTwinUrl || '');
+      setQuorumType(loadedEvent.quorumType || 'none');
+      setQuorumValue(loadedEvent.quorumValue ? loadedEvent.quorumValue.toString() : '');
       setShowAttendeeNames(loadedEvent.showAttendeeNames ?? true);
       setShowAttendeeEmails(loadedEvent.showAttendeeEmails ?? false);
       setShowAttendeePhones(loadedEvent.showAttendeePhones ?? false);
@@ -80,6 +94,9 @@ export default function EditMeetingDetailsScreen() {
         const dateTime = new Date(loadedEvent.fixedDate + 'T00:00:00');
         dateTime.setHours(hours, minutes);
         setFixedDate(dateTime);
+      } else if (loadedEvent.eventType === 'flexible') {
+        if (loadedEvent.month) setSelectedMonth(loadedEvent.month);
+        if (loadedEvent.year) setSelectedYear(loadedEvent.year);
       }
     }
   };
@@ -111,14 +128,16 @@ export default function EditMeetingDetailsScreen() {
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
         digitalTwinUrl: digitalTwinUrl.trim() || undefined,
+        quorumType: quorumType !== 'none' ? quorumType : undefined,
+        quorumValue: quorumType !== 'none' && quorumValue ? parseInt(quorumValue, 10) : undefined,
         showAttendeeNames,
         showAttendeeEmails,
         showAttendeePhones,
         // Update fixed date/time if it's a fixed event
         fixedDate: event.eventType === 'fixed' ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}` : event.fixedDate,
         fixedTime: event.eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : event.fixedTime,
-        month: event.eventType === 'fixed' ? fixedDate.getMonth() + 1 : event.month,
-        year: event.eventType === 'fixed' ? fixedDate.getFullYear() : event.year,
+        month: event.eventType === 'fixed' ? fixedDate.getMonth() + 1 : selectedMonth,
+        year: event.eventType === 'fixed' ? fixedDate.getFullYear() : selectedYear,
         updatedAt: new Date().toISOString(),
       };
 
@@ -182,6 +201,106 @@ export default function EditMeetingDetailsScreen() {
         ]}
       >
         <View style={styles.formContainer}>
+        {/* Month & Year (Flexible Events Only) */}
+        {event.eventType === 'flexible' && (
+          <View style={styles.section}>
+            <ThemedText type="subtitle" style={styles.sectionTitle}>Event Month</ThemedText>
+            <View style={styles.yearRow}>
+              {Platform.OS === 'web' ? (
+                <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+                  <select
+                    style={{
+                      flex: 2,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  >
+                    {months.map((m, i) => (
+                      <option key={i} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  >
+                    {years.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 2 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {months.map((month, index) => {
+                        const isSelected = selectedMonth === index + 1;
+                        return (
+                          <Pressable
+                            key={month}
+                            style={[
+                              styles.yearItem,
+                              { backgroundColor: surfaceColor },
+                              isSelected && { backgroundColor: tintColor },
+                            ]}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setSelectedMonth(index + 1);
+                            }}
+                          >
+                            <ThemedText style={[styles.yearText, isSelected && { color: '#fff' }]}>
+                              {month}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {years.map((year) => {
+                        const isSelected = selectedYear === year;
+                        return (
+                          <Pressable
+                            key={year}
+                            style={[
+                              styles.yearItem,
+                              { backgroundColor: surfaceColor },
+                              isSelected && { backgroundColor: tintColor },
+                            ]}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              setSelectedYear(year);
+                            }}
+                          >
+                            <ThemedText style={[styles.yearText, isSelected && { color: '#fff' }]}>
+                              {year}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Date & Time (Fixed Events Only) */}
         {event.eventType === 'fixed' && (
           <>
@@ -335,7 +454,12 @@ export default function EditMeetingDetailsScreen() {
               placeholder="Who's organizing this?"
               placeholderTextColor={textSecondaryColor}
               value={teamLeader}
-              onChangeText={setTeamLeader}
+              onChangeText={(text) => {
+                setTeamLeader(text);
+                if (text !== event?.teamLeader) {
+                  setTeamLeaderPhone('');
+                }
+              }}
             />
             <Pressable
               style={[styles.contactButton, { backgroundColor: tintColor }]}
@@ -529,6 +653,84 @@ export default function EditMeetingDetailsScreen() {
           />
         </View>
 
+        {/* Minimum Attendance (Quorum) */}
+        <View style={styles.section}>
+          <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
+            Minimum Attendance / Quorum (Optional)
+          </ThemedText>
+          <View style={styles.yearRow}>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'none' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('none');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'none' && { color: '#fff' }]}>
+                None
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'number' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('number');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'number' && { color: '#fff' }]}>
+                Fixed Number
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'percentage' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('percentage');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'percentage' && { color: '#fff' }]}>
+                Percentage
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          {quorumType !== 'none' && (
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                  borderColor: surfaceColor,
+                  marginTop: 12,
+                },
+              ]}
+              placeholder={quorumType === 'number' ? "e.g., 30" : "e.g., 75"}
+              placeholderTextColor={textSecondaryColor}
+              value={quorumValue}
+              onChangeText={setQuorumValue}
+              keyboardType="number-pad"
+            />
+          )}
+          <ThemedText style={{ fontSize: 13, color: textSecondaryColor, marginTop: 8 }}>
+            {quorumType === 'none' ? 'No minimum attendance required for this event to proceed.' :
+             quorumType === 'number' ? 'Enter the exact number of attendees required.' :
+             'Enter the percentage of invited participants required (will round up to nearest person).'}
+          </ThemedText>
+        </View>
+
         {/* Digital Twin URL */}
         <View style={styles.section}>
           <ThemedText type="defaultSemiBold" style={styles.sectionTitle}>
@@ -714,7 +916,24 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 40,
+  },
+  yearRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  yearItem: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  yearText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   formContainer: {
     width: '100%',

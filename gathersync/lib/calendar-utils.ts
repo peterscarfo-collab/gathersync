@@ -165,3 +165,29 @@ export function getDateRange(startDate: string, endDate: string): string[] {
   
   return dates;
 }
+
+/** Map flexible availability on a chosen date to fixed-event RSVP statuses. */
+export function applyRsvpFromAvailability(
+  participants: Participant[],
+  selectedDateStr: string
+): Participant[] {
+  return participants.map(p => {
+    if (p.deletedAt) return p;
+    let isAvailable = false;
+    let hasResponded = false;
+
+    if (p.availability) {
+      if (Array.isArray(p.availability)) {
+        isAvailable = p.availability.includes(selectedDateStr);
+        hasResponded = p.availability.length > 0;
+      } else {
+        isAvailable = p.availability[selectedDateStr] === true;
+        hasResponded = Object.keys(p.availability).length > 0;
+      }
+    }
+
+    if (isAvailable) return { ...p, rsvpStatus: 'attending' as const };
+    if (hasResponded) return { ...p, rsvpStatus: 'not-attending' as const };
+    return { ...p, rsvpStatus: 'no-response' as const };
+  });
+}

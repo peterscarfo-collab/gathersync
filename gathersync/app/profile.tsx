@@ -265,6 +265,7 @@ export default function ProfileScreen() {
           </View>
         )}
 
+
         {/* Actions */}
         {isAuthenticated ? (
           <Pressable
@@ -360,6 +361,22 @@ const styles = StyleSheet.create({
   manageButtonText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  resourceButton: {
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 8,
+  },
+  resourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  resourceText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   logoutButton: {
     borderRadius: 12,

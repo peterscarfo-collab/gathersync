@@ -52,6 +52,8 @@ export default function CreateEventScreen() {
   const [rsvpDeadline, setRsvpDeadline] = useState(params.rsvpDeadline || '');
   const [meetingNotes, setMeetingNotes] = useState(params.meetingNotes || '');
   const [digitalTwinUrl, setDigitalTwinUrl] = useState('');
+  const [quorumType, setQuorumType] = useState<'none' | 'number' | 'percentage'>('none');
+  const [quorumValue, setQuorumValue] = useState('');
 
   const { user, isAuthenticated } = useAuth();
   const tintColor = useThemeColor({}, 'tint');
@@ -148,6 +150,8 @@ export default function CreateEventScreen() {
         rsvpDeadline: rsvpDeadline.trim() || undefined,
         meetingNotes: meetingNotes.trim() || undefined,
         digitalTwinUrl: digitalTwinUrl.trim() || undefined,
+        quorumType: quorumType !== 'none' ? quorumType : undefined,
+        quorumValue: quorumType !== 'none' && quorumValue ? parseInt(quorumValue, 10) : undefined,
       };
 
       // Save locally first (use addWithId to preserve our generated ID)
@@ -396,34 +400,64 @@ export default function CreateEventScreen() {
                       color: textColor,
                       border: 'none',
                       borderRadius: 12,
-                      appearance: 'none',
                     }}
-                    value={`${String(fixedDate.getHours() % 12 || 12)}:${String(fixedDate.getMinutes()).padStart(2, '0')} ${fixedDate.getHours() >= 12 ? 'PM' : 'AM'}`}
+                    value={fixedDate.getHours() % 12 || 12}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      const isPM = val.includes('PM');
-                      let [hours, minutes] = val.replace(' AM', '').replace(' PM', '').split(':').map(Number);
-                      if (isPM && hours !== 12) hours += 12;
-                      if (!isPM && hours === 12) hours = 0;
-                      
+                      const h = parseInt(e.target.value, 10);
+                      const isPM = fixedDate.getHours() >= 12;
                       const newDate = new Date(fixedDate);
-                      newDate.setHours(hours, minutes);
+                      newDate.setHours(isPM ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h));
                       setFixedDate(newDate);
                     }}
                   >
-                    {Array.from({ length: 24 * 4 }).map((_, i) => {
-                      const totalMinutes = i * 15;
-                      let h = Math.floor(totalMinutes / 60);
-                      const m = totalMinutes % 60;
-                      const ampm = h >= 12 ? 'PM' : 'AM';
-                      const displayH = h % 12 || 12;
-                      const timeString = `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
-                      return (
-                        <option key={timeString} value={timeString}>
-                          {timeString}
-                        </option>
-                      );
+                    {Array.from({ length: 12 }).map((_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={Math.floor(fixedDate.getMinutes() / 5) * 5}
+                    onChange={(e) => {
+                      const newDate = new Date(fixedDate);
+                      newDate.setMinutes(parseInt(e.target.value, 10));
+                      setFixedDate(newDate);
+                    }}
+                  >
+                    {Array.from({ length: 12 }).map((_, i) => {
+                      const mins = i * 5;
+                      return <option key={mins} value={mins}>{String(mins).padStart(2, '0')}</option>;
                     })}
+                  </select>
+                  <select
+                    style={{
+                      flex: 1,
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={fixedDate.getHours() >= 12 ? 'PM' : 'AM'}
+                    onChange={(e) => {
+                      const isPM = e.target.value === 'PM';
+                      const h = fixedDate.getHours();
+                      const newDate = new Date(fixedDate);
+                      if (isPM && h < 12) newDate.setHours(h + 12);
+                      if (!isPM && h >= 12) newDate.setHours(h - 12);
+                      setFixedDate(newDate);
+                    }}
+                  >
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
                   </select>
                 </div>
               ) : (
@@ -657,6 +691,84 @@ export default function CreateEventScreen() {
             numberOfLines={4}
             textAlignVertical="top"
           />
+        </View>
+
+        {/* Minimum Attendance (Quorum) */}
+        <View style={styles.section}>
+          <ThemedText type="defaultSemiBold" style={styles.label}>
+            Minimum Attendance / Quorum (Optional)
+          </ThemedText>
+          <View style={styles.yearRow}>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'none' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('none');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'none' && { color: '#fff' }]}>
+                None
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'number' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('number');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'number' && { color: '#fff' }]}>
+                Fixed Number
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.yearItem,
+                { backgroundColor: surfaceColor },
+                quorumType === 'percentage' && { backgroundColor: tintColor },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setQuorumType('percentage');
+              }}
+            >
+              <ThemedText style={[styles.yearText, quorumType === 'percentage' && { color: '#fff' }]}>
+                Percentage
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          {quorumType !== 'none' && (
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: surfaceColor,
+                  color: textColor,
+                  borderColor: surfaceColor,
+                  marginTop: 12,
+                },
+              ]}
+              placeholder={quorumType === 'number' ? "e.g., 30" : "e.g., 75"}
+              placeholderTextColor={textSecondaryColor}
+              value={quorumValue}
+              onChangeText={setQuorumValue}
+              keyboardType="number-pad"
+            />
+          )}
+          <ThemedText style={[styles.helperText, { color: textSecondaryColor }]}>
+            {quorumType === 'none' ? 'No minimum attendance required for this event to proceed.' :
+             quorumType === 'number' ? 'Enter the exact number of attendees required.' :
+             'Enter the percentage of invited participants required (will round up to nearest person).'}
+          </ThemedText>
         </View>
 
         {/* Digital Twin URL */}

@@ -78,6 +78,14 @@ body {
     opacity: 0.7;
 }
 
+.nav-links .btn-primary {
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
 /* Buttons */
 .btn-primary, .btn-secondary {
     display: inline-flex;
@@ -716,8 +724,40 @@ body {
 }
 
 @media (max-width: 734px) {
+    .nav .container {
+        padding: 0 16px;
+    }
+
+    .nav-content {
+        min-height: 48px;
+        padding: 6px 0;
+        gap: 8px;
+    }
+
+    .logo {
+        font-size: 17px;
+        gap: 8px;
+        min-width: 0;
+        flex-shrink: 1;
+    }
+
+    .logo img {
+        width: 28px !important;
+        height: 28px !important;
+    }
+
     .nav-links {
-        gap: 16px;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+
+    .nav-links a:not(.btn-primary) {
+        font-size: 12px;
+    }
+
+    .nav-links .btn-primary {
+        padding: 7px 12px;
+        font-size: 12px;
     }
     
     .hero {

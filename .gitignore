@@ -1,1 +1,8 @@
 node_modules
+.expo/
+android/
+ios/
+.DS_Store
+*.zip
+.env
+.env.production

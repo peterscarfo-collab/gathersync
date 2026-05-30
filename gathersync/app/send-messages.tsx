@@ -182,7 +182,7 @@ export default function SendMessagesScreen() {
   const [isSending, setIsSending] = useState(false);
   const sendInvitationsMutation = trpc.participants.sendInvitations.useMutation();
 
-  const sendEmail = async () => {
+  const sendNativeEmail = async () => {
     if (!event) return;
     const message = getMessageContent();
     const emails = event.participants
@@ -190,10 +190,72 @@ export default function SendMessagesScreen() {
       .map(p => p.email);
 
     if (emails.length === 0) {
-      Alert.alert('No Emails', 'None of the selected participants have an email address saved.');
+      if (Platform.OS === 'web') {
+        alert('None of the selected participants have an email address saved.');
+      } else {
+        Alert.alert('No Emails', 'None of the selected participants have an email address saved.');
+      }
       return;
     }
 
+    const bccString = emails.join(',');
+    const subject = encodeURIComponent(`Update regarding ${event.name}`);
+    const body = encodeURIComponent(message);
+    const mailtoUrl = `mailto:?bcc=${bccString}&subject=${subject}&body=${body}`;
+    
+    let copySuccess = false;
+    
+    try {
+      if (Platform.OS === 'web') {
+        // Fallback to execCommand for web to ensure it works across all browsers synchronously
+        const textArea = document.createElement("textarea");
+        textArea.value = bccString;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        copySuccess = document.execCommand('copy');
+        textArea.remove();
+      } else {
+        await Clipboard.setStringAsync(bccString);
+        copySuccess = true;
+      }
+    } catch (err) {
+      console.error('Clipboard copy failed:', err);
+    }
+
+    try {
+      if (Platform.OS === 'web') {
+        const a = document.createElement('a');
+        a.href = mailtoUrl;
+        a.target = '_top';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        const msg = copySuccess 
+          ? 'Opening your email app...\n\nIf it does not open automatically, all selected email addresses have been copied to your clipboard. You can paste them into the BCC field of your email client.'
+          : 'Opening your email app...\n\n(Note: We tried to copy the emails to your clipboard as a fallback, but your browser blocked it.)';
+        
+        // Use setTimeout so the alert doesn't block the link click execution
+        setTimeout(() => alert(msg), 100);
+      } else {
+        await Linking.openURL(mailtoUrl);
+      }
+    } catch (err) {
+      if (Platform.OS === 'web') {
+        alert(copySuccess ? 'Could not open email app. The email addresses have been copied to your clipboard.' : 'Could not open email app, and clipboard access was denied.');
+      } else {
+        Alert.alert('Notice', copySuccess ? 'Could not open email app. The email addresses have been copied to your clipboard.' : 'Could not open email app.');
+      }
+    }
+  };
+
+  const executeSendEmail = async () => {
+    if (!event) return;
+    const message = getMessageContent();
     const selected = event.participants.filter(p => 
       selectedParticipants.has(p.id) && p.email
     );
@@ -217,7 +279,6 @@ export default function SendMessagesScreen() {
         Alert.alert('Success', `Successfully sent ${result.sentCount} emails!`);
       }
       
-      // Navigate back after successful send
       router.back();
     } catch (error) {
       console.error('Error sending emails:', error);
@@ -228,6 +289,37 @@ export default function SendMessagesScreen() {
       }
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const sendEmail = () => {
+    if (!event) return;
+    const emails = event.participants
+      .filter(p => selectedParticipants.has(p.id) && p.email)
+      .map(p => p.email);
+
+    if (emails.length === 0) {
+      if (Platform.OS === 'web') {
+        alert('None of the selected participants have an email address saved.');
+      } else {
+        Alert.alert('No Emails', 'None of the selected participants have an email address saved.');
+      }
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Are you sure you want to send ${emails.length} emails using the GatherSync system? This cannot be undone.`)) {
+        executeSendEmail();
+      }
+    } else {
+      Alert.alert(
+        'Confirm Send',
+        `Are you sure you want to send ${emails.length} emails using the GatherSync system? This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Send Emails', style: 'destructive', onPress: executeSendEmail }
+        ]
+      );
     }
   };
 
@@ -389,12 +481,23 @@ export default function SendMessagesScreen() {
         
         <Pressable
           style={[styles.actionButton, { backgroundColor: tintColor, opacity: (selectedParticipants.size === 0 || isSending) ? 0.5 : 1 }]}
-          onPress={sendEmail}
+          onPress={sendNativeEmail}
           disabled={selectedParticipants.size === 0 || isSending}
         >
           <IconSymbol name="envelope.fill" size={20} color="#FFFFFF" />
           <ThemedText style={styles.actionButtonText}>
-            {isSending ? 'Sending...' : 'Send Email'}
+            Native Email
+          </ThemedText>
+        </Pressable>
+
+        <Pressable
+          style={[styles.actionButton, { backgroundColor: tintColor, opacity: (selectedParticipants.size === 0 || isSending) ? 0.5 : 1 }]}
+          onPress={sendEmail}
+          disabled={selectedParticipants.size === 0 || isSending}
+        >
+          <IconSymbol name="paperplane.fill" size={20} color="#FFFFFF" />
+          <ThemedText style={styles.actionButtonText}>
+            {isSending ? 'Sending...' : 'App Email'}
           </ThemedText>
         </Pressable>
       </View>
@@ -448,6 +551,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     padding: 16,
     gap: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -455,6 +559,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
+    minWidth: '30%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

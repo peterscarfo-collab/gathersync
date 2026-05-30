@@ -45,34 +45,6 @@ export default function DayDetailScreen() {
     setDayAvailability(availability);
   };
 
-  const toggleAvailability = async (participantId: string) => {
-    if (!event || !dayAvailability) return;
-
-    const participant = event.participants.find(p => p.id === participantId);
-    if (!participant) return;
-
-    const dateStr = dayAvailability.date;
-    const hasStatus = dateStr in participant.availability;
-    const currentStatus = participant.availability[dateStr];
-    
-    // Toggle: undefined -> true (Available), true -> false (Unavailable), false -> undefined (No Response)
-    if (!hasStatus) {
-      participant.availability[dateStr] = true;
-    } else if (currentStatus === true) {
-      participant.availability[dateStr] = false;
-    } else {
-      delete participant.availability[dateStr];
-    }
-
-    await eventsLocalStorage.update(eventId!, {
-      ...event,
-      updatedAt: new Date().toISOString(),
-    });
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    loadData();
-  };
-
   if (!event || !dayAvailability) {
     return (
       <ThemedView style={[styles.container, { backgroundColor }]}>
@@ -213,7 +185,12 @@ export default function DayDetailScreen() {
               <Pressable
                 key={participant.id}
                 style={[styles.participantCard, { backgroundColor: surfaceColor }]}
-                onPress={() => toggleAvailability(participant.id)}
+                onPress={() => {
+                  router.push({
+                    pathname: '/edit-availability' as any,
+                    params: { eventId: event.id, participantId: participant.id },
+                  });
+                }}
               >
                 <View style={styles.participantInfo}>
                   <View

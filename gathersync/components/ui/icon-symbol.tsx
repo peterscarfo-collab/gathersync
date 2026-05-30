@@ -67,6 +67,7 @@ const MAPPING = {
   "link": "link",
   "chevron.down": "expand-more",
   "xmark.circle.fill": "cancel",
+  "envelope.fill": "email",
 } as IconMapping;
 
 /**

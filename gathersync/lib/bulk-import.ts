@@ -125,6 +125,9 @@ export interface ContactsImportResult {
     designation?: string;
     organization?: string;
     leadSource?: string;
+    day1?: number;
+    day2?: number;
+    day3?: number;
   }>;
   errors: string[];
 }
@@ -185,6 +188,13 @@ export function parseContactsCSV(text: string): ContactsImportResult {
       const designation = cells[3] || undefined;
       const organization = cells[4] || undefined;
       const leadSource = cells[5] || undefined;
+      const day1Str = cells[6]?.trim();
+      const day2Str = cells[7]?.trim();
+      const day3Str = cells[8]?.trim();
+
+      const day1 = day1Str ? parseInt(day1Str, 10) : undefined;
+      const day2 = day2Str ? parseInt(day2Str, 10) : undefined;
+      const day3 = day3Str ? parseInt(day3Str, 10) : undefined;
 
       result.participants.push({
         name,
@@ -193,6 +203,9 @@ export function parseContactsCSV(text: string): ContactsImportResult {
         designation,
         organization,
         leadSource,
+        day1: day1 !== undefined && !isNaN(day1) ? day1 : undefined,
+        day2: day2 !== undefined && !isNaN(day2) ? day2 : undefined,
+        day3: day3 !== undefined && !isNaN(day3) ? day3 : undefined,
       });
     }
 
@@ -208,9 +221,9 @@ export function parseContactsCSV(text: string): ContactsImportResult {
 }
 
 export function generateContactsImportTemplate(): string {
-  const header = ['Name', 'Phone', 'Email', 'Title/Designation', 'Company/Organization', 'Lead Source'].join(',');
-  const example1 = ['John Doe', '0412345678', 'john@example.com', 'Director', 'Acme Corp', 'Trade Show'].join(',');
-  const example2 = ['Sarah Smith', '', 'sarah@example.com', 'VIP', 'GatherSync', 'Referral'].join(',');
+  const header = ['Name', 'Phone', 'Email', 'Title/Designation', 'Company/Organization', 'Lead Source', 'Day 1', 'Day 2', 'Day 3'].join(',');
+  const example1 = ['John Doe', '0412345678', 'john@example.com', 'Director', 'Acme Corp', 'Trade Show', '12', '14', '16'].join(',');
+  const example2 = ['Sarah Smith', '', 'sarah@example.com', 'VIP', 'GatherSync', 'Referral', '5', '10', ''].join(',');
   
   return [header, example1, example2].join('\n');
 }

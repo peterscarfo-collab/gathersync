@@ -373,11 +373,12 @@ export default function EditAvailabilityScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        {/* RSVP for Fixed Events */}
-        {event.eventType === 'fixed' && (
-          <View style={[styles.rsvpCard, { backgroundColor: surfaceColor }]}>            <ThemedText type="defaultSemiBold" style={styles.rsvpTitle}>
-              RSVP Status
-            </ThemedText>
+        {/* RSVP for All Events */}
+        <View style={[styles.rsvpCard, { backgroundColor: surfaceColor }]}>
+          <ThemedText type="defaultSemiBold" style={styles.rsvpTitle}>
+            RSVP Status
+          </ThemedText>
+          {event.eventType === 'fixed' && (
             <ThemedText style={[styles.rsvpSubtitle, { color: textSecondaryColor }]}>
               {event.fixedDate && new Date(event.fixedDate + 'T00:00:00').toLocaleDateString('en-US', { 
                 weekday: 'long', 
@@ -387,6 +388,7 @@ export default function EditAvailabilityScreen() {
               })}
               {event.fixedTime && ` at ${event.fixedTime}`}
             </ThemedText>
+          )}
             <View style={styles.rsvpButtons}>
               <Pressable
                 style={[
@@ -434,7 +436,6 @@ export default function EditAvailabilityScreen() {
               </Pressable>
             </View>
           </View>
-        )}
 
         {/* Unavailable All Month Toggle (only for flexible events) */}
         {event.eventType === 'flexible' && (

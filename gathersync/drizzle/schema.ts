@@ -80,6 +80,8 @@ export const events = mysqlTable("events", {
   showAttendeeEmails: boolean("showAttendeeEmails").default(false).notNull(),
   showAttendeePhones: boolean("showAttendeePhones").default(false).notNull(),
   digitalTwinUrl: text("digitalTwinUrl"),
+  quorumType: mysqlEnum("quorumType", ["number", "percentage"]),
+  quorumValue: int("quorumValue"),
   deletedAt: timestamp("deletedAt"), // Soft delete timestamp
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -131,14 +133,26 @@ export const pushTokens = mysqlTable("pushTokens", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+/** Influencer / prospect outreach pipeline — synced per user (not browser-only) */
+export const influencerProspects = mysqlTable("influencerProspects", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: int("userId").notNull(),
+  prospectData: json("prospectData").$type<Record<string, unknown>>().notNull(),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export type Event = typeof events.$inferSelect;
 export type Participant = typeof participants.$inferSelect;
 export type EventSnapshot = typeof eventSnapshots.$inferSelect;
 export type GroupTemplate = typeof groupTemplates.$inferSelect;
 export type PushToken = typeof pushTokens.$inferSelect;
+export type InfluencerProspectRow = typeof influencerProspects.$inferSelect;
 
 export type InsertEvent = typeof events.$inferInsert;
 export type InsertParticipant = typeof participants.$inferInsert;
 export type InsertEventSnapshot = typeof eventSnapshots.$inferInsert;
 export type InsertGroupTemplate = typeof groupTemplates.$inferInsert;
 export type InsertPushToken = typeof pushTokens.$inferInsert;
+export type InsertInfluencerProspectRow = typeof influencerProspects.$inferInsert;

@@ -3,6 +3,9 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { eventsLocalStorage } from './local-storage';
+import type { InfluencerProspect } from '@/types/models';
+
+const INFLUENCERS_KEY = '@gathersync_influencers';
 
 export interface BackupData {
   version: string;
@@ -11,6 +14,7 @@ export interface BackupData {
   events: any[];
   snapshots: any[];
   templates: any[];
+  influencers?: InfluencerProspect[];
 }
 
 /**
@@ -22,14 +26,16 @@ export async function exportBackup(): Promise<BackupData> {
     const eventsJson = await AsyncStorage.getItem('@gathersync_events');
     const snapshotsJson = await AsyncStorage.getItem('@gathersync_snapshots');
     const templatesJson = await AsyncStorage.getItem('@gathersync_templates');
+    const influencersJson = await AsyncStorage.getItem(INFLUENCERS_KEY);
 
     const backup: BackupData = {
-      version: '1.0',
+      version: '1.1',
       exportedAt: new Date().toISOString(),
       type: 'full',
       events: eventsJson ? JSON.parse(eventsJson) : [],
       snapshots: snapshotsJson ? JSON.parse(snapshotsJson) : [],
       templates: templatesJson ? JSON.parse(templatesJson) : [],
+      influencers: influencersJson ? JSON.parse(influencersJson) : [],
     };
 
     return backup;
@@ -150,10 +156,24 @@ export async function importBackup(backup: BackupData): Promise<void> {
       await AsyncStorage.setItem('@gathersync_templates', JSON.stringify(backup.templates));
     }
 
+    if (!isSingleEvent && backup.influencers !== undefined) {
+      await AsyncStorage.setItem(INFLUENCERS_KEY, JSON.stringify(backup.influencers));
+      if (backup.influencers.length > 0) {
+        try {
+          const { influencersCloudStorage } = await import('@/lib/cloud-storage');
+          await influencersCloudStorage.syncAll(backup.influencers);
+          console.log('[Backup] Pushed influencer prospects to cloud');
+        } catch (cloudError) {
+          console.error('[Backup] Failed to push influencers to cloud:', cloudError);
+        }
+      }
+    }
+
     console.log('[Backup] Import successful:', {
       events: backup.events.length,
       snapshots: backup.snapshots.length,
       templates: backup.templates.length,
+      influencers: backup.influencers?.length ?? 'unchanged',
     });
   } catch (error) {
     console.error('[Backup] Import failed:', error);
@@ -235,12 +255,14 @@ export function getBackupStats(backup: BackupData): {
   eventsCount: number;
   snapshotsCount: number;
   templatesCount: number;
+  influencersCount: number | null;
   exportDate: string;
 } {
   return {
     eventsCount: backup.events?.length || 0,
     snapshotsCount: backup.snapshots?.length || 0,
     templatesCount: backup.templates?.length || 0,
+    influencersCount: backup.influencers !== undefined ? backup.influencers.length : null,
     exportDate: backup.exportedAt,
   };
 }

@@ -102,8 +102,9 @@ export default function BackupScreen() {
         `This backup contains:\n` +
         `• ${stats.eventsCount} Events\n` +
         `• ${stats.snapshotsCount} Snapshots\n` +
-        `• ${stats.templatesCount} Templates\n\n` +
-        `Restoring will merge these records into your current data.`;
+        `• ${stats.templatesCount} Templates` +
+        (stats.influencersCount !== null ? `\n• ${stats.influencersCount} Influencer prospects` : '') +
+        `\n\nRestoring will merge these records into your current data.`;
 
       if (Platform.OS === 'web') {
         const confirmed = window.confirm(confirmMessage);
@@ -219,7 +220,7 @@ export default function BackupScreen() {
             <View style={styles.actionContent}>
               <ThemedText style={styles.actionTitle}>Download Full Backup</ThemedText>
               <ThemedText style={styles.actionDescription}>
-                Export all your events, participants, and settings to a secure JSON file.
+                Export all your events, participants, influencer pipeline, and settings to a secure JSON file.
               </ThemedText>
             </View>
             <IconSymbol name="chevron.right" size={20} color={AdminColors.gray400} />
@@ -256,7 +257,7 @@ export default function BackupScreen() {
           <View style={styles.infoContent}>
             <ThemedText style={styles.infoTitle}>About Backups</ThemedText>
             <ThemedText style={styles.infoText}>
-              Backups contain all your events, participant lists, and availability data. Restoring a backup will merge the data with your current site. If an event already exists, it will be updated with the data from the backup.
+              Backups contain all your events, participant lists, availability data, and admin influencer outreach pipeline. Restoring a backup will merge the data with your current site. If an event already exists, it will be updated with the data from the backup. Older backups without influencer data will leave your current pipeline unchanged.
             </ThemedText>
           </View>
         </View>

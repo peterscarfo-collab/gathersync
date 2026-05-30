@@ -28,7 +28,12 @@ import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
 import { trpc } from '@/lib/trpc';
 import { AdminColors } from '@/constants/admin-theme';
-import type { Event, Participant } from '@/types/models';
+import {
+  addParticipantToInfluencerOutreach,
+  findInfluencerProspectForContact,
+} from '@/lib/influencer-from-participant';
+import { STATUS_LABELS } from '@/lib/influencer-playbook';
+import type { Event, InfluencerProspect, Participant } from '@/types/models';
 
 interface EventInfo {
   id: string;
@@ -45,13 +50,85 @@ interface ParticipantWithEvents {
   leadSource?: string;
   digitalTwinUrl?: string;
   notes?: string;
+  /** Participant id in the Prospects Directory event, when present */
+  prospectsDirectoryParticipantId?: string;
   eventCount: number;
   events: EventInfo[];
 }
 
+const localeCompare = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { sensitivity: 'base' });
+
+const getNameParts = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+    hasLastName: parts.length > 1,
+  };
+};
+
+const compareParticipantNames = (a: string, b: string, byLastName: boolean) => {
+  if (!byLastName) {
+    return localeCompare(a, b);
+  }
+
+  const aParts = getNameParts(a);
+  const bParts = getNameParts(b);
+
+  if (aParts.hasLastName !== bParts.hasLastName) {
+    return aParts.hasLastName ? -1 : 1;
+  }
+
+  if (aParts.hasLastName && bParts.hasLastName) {
+    const lastNameCompare = localeCompare(aParts.lastName, bParts.lastName);
+    if (lastNameCompare !== 0) return lastNameCompare;
+    return localeCompare(aParts.firstName, bParts.firstName);
+  }
+
+  return localeCompare(aParts.firstName, bParts.firstName);
+};
+
+const participantMatchesSearch = (participant: ParticipantWithEvents, query: string) =>
+  participant.name.toLowerCase().includes(query) ||
+  participant.phone?.toLowerCase().includes(query) ||
+  participant.email?.toLowerCase().includes(query) ||
+  participant.designation?.toLowerCase().includes(query) ||
+  participant.organization?.toLowerCase().includes(query) ||
+  participant.leadSource?.toLowerCase().includes(query) ||
+  participant.notes?.toLowerCase().includes(query) ||
+  participant.events.some(e => e.name.toLowerCase().includes(query) || e.date.toLowerCase().includes(query));
+
+type ContactFilter =
+  | 'all'
+  | 'phone'
+  | 'no-phone'
+  | 'email'
+  | 'no-email'
+  | 'source'
+  | 'no-source'
+  | 'organization'
+  | 'no-organization';
+
+const hasValue = (value?: string) => !!value?.trim();
+
+const contactFilterLabels: Record<ContactFilter, string> = {
+  all: 'contacts',
+  phone: 'with phone',
+  'no-phone': 'missing phone',
+  email: 'with email',
+  'no-email': 'missing email',
+  source: 'with lead source',
+  'no-source': 'missing lead source',
+  organization: 'with company',
+  'no-organization': 'missing company',
+};
+
+const isMissingContactFilter = (filter: ContactFilter) => filter.startsWith('no-');
+
 export default function AdminParticipantsScreen() {
   const router = useRouter();
-  const { eventId } = useLocalSearchParams<{ eventId?: string }>();
+  const { eventId, filter } = useLocalSearchParams<{ eventId?: string; filter?: string }>();
   const insets = useSafeAreaInsets();
   const tintColor = useThemeColor({}, 'tint');
   const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#2a2a2a' }, 'background');
@@ -63,16 +140,24 @@ export default function AdminParticipantsScreen() {
   const isDesktop = width >= 768;
   const [sortBy, setSortBy] = useState<'firstName' | 'lastName' | 'phone' | 'event' | 'source'>('firstName');
   const [filterEventId, setFilterEventId] = useState<string>('all');
+  const [contactFilter, setContactFilter] = useState<ContactFilter>('all');
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
+  const [bulkAddInProgress, setBulkAddInProgress] = useState(false);
   
   const [events, setEvents] = useState<Event[]>([]);
   const [activeEvent, setActiveEvent] = useState<Event | null>(null);
   const [participants, setParticipants] = useState<ParticipantWithEvents[]>([]);
   const [filteredParticipants, setFilteredParticipants] = useState<ParticipantWithEvents[]>([]);
+  const [summaryParticipants, setSummaryParticipants] = useState<ParticipantWithEvents[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedParticipant, setSelectedParticipant] = useState<ParticipantWithEvents | null>(null);
+  const [linkedInfluencer, setLinkedInfluencer] = useState<InfluencerProspect | null>(null);
+  const [influencerLinkLoading, setInfluencerLinkLoading] = useState(false);
+  const [addingToInfluencer, setAddingToInfluencer] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [addName, setAddName] = useState('');
   const [addPhone, setAddPhone] = useState('');
@@ -96,6 +181,12 @@ export default function AdminParticipantsScreen() {
   const [selectedUserForGrant, setSelectedUserForGrant] = useState<{id: number, name: string} | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  useEffect(() => {
+    if (filter === 'prospects') {
+      setFilterEventId('prospects');
+    }
+  }, [filter]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -106,6 +197,104 @@ export default function AdminParticipantsScreen() {
     { query: selectedParticipant?.email || selectedParticipant?.name || '' },
     { enabled: !!selectedParticipant }
   );
+
+  useEffect(() => {
+    if (!selectedParticipant) {
+      setLinkedInfluencer(null);
+      return;
+    }
+
+    let cancelled = false;
+    setInfluencerLinkLoading(true);
+    findInfluencerProspectForContact({
+      name: selectedParticipant.name,
+      email: selectedParticipant.email,
+      phone: selectedParticipant.phone,
+      designation: selectedParticipant.designation,
+      organization: selectedParticipant.organization,
+      leadSource: selectedParticipant.leadSource,
+      digitalTwinUrl: selectedParticipant.digitalTwinUrl,
+      notes: selectedParticipant.notes,
+      prospectsDirectoryParticipantId: selectedParticipant.prospectsDirectoryParticipantId,
+    })
+      .then(prospect => {
+        if (!cancelled) setLinkedInfluencer(prospect);
+      })
+      .finally(() => {
+        if (!cancelled) setInfluencerLinkLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedParticipant]);
+
+  const handleAddToInfluencerOutreach = async () => {
+    if (!selectedParticipant) return;
+
+    setAddingToInfluencer(true);
+    try {
+      const origin =
+        Platform.OS === 'web' && typeof window !== 'undefined'
+          ? window.location.origin
+          : 'https://app.gathersync.app';
+      const result = await addParticipantToInfluencerOutreach(
+        {
+          name: selectedParticipant.name,
+          email: selectedParticipant.email,
+          phone: selectedParticipant.phone,
+          designation: selectedParticipant.designation,
+          organization: selectedParticipant.organization,
+          leadSource: selectedParticipant.leadSource,
+          digitalTwinUrl: selectedParticipant.digitalTwinUrl,
+          notes: selectedParticipant.notes,
+          prospectsDirectoryParticipantId: selectedParticipant.prospectsDirectoryParticipantId,
+        },
+        { syncToCloud: isAuthenticated, origin }
+      );
+
+      setLinkedInfluencer(result.prospect);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      if (result.alreadyLinked) {
+        Alert.alert(
+          'Already in Influencer Outreach',
+          `${selectedParticipant.name} is already in your outreach pipeline (${STATUS_LABELS[result.prospect.status]}).`,
+          [
+            { text: 'Stay Here', style: 'cancel' },
+            {
+              text: 'Open Pipeline',
+              onPress: () => {
+                setSelectedParticipant(null);
+                router.push({ pathname: '/admin/influencers' as any, params: { edit: result.prospect.id } });
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Added to Influencer Outreach',
+        `${selectedParticipant.name} is now in your outreach pipeline with LinkedIn DM and email drafts ready.`,
+        [
+          { text: 'Stay Here', style: 'cancel' },
+          {
+            text: 'Open Pipeline',
+            onPress: () => {
+              setSelectedParticipant(null);
+              router.push({ pathname: '/admin/influencers' as any, params: { edit: result.prospect.id } });
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('[Participants] Add to influencer outreach failed:', error);
+      Alert.alert('Error', 'Failed to add to Influencer Outreach.');
+    } finally {
+      setAddingToInfluencer(false);
+    }
+  };
 
   const grantLifetimePro = trpc.admin.grantLifetimePro.useMutation({
     onSuccess: () => {
@@ -226,7 +415,7 @@ export default function AdminParticipantsScreen() {
 
   useEffect(() => {
     applySearchAndSort();
-  }, [participants, searchQuery, sortBy, filterEventId]);
+  }, [participants, searchQuery, sortBy, filterEventId, contactFilter]);
 
   const loadData = async () => {
     try {
@@ -303,6 +492,9 @@ export default function AdminParticipantsScreen() {
             if (info.notes && !existing.notes) {
               existing.notes = info.notes;
             }
+            if (isProspectEvent && !existing.prospectsDirectoryParticipantId) {
+              existing.prospectsDirectoryParticipantId = participant.id;
+            }
           } else {
             participantMap.set(participant.name, {
               name: participant.name,
@@ -313,6 +505,7 @@ export default function AdminParticipantsScreen() {
               leadSource: info.leadSource || participant.leadSource,
               digitalTwinUrl: info.digitalTwinUrl || participant.digitalTwinUrl,
               notes: info.notes || participant.notes,
+              prospectsDirectoryParticipantId: isProspectEvent ? participant.id : undefined,
               eventCount: isProspectEvent ? 0 : 1,
               events: isProspectEvent ? [] : [{ id: event.id, name: event.name, date }],
             });
@@ -332,58 +525,68 @@ export default function AdminParticipantsScreen() {
   };
 
   const applySearchAndSort = () => {
-    let filtered = participants;
+    let baseFiltered = participants;
 
     // Filter by Event first
     if (filterEventId !== 'all') {
       if (filterEventId === 'prospects') {
-        filtered = filtered.filter(p => p.eventCount === 0);
+        baseFiltered = baseFiltered.filter(p => p.eventCount === 0);
       } else {
-        filtered = filtered.filter(p => p.events.some(e => e.id === filterEventId));
+        baseFiltered = baseFiltered.filter(p => p.events.some(e => e.id === filterEventId));
       }
     }
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(p =>
-        p.name.toLowerCase().includes(query) ||
-        p.phone?.toLowerCase().includes(query) ||
-        p.email?.toLowerCase().includes(query) ||
-        p.designation?.toLowerCase().includes(query) ||
-        p.organization?.toLowerCase().includes(query) ||
-        p.leadSource?.toLowerCase().includes(query) ||
-        p.notes?.toLowerCase().includes(query) ||
-        p.events.some(e => e.name.toLowerCase().includes(query) || e.date.toLowerCase().includes(query))
-      );
+      baseFiltered = baseFiltered.filter(p => participantMatchesSearch(p, query));
+    }
+
+    setSummaryParticipants(baseFiltered);
+
+    let filtered = baseFiltered;
+
+    // Filter by contact / data quality
+    if (contactFilter === 'phone') {
+      filtered = filtered.filter(p => hasValue(p.phone));
+    } else if (contactFilter === 'no-phone') {
+      filtered = filtered.filter(p => !hasValue(p.phone));
+    } else if (contactFilter === 'email') {
+      filtered = filtered.filter(p => hasValue(p.email));
+    } else if (contactFilter === 'no-email') {
+      filtered = filtered.filter(p => !hasValue(p.email));
+    } else if (contactFilter === 'source') {
+      filtered = filtered.filter(p => hasValue(p.leadSource));
+    } else if (contactFilter === 'no-source') {
+      filtered = filtered.filter(p => !hasValue(p.leadSource));
+    } else if (contactFilter === 'organization') {
+      filtered = filtered.filter(p => hasValue(p.organization));
+    } else if (contactFilter === 'no-organization') {
+      filtered = filtered.filter(p => !hasValue(p.organization));
     }
 
     filtered = [...filtered].sort((a, b) => {
       if (sortBy === 'firstName') {
-        return a.name.localeCompare(b.name);
+        return compareParticipantNames(a.name, b.name, false);
       } else if (sortBy === 'lastName') {
-        const getLastName = (name: string) => {
-          const parts = name.trim().split(' ');
-          return parts.length > 1 ? parts[parts.length - 1] : name;
-        };
-        return getLastName(a.name).localeCompare(getLastName(b.name));
+        return compareParticipantNames(a.name, b.name, true);
       } else if (sortBy === 'phone') {
         const phoneA = a.phone || '';
         const phoneB = b.phone || '';
-        return phoneA.localeCompare(phoneB);
+        return localeCompare(phoneA, phoneB);
       } else if (sortBy === 'event') {
         const eventA = a.events.length > 0 ? a.events[0].name : '';
         const eventB = b.events.length > 0 ? b.events[0].name : '';
         if (eventA === eventB) {
-          return a.name.localeCompare(b.name);
+          return compareParticipantNames(a.name, b.name, false);
         }
-        return eventA.localeCompare(eventB);
+        return localeCompare(eventA, eventB);
       } else if (sortBy === 'source') {
         const sourceA = a.leadSource || '';
         const sourceB = b.leadSource || '';
         if (sourceA === sourceB) {
-          return a.name.localeCompare(b.name);
+          return compareParticipantNames(a.name, b.name, false);
         }
-        return sourceA.localeCompare(sourceB);
+        return localeCompare(sourceA, sourceB);
       }
       return 0;
     });
@@ -448,32 +651,128 @@ export default function AdminParticipantsScreen() {
     }
   };
 
-  const exportParticipantList = () => {
+  const exportParticipantList = (list: ParticipantWithEvents[] = filteredParticipants) => {
     // Generate CSV
-    let csv = 'Name,Phone,Email,Event Count,Events\n';
-    participants.forEach(p => {
-      csv += `${p.name},${p.phone || ''},${p.email || ''},${p.eventCount},"${p.events.map(e => e.name).join(', ')}"\n`;
+    let csv = 'Name,Phone,Email,Title/Designation,Company/Organization,Lead Source,Event Count,Events\n';
+    list.forEach(p => {
+      csv += `"${p.name}","${p.phone || ''}","${p.email || ''}","${p.designation || ''}","${p.organization || ''}","${p.leadSource || ''}",${p.eventCount},"${p.events.map(e => e.name).join(', ')}"\n`;
     });
 
+    const suffix = list.length !== participants.length ? '-filtered' : '';
+    const filename = `participants${suffix}-${new Date().toISOString().split('T')[0]}.csv`;
+
     if (Platform.OS === 'web') {
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(csv);
-        alert('Participant list copied to clipboard! Paste into Excel or Google Sheets.');
-      } else {
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `participants-${new Date().toISOString().split('T')[0]}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
     } else {
       Share.share({
         message: csv,
         title: 'Participant List',
       });
     }
+  };
+
+  const handleBulkAddToEvent = async (targetEventId: string) => {
+    const targetEvent = events.find(e => e.id === targetEventId);
+    if (!targetEvent) return;
+
+    const toAdd = filteredParticipants;
+    if (toAdd.length === 0) {
+      Alert.alert('No Participants', 'Adjust your filters to include participants first.');
+      return;
+    }
+
+    Alert.alert(
+      'Add to Event',
+      `Add ${toAdd.length} participant${toAdd.length === 1 ? '' : 's'} to "${targetEvent.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add',
+          onPress: async () => {
+            setBulkAddInProgress(true);
+            try {
+              const eventToUpdate = await eventsLocalStorage.getById(targetEventId);
+              if (!eventToUpdate) throw new Error('Event not found');
+
+              let addedCount = 0;
+              let skippedCount = 0;
+
+              for (const entry of toAdd) {
+                const existingIndex = eventToUpdate.participants.findIndex(
+                  p => p.name.toLowerCase() === entry.name.toLowerCase()
+                );
+
+                if (existingIndex !== -1) {
+                  if (eventToUpdate.participants[existingIndex].deletedAt) {
+                    eventToUpdate.participants[existingIndex] = {
+                      ...eventToUpdate.participants[existingIndex],
+                      phone: entry.phone || eventToUpdate.participants[existingIndex].phone,
+                      email: entry.email || eventToUpdate.participants[existingIndex].email,
+                      designation: entry.designation || eventToUpdate.participants[existingIndex].designation,
+                      organization: entry.organization || eventToUpdate.participants[existingIndex].organization,
+                      leadSource: entry.leadSource || eventToUpdate.participants[existingIndex].leadSource,
+                      digitalTwinUrl: entry.digitalTwinUrl || eventToUpdate.participants[existingIndex].digitalTwinUrl,
+                      notes: entry.notes || eventToUpdate.participants[existingIndex].notes,
+                      deletedAt: undefined,
+                    };
+                    addedCount += 1;
+                  } else {
+                    skippedCount += 1;
+                  }
+                  continue;
+                }
+
+                eventToUpdate.participants.push({
+                  id: `${Date.now()}-${addedCount}`,
+                  name: entry.name,
+                  phone: entry.phone,
+                  email: entry.email,
+                  designation: entry.designation,
+                  organization: entry.organization,
+                  leadSource: entry.leadSource,
+                  digitalTwinUrl: entry.digitalTwinUrl,
+                  notes: entry.notes,
+                  availability: {},
+                  unavailableAllMonth: false,
+                  source: 'manual',
+                  rsvpStatus: 'no-response',
+                });
+                addedCount += 1;
+              }
+
+              await eventsLocalStorage.update(eventToUpdate.id, eventToUpdate);
+
+              if (isAuthenticated) {
+                try {
+                  await eventsCloudStorage.update(eventToUpdate.id, eventToUpdate);
+                } catch (error) {
+                  console.error('[AdminParticipants] Failed to push bulk add to cloud:', error);
+                }
+              }
+
+              setShowBulkAddModal(false);
+              setShowActionsMenu(false);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              loadData();
+
+              const skippedMessage = skippedCount > 0 ? ` ${skippedCount} already in the event.` : '';
+              Alert.alert('Done', `Added ${addedCount} participant${addedCount === 1 ? '' : 's'} to "${targetEvent.name}".${skippedMessage}`);
+            } catch (error) {
+              console.error('Failed to bulk add participants:', error);
+              Alert.alert('Error', 'Failed to add participants to event');
+            } finally {
+              setBulkAddInProgress(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleAddParticipant = async () => {
@@ -715,6 +1014,54 @@ export default function AdminParticipantsScreen() {
     }
   };
 
+  const withPhoneCount = summaryParticipants.filter(p => hasValue(p.phone)).length;
+  const missingPhoneCount = summaryParticipants.length - withPhoneCount;
+  const withEmailCount = summaryParticipants.filter(p => hasValue(p.email)).length;
+  const missingEmailCount = summaryParticipants.length - withEmailCount;
+  const withSourceCount = summaryParticipants.filter(p => hasValue(p.leadSource)).length;
+  const missingSourceCount = summaryParticipants.length - withSourceCount;
+  const withOrganizationCount = summaryParticipants.filter(p => hasValue(p.organization)).length;
+  const missingOrganizationCount = summaryParticipants.length - withOrganizationCount;
+
+  const getSummaryCardBorder = (filter: ContactFilter) => {
+    if (contactFilter !== filter) return {};
+    return isMissingContactFilter(filter)
+      ? { borderColor: AdminColors.warning, borderWidth: 2 }
+      : { borderColor: tintColor, borderWidth: 2 };
+  };
+
+  const renderContactField = (
+    icon: 'phone.fill' | 'envelope.fill' | 'tag.fill' | 'building.2.fill' | 'briefcase.fill',
+    value: string | undefined,
+    missingLabel: string,
+    emphasizeMissing = false,
+  ) => {
+    const present = hasValue(value);
+    if (!present && !emphasizeMissing) return null;
+
+    return (
+      <View style={styles.metaItem}>
+        <IconSymbol
+          name={icon}
+          size={12}
+          color={present ? tintColor : AdminColors.warning}
+        />
+        <ThemedText style={[styles.metaText, !present && styles.missingFieldText]}>
+          {present ? value!.trim() : missingLabel}
+        </ThemedText>
+      </View>
+    );
+  };
+
+  const showAllContactFields =
+    contactFilter === 'all' ||
+    contactFilter === 'phone' ||
+    contactFilter === 'no-phone' ||
+    contactFilter === 'email' ||
+    contactFilter === 'no-email' ||
+    contactFilter === 'source' ||
+    contactFilter === 'no-source';
+
   return (
     <ThemedView style={styles.container}>
       {/* Header */}
@@ -728,24 +1075,59 @@ export default function AdminParticipantsScreen() {
         <ThemedText type="title" style={{ flex: 1, fontSize: isDesktop ? 32 : 24 }}>
           {isDesktop ? 'Participant Management' : 'Participants'}
         </ThemedText>
-        <Pressable
-          style={{ backgroundColor: tintColor, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => setShowAddModal(true)}
-        >
-          <IconSymbol name="plus" size={20} color="#fff" />
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowActionsMenu(true);
+            }}
+            hitSlop={8}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: tintColor + '15', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 }}
+          >
+            <IconSymbol name="ellipsis.circle" size={16} color={tintColor} />
+            {isDesktop && (
+              <ThemedText style={{ color: tintColor, fontWeight: '600', fontSize: 14 }}>Actions</ThemedText>
+            )}
+          </Pressable>
+          <Pressable
+            style={{ backgroundColor: tintColor, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => setShowAddModal(true)}
+          >
+            <IconSymbol name="plus" size={20} color="#fff" />
+          </Pressable>
+        </View>
       </View>
 
-      {/* Search and Sort */}
+      {/* Search */}
+      <View style={styles.searchRow}>
+        <View style={[styles.searchBox, { backgroundColor: surfaceColor }]}>
+          <IconSymbol name="magnifyingglass" size={18} color="#999" />
+          <TextInput
+            style={[
+              styles.searchInput,
+              { color: tintColor },
+              searchQuery.length > 0 && styles.searchInputWithClear,
+            ]}
+            placeholder="Search participants..."
+            placeholderTextColor="#999"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              style={styles.searchClearButton}
+              onPress={() => setSearchQuery('')}
+              hitSlop={8}
+              accessibilityLabel="Clear search"
+            >
+              <IconSymbol name="xmark.circle.fill" size={22} color="#666" />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Filter and Sort */}
       <View style={[styles.controls, !isDesktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
-        <TextInput
-          style={[styles.searchInput, { backgroundColor: surfaceColor, color: tintColor, flex: 1 }]}
-          placeholder="Search participants..."
-          placeholderTextColor="#999"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        
         {isDesktop ? (
           <>
             <Pressable
@@ -812,23 +1194,106 @@ export default function AdminParticipantsScreen() {
       </View>
 
       {/* Summary */}
-      <View style={[styles.summary, !isDesktop && { flexWrap: 'wrap' }]}>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '46%', padding: 12 }]}>
-          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>{participants.length}</ThemedText>
-          <ThemedText style={styles.summaryLabel}>Total</ThemedText>
+      {(filterEventId !== 'all' || searchQuery.trim() || contactFilter !== 'all') && (
+        <View style={{ paddingHorizontal: 20, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <ThemedText style={{ fontSize: 13, color: '#999', flex: 1 }}>
+            Showing {filteredParticipants.length} of {summaryParticipants.length} matching
+            {filterEventId === 'prospects'
+              ? ' prospects'
+              : filterEventId !== 'all'
+                ? ' participants'
+                : contactFilter === 'all'
+                  ? ' contacts'
+                  : ''}
+            {contactFilter !== 'all' ? ` ${contactFilterLabels[contactFilter]}` : ''}
+            {searchQuery.trim() ? ` for "${searchQuery.trim()}"` : ''}
+          </ThemedText>
+          {searchQuery.trim().length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <ThemedText style={{ fontSize: 13, color: tintColor, fontWeight: '600' }}>Clear search</ThemedText>
+            </Pressable>
+          )}
         </View>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '46%', padding: 12 }]}>
+      )}
+      <View style={[styles.summary, !isDesktop && { flexWrap: 'wrap' }]}>
+        <Pressable 
+          style={[styles.summaryCard, { backgroundColor: cardBg }, getSummaryCardBorder('all'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('all')}
+        >
+          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>{summaryParticipants.length}</ThemedText>
+          <ThemedText style={styles.summaryLabel}>Total</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, { backgroundColor: cardBg }, getSummaryCardBorder('phone'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('phone')}
+        >
           <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>
-            {participants.filter(p => p.phone).length}
+            {withPhoneCount}
           </ThemedText>
           <ThemedText style={styles.summaryLabel}>With Phone</ThemedText>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: cardBg }, !isDesktop && { minWidth: '100%', padding: 12, flexDirection: 'row', justifyContent: 'space-between' }]}>
-          <ThemedText style={styles.summaryLabel}>With Email</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, { backgroundColor: cardBg }, getSummaryCardBorder('email'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('email')}
+        >
           <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>
-            {participants.filter(p => p.email).length}
+            {withEmailCount}
           </ThemedText>
-        </View>
+          <ThemedText style={styles.summaryLabel}>With Email</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, { backgroundColor: cardBg }, getSummaryCardBorder('source'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('source')}
+        >
+          <ThemedText style={[styles.summaryValue, !isDesktop && { fontSize: 20 }]}>
+            {withSourceCount}
+          </ThemedText>
+          <ThemedText style={styles.summaryLabel}>With Source</ThemedText>
+        </Pressable>
+      </View>
+
+      <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
+        <ThemedText style={{ fontSize: 12, fontWeight: '600', color: '#999', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Missing Data
+        </ThemedText>
+      </View>
+      <View style={[styles.summary, !isDesktop && { flexWrap: 'wrap' }, { marginTop: 0 }]}>
+        <Pressable 
+          style={[styles.summaryCard, styles.missingSummaryCard, { backgroundColor: AdminColors.warningLight }, getSummaryCardBorder('no-phone'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('no-phone')}
+        >
+          <ThemedText style={[styles.summaryValue, { color: missingPhoneCount > 0 ? AdminColors.warning : undefined }, !isDesktop && { fontSize: 20 }]}>
+            {missingPhoneCount}
+          </ThemedText>
+          <ThemedText style={styles.summaryLabel}>No Phone</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, styles.missingSummaryCard, { backgroundColor: AdminColors.warningLight }, getSummaryCardBorder('no-email'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('no-email')}
+        >
+          <ThemedText style={[styles.summaryValue, { color: missingEmailCount > 0 ? AdminColors.warning : undefined }, !isDesktop && { fontSize: 20 }]}>
+            {missingEmailCount}
+          </ThemedText>
+          <ThemedText style={styles.summaryLabel}>No Email</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, styles.missingSummaryCard, { backgroundColor: AdminColors.warningLight }, getSummaryCardBorder('no-source'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('no-source')}
+        >
+          <ThemedText style={[styles.summaryValue, { color: missingSourceCount > 0 ? AdminColors.warning : undefined }, !isDesktop && { fontSize: 20 }]}>
+            {missingSourceCount}
+          </ThemedText>
+          <ThemedText style={styles.summaryLabel}>No Source</ThemedText>
+        </Pressable>
+        <Pressable 
+          style={[styles.summaryCard, styles.missingSummaryCard, { backgroundColor: AdminColors.warningLight }, getSummaryCardBorder('no-organization'), !isDesktop && { minWidth: '46%', padding: 12 }]}
+          onPress={() => setContactFilter('no-organization')}
+        >
+          <ThemedText style={[styles.summaryValue, { color: missingOrganizationCount > 0 ? AdminColors.warning : undefined }, !isDesktop && { fontSize: 20 }]}>
+            {missingOrganizationCount}
+          </ThemedText>
+          <ThemedText style={styles.summaryLabel}>No Company</ThemedText>
+        </Pressable>
       </View>
 
       {/* Action Buttons */}
@@ -842,10 +1307,12 @@ export default function AdminParticipantsScreen() {
         </Pressable>
         <Pressable
           style={[styles.exportButton, { backgroundColor: surfaceColor, borderWidth: 1, borderColor: tintColor, marginHorizontal: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 20 }]}
-          onPress={exportParticipantList}
+          onPress={() => exportParticipantList(filteredParticipants)}
         >
           <IconSymbol name="square.and.arrow.up" size={18} color={tintColor} />
-          <ThemedText style={[styles.exportButtonText, { fontSize: 14, color: tintColor }]}>Export List</ThemedText>
+          <ThemedText style={[styles.exportButtonText, { fontSize: 14, color: tintColor }]}>
+            Export {filteredParticipants.length !== participants.length ? 'Filtered' : 'List'}
+          </ThemedText>
         </Pressable>
       </View>
 
@@ -895,30 +1362,34 @@ export default function AdminParticipantsScreen() {
                         <ThemedText style={styles.metaText}>{participant.designation}</ThemedText>
                       </View>
                     )}
-                    {participant.organization && (
-                      <View style={styles.metaItem}>
-                        <IconSymbol name="building.2.fill" size={12} color={tintColor} />
-                        <ThemedText style={styles.metaText}>{participant.organization}</ThemedText>
-                      </View>
-                    )}
-                    {participant.leadSource && (
-                      <View style={styles.metaItem}>
-                        <IconSymbol name="tag.fill" size={12} color={tintColor} />
-                        <ThemedText style={styles.metaText}>{participant.leadSource}</ThemedText>
-                      </View>
-                    )}
-                    {participant.phone && (
-                      <View style={styles.metaItem}>
-                        <IconSymbol name="phone.fill" size={12} color={tintColor} />
-                        <ThemedText style={styles.metaText}>{participant.phone}</ThemedText>
-                      </View>
-                    )}
-                    {participant.email && (
-                      <View style={styles.metaItem}>
-                        <IconSymbol name="envelope.fill" size={12} color={tintColor} />
-                        <ThemedText style={styles.metaText}>{participant.email}</ThemedText>
-                      </View>
-                    )}
+                    {(participant.organization || contactFilter === 'no-organization' || contactFilter === 'organization') &&
+                      renderContactField(
+                        'building.2.fill',
+                        participant.organization,
+                        'No company',
+                        contactFilter === 'no-organization' || contactFilter === 'organization' || contactFilter === 'all',
+                      )}
+                    {(showAllContactFields || contactFilter === 'source' || contactFilter === 'no-source') &&
+                      renderContactField(
+                        'tag.fill',
+                        participant.leadSource,
+                        'No source',
+                        true,
+                      )}
+                    {(showAllContactFields || contactFilter === 'phone' || contactFilter === 'no-phone') &&
+                      renderContactField(
+                        'phone.fill',
+                        participant.phone,
+                        'No phone',
+                        true,
+                      )}
+                    {(showAllContactFields || contactFilter === 'email' || contactFilter === 'no-email') &&
+                      renderContactField(
+                        'envelope.fill',
+                        participant.email,
+                        'No email',
+                        true,
+                      )}
                   </View>
                 </View>
                 {activeEvent && !activeEvent.participants.some(p => p.name === participant.name) ? (
@@ -1220,6 +1691,51 @@ export default function AdminParticipantsScreen() {
                       </View>
                     </View>
                   )}
+
+                  <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: cardBg, paddingTop: 16 }]}>
+                    <ThemedText type="defaultSemiBold" style={{ marginBottom: 8 }}>Influencer Outreach</ThemedText>
+                    <ThemedText style={{ opacity: 0.7, fontSize: 14, marginBottom: 12 }}>
+                      Move this contact into your outreach pipeline to track DMs, follow-ups, and partner status.
+                    </ThemedText>
+
+                    {influencerLinkLoading ? (
+                      <ActivityIndicator size="small" color={tintColor} />
+                    ) : linkedInfluencer ? (
+                      <View style={{ gap: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <IconSymbol name="paperplane.fill" size={20} color={AdminColors.info} />
+                          <ThemedText>
+                            In pipeline · {STATUS_LABELS[linkedInfluencer.status]}
+                          </ThemedText>
+                        </View>
+                        <Pressable
+                          style={[styles.exportButton, { backgroundColor: AdminColors.info, marginHorizontal: 0, padding: 12, marginBottom: 0 }]}
+                          onPress={() => {
+                            setSelectedParticipant(null);
+                            router.push({ pathname: '/admin/influencers' as any, params: { edit: linkedInfluencer.id } });
+                          }}
+                        >
+                          <IconSymbol name="chevron.right" size={16} color="#fff" />
+                          <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Open in Influencer Pipeline</ThemedText>
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable
+                        style={[styles.exportButton, { backgroundColor: tintColor, marginHorizontal: 0, padding: 12, marginBottom: 0 }]}
+                        onPress={handleAddToInfluencerOutreach}
+                        disabled={addingToInfluencer}
+                      >
+                        {addingToInfluencer ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <>
+                            <IconSymbol name="paperplane.fill" size={16} color="#fff" />
+                            <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Add to Influencer Outreach</ThemedText>
+                          </>
+                        )}
+                      </Pressable>
+                    )}
+                  </View>
 
                   <View style={[styles.modalSection, { borderTopWidth: 1, borderTopColor: cardBg, paddingTop: 16 }]}>
                     <ThemedText type="defaultSemiBold" style={{ marginBottom: 12 }}>GatherSync Account</ThemedText>
@@ -1676,6 +2192,124 @@ export default function AdminParticipantsScreen() {
         </Pressable>
       </Modal>
 
+      {/* Actions Menu */}
+      <Modal
+        visible={showActionsMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionsMenu(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}
+          onPress={() => setShowActionsMenu(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: surfaceColor, width: isDesktop ? 420 : '90%', maxHeight: '80%' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
+              <ThemedText style={{ fontSize: 13, fontWeight: '900', color: '#000000', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Filtered List Actions
+              </ThemedText>
+              <ThemedText style={{ fontSize: 13, color: '#999', marginTop: 4 }}>
+                {filteredParticipants.length} participant{filteredParticipants.length === 1 ? '' : 's'} in current view
+              </ThemedText>
+            </View>
+            <Pressable
+              style={[styles.menuItem, { borderBottomColor: '#eee' }]}
+              onPress={() => {
+                setShowActionsMenu(false);
+                if (filteredParticipants.length === 0) {
+                  Alert.alert('No Participants', 'Adjust your filters to include participants first.');
+                  return;
+                }
+                setShowBulkAddModal(true);
+              }}
+            >
+              <ThemedText style={styles.menuItemText}>Add Filtered to Event...</ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.menuItem, { borderBottomColor: '#eee' }]}
+              onPress={() => {
+                setShowActionsMenu(false);
+                exportParticipantList(filteredParticipants);
+              }}
+            >
+              <ThemedText style={styles.menuItemText}>Export Filtered List (CSV)</ThemedText>
+            </Pressable>
+            <Pressable
+              style={[styles.menuItem, { borderBottomColor: '#eee' }]}
+              onPress={() => {
+                setShowActionsMenu(false);
+                router.push('/import-contacts?eventId=prospects');
+              }}
+            >
+              <ThemedText style={styles.menuItemText}>Import Contact List (CSV)</ThemedText>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Bulk Add to Event Modal */}
+      <Modal
+        visible={showBulkAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !bulkAddInProgress && setShowBulkAddModal(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { justifyContent: 'center', alignItems: 'center' }]}
+          onPress={() => !bulkAddInProgress && setShowBulkAddModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: surfaceColor, width: isDesktop ? 500 : '90%', maxHeight: '80%' }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <ThemedText style={{ fontSize: 18, fontWeight: '700' }}>Add to Event</ThemedText>
+                <ThemedText style={{ fontSize: 13, color: '#999', marginTop: 4 }}>
+                  Add {filteredParticipants.length} filtered participant{filteredParticipants.length === 1 ? '' : 's'}
+                </ThemedText>
+              </View>
+              <Pressable onPress={() => !bulkAddInProgress && setShowBulkAddModal(false)} style={{ padding: 4 }}>
+                <IconSymbol name="xmark" size={20} color="#999" />
+              </Pressable>
+            </View>
+            {bulkAddInProgress ? (
+              <View style={{ padding: 32, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={tintColor} />
+                <ThemedText style={{ marginTop: 12, color: '#999' }}>Adding participants...</ThemedText>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {events.map(event => (
+                  <Pressable
+                    key={event.id}
+                    style={[styles.menuItem, { borderBottomColor: '#eee' }]}
+                    onPress={() => handleBulkAddToEvent(event.id)}
+                  >
+                    <View>
+                      <ThemedText style={styles.menuItemText}>{event.name}</ThemedText>
+                      <ThemedText style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
+                        {event.eventType === 'fixed' && event.fixedDate
+                          ? new Date(event.fixedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                          : `${event.month}/${event.year}`}
+                      </ThemedText>
+                    </View>
+                  </Pressable>
+                ))}
+                {events.length === 0 && (
+                  <View style={{ padding: 20 }}>
+                    <ThemedText style={{ color: '#999', textAlign: 'center' }}>No active events found. Create an event first.</ThemedText>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Grant Pro Modal */}
       <Modal
         visible={showGrantModal}
@@ -1760,6 +2394,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  searchRow: {
+    paddingHorizontal: 20,
+    marginBottom: 12,
   },
   sortControls: {
     flexDirection: 'row',
@@ -1776,9 +2415,34 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   searchInput: {
-    padding: 12,
-    borderRadius: 8,
+    paddingVertical: 12,
+    paddingLeft: 0,
+    paddingRight: 8,
     fontSize: 16,
+    flex: 1,
+    minWidth: 0,
+  },
+  searchInputWithClear: {
+    paddingRight: 36,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 8,
+    position: 'relative',
+    width: '100%',
+  },
+  searchClearButton: {
+    position: 'absolute',
+    right: 10,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    ...Platform.select({ web: { cursor: 'pointer' as const } }),
   },
   summary: {
     flexDirection: 'row',
@@ -1800,6 +2464,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.7,
     marginTop: 4,
+  },
+  missingSummaryCard: {
+    borderWidth: 1,
+    borderColor: AdminColors.warning + '40',
+  },
+  missingFieldText: {
+    color: AdminColors.warning,
+    fontStyle: 'italic',
   },
   exportButton: {
     flexDirection: 'row',
