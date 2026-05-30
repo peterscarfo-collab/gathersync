@@ -65,6 +65,7 @@ import {
 } from '@/lib/influencer-outreach-settings';
 import { AdminColors } from '@/constants/admin-theme';
 import { computeOutreachAnalytics, formatCurrency, formatRate, getProspectActivityTimeline } from '@/lib/influencer-analytics';
+import { parseLinkedInPaste } from '@/lib/linkedin-paste-parser';
 import type {
   InfluencerProspect,
   InfluencerProspectType,
@@ -150,6 +151,8 @@ export default function AdminInfluencersScreen() {
   const [expandedHeyGen, setExpandedHeyGen] = useState<string | null>(null);
   const [outreachSettings, setOutreachSettings] = useState<Partial<OutreachSettings>>({});
   const [editingSegmentSettings, setEditingSegmentSettings] = useState<OutreachSegmentKey | null>(null);
+  const [linkedInPasteText, setLinkedInPasteText] = useState('');
+  const [showLinkedInImport, setShowLinkedInImport] = useState(true);
 
   const getFirstName = (name: string) => {
     const trimmed = name.trim();
@@ -488,13 +491,63 @@ export default function AdminInfluencersScreen() {
       platform: outreachTrack === 'prospect' ? 'Participant Directory' : '',
     };
     setForm({ ...base, ...regenerateOutreachDrafts(base) });
+    setLinkedInPasteText('');
+    setShowLinkedInImport(true);
     setShowModal(true);
   };
 
   const closeProspectModal = (returnToTab = false) => {
     setShowModal(false);
+    setLinkedInPasteText('');
     if (returnToTab && modalReturnTab) setTab(modalReturnTab);
     setModalReturnTab(null);
+  };
+
+  const applyLinkedInPaste = () => {
+    const parsed = parseLinkedInPaste(linkedInPasteText);
+    if (!parsed.name && !parsed.contactLinkedIn && !parsed.niche) {
+      Alert.alert(
+        'Could not parse',
+        parsed.warnings[0] || 'Paste a LinkedIn profile URL or copy name + headline from the profile.'
+      );
+      return;
+    }
+
+    const merged = {
+      ...form,
+      name: parsed.name || form.name,
+      niche: parsed.niche || form.niche,
+      contactLinkedIn: parsed.contactLinkedIn || form.contactLinkedIn,
+      handleUrl: parsed.contactLinkedIn || form.handleUrl,
+      websiteUrl: parsed.websiteUrl || form.websiteUrl,
+      contactEmail: parsed.contactEmail || form.contactEmail,
+      followersOrMembers: parsed.followersOrMembers || form.followersOrMembers,
+      groupNameFrequency: parsed.groupNameFrequency || form.groupNameFrequency,
+      notes: parsed.notes
+        ? [form.notes?.trim(), parsed.notes.trim()].filter(Boolean).join('\n\n')
+        : form.notes,
+      prospectType: parsed.prospectType || form.prospectType,
+      platform: parsed.platform || form.platform || 'LinkedIn',
+      outreachTrack: form.outreachTrack === 'prospect' ? 'influencer' as OutreachTrack : form.outreachTrack,
+      recurringGroup: parsed.recurringGroup ?? form.recurringGroup,
+    };
+    setForm({ ...merged, ...regenerateOutreachDrafts(merged) });
+    setLinkedInPasteText('');
+    setShowLinkedInImport(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const filled = [
+      parsed.name && 'name',
+      parsed.niche && 'headline',
+      parsed.contactLinkedIn && 'LinkedIn URL',
+      parsed.contactEmail && 'email',
+      parsed.websiteUrl && 'website',
+    ].filter(Boolean);
+    const warningNote = parsed.warnings.length ? `\n\nNote: ${parsed.warnings.join(' ')}` : '';
+    Alert.alert(
+      'Imported from LinkedIn',
+      `Filled ${filled.join(', ') || 'fields'}. Review and save.${warningNote}`
+    );
   };
 
   const openEdit = (p: InfluencerProspect, returnTab?: Tab) => {
@@ -548,6 +601,8 @@ export default function AdminInfluencersScreen() {
       linkedInDmDraft: base.linkedInDmDraft || drafts.linkedInDmDraft,
       smsDraft: base.smsDraft || drafts.smsDraft,
     });
+    setLinkedInPasteText('');
+    setShowLinkedInImport(false);
     setShowModal(true);
   };
 
@@ -1681,8 +1736,48 @@ export default function AdminInfluencersScreen() {
                 {editingId ? 'Edit prospect' : 'Add prospect'}
               </ThemedText>
 
+              <Pressable
+                style={[styles.copyBtn, { borderColor: '#0A66C2', marginBottom: 8 }]}
+                onPress={() => setShowLinkedInImport(v => !v)}
+              >
+                <ThemedText style={{ color: '#0A66C2', fontWeight: '600' }}>
+                  {showLinkedInImport ? 'Hide LinkedIn import' : 'Import from LinkedIn'}
+                </ThemedText>
+              </Pressable>
+              {showLinkedInImport && (
+                <View style={[styles.linkedinImportBox, { borderColor: '#0A66C2' + '40', backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.cardMeta}>
+                    On LinkedIn: copy the profile URL, or select name + headline (and About if you want) → paste below → Fill form.
+                  </ThemedText>
+                  <TextInput
+                    style={[styles.input, styles.textAreaTall, { color: tintColor, borderColor: '#ddd', marginTop: 8 }]}
+                    value={linkedInPasteText}
+                    onChangeText={setLinkedInPasteText}
+                    placeholder={'https://www.linkedin.com/in/...\n\nor paste copied profile text'}
+                    multiline
+                    textAlignVertical="top"
+                    autoCapitalize="none"
+                  />
+                  <Pressable
+                    style={[styles.toolBtn, { backgroundColor: '#0A66C2', marginTop: 8, alignSelf: 'flex-start' }]}
+                    onPress={applyLinkedInPaste}
+                  >
+                    <ThemedText style={{ color: '#fff', fontWeight: '600' }}>Fill form from paste</ThemedText>
+                  </Pressable>
+                </View>
+              )}
+
               <ThemedText style={styles.fieldLabel}>Name *</ThemedText>
               <TextInput style={[styles.input, { color: tintColor, borderColor: '#ddd' }]} value={form.name} onChangeText={v => setField('name', v)} />
+
+              <ThemedText style={styles.fieldLabel}>Headline / niche</ThemedText>
+              <TextInput
+                style={[styles.input, styles.textArea, { color: tintColor, borderColor: '#ddd' }]}
+                value={form.niche}
+                onChangeText={v => setField('niche', v)}
+                placeholder="Mastermind facilitator | Community builder"
+                multiline
+              />
 
               <ThemedText style={styles.fieldLabel}>Track</ThemedText>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -2126,6 +2221,7 @@ const styles = StyleSheet.create({
   codeBlock: { padding: 12, borderRadius: 8, marginBottom: 8 },
   codeText: { fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   copyBtn: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
+  linkedinImportBox: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 16 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { maxHeight: '92%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 4, fontSize: 15 },
