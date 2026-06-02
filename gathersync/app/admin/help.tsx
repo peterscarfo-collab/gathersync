@@ -105,7 +105,7 @@ export default function HelpScreen() {
             • <ThemedText style={{ fontWeight: 'bold' }}>Invite Participants:</ThemedText> Generates a generic public link you can share anywhere for people to RSVP.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            • <ThemedText style={{ fontWeight: 'bold' }}>Send Messages:</ThemedText> Send an SMS or Email using your device's native apps (like Apple Mail or Messages).
+            • <ThemedText style={{ fontWeight: 'bold' }}>Send Messages:</ThemedText> SMS, Native Email, or App Email to selected participants. Use <ThemedText style={{ fontWeight: 'bold' }}>Meeting update</ThemedText> when re-sending after a time or link change.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             • <ThemedText style={{ fontWeight: 'bold' }}>Email All Participants:</ThemedText> Uses the automated Resend system to send beautiful, personalized invitations directly from the app.
@@ -220,7 +220,10 @@ export default function HelpScreen() {
             <ThemedText style={{ fontWeight: 'bold' }}>Custom Reminders:</ThemedText> On the event details page, you can draft a "Reminder Message". This message will be automatically prepended whenever you share the event link.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            <ThemedText style={{ fontWeight: 'bold' }}>Send Messages (SMS/Native/App):</ThemedText> From the event menu, select "Send Messages". Here you can quickly filter participants and choose to send them an SMS, a Native Email (which opens your default email client with their addresses in Bcc), or an App Email (which uses GatherSync's built-in system to send beautiful, personalized invitations).
+            <ThemedText style={{ fontWeight: 'bold' }}>Send Messages (SMS/Native/App):</ThemedText> From the event menu, select "Send Messages". Filter participants, then send an SMS, a Native Email (Bcc in your mail app), or an App Email (GatherSync sends personalized invitations from the app).
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            <ThemedText style={{ fontWeight: 'bold' }}>Meeting updates:</ThemedText> If the time, date, Zoom link, or venue changed after the first invite, open Send Messages and turn on <ThemedText style={{ fontWeight: 'bold' }}>Meeting update</ThemedText>. App Email uses subject <ThemedText style={{ fontStyle: 'italic' }}>UPDATE — [Event name] (details changed)</ThemedText> with an orange banner; SMS and Native Email prepend an UPDATE notice. After the first App Email for an event, this toggle turns on automatically next time.
           </ThemedText>
         </View>
       ),

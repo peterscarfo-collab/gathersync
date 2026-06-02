@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GatherSync User Guide</title>
+  <style>
+    @page { margin: 18mm 16mm; size: A4; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #1a1a1a;
+      margin: 0;
+    }
+    h1 { font-size: 22pt; color: #5b21b6; margin-top: 0; page-break-after: avoid; }
+    h2 { font-size: 15pt; color: #5b21b6; margin-top: 1.4em; page-break-after: avoid; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.2em; }
+    h3 { font-size: 12pt; margin-top: 1em; page-break-after: avoid; }
+    p, li { orphans: 3; widows: 3; }
+    ul, ol { padding-left: 1.4em; }
+    li { margin-bottom: 0.25em; }
+    strong { color: #111; }
+    em { color: #4b5563; }
+  </style>
+</head>
+<body>
+<h1>GatherSync Dashboard Help &amp; Tutorials</h1>
+<p><em>A comprehensive guide to mastering the GatherSync platform.</em></p>
+<h2>1. Getting Started</h2>
+<p>Welcome to GatherSync! This application is designed to make event planning, participant management, and attendance tracking effortless.</p>
+<p>As an Administrator, you have access to this Dashboard where you can oversee all events, manage users, and generate detailed reports.</p>
+<h2>2. Creating &amp; Managing Events</h2>
+<p><strong>Flexible vs Fixed Events:</strong></p>
+<ul>
+<li><strong>Flexible Events:</strong> Best for finding a date. Invitees receive a calendar where they mark their availability (Green=Available, Red=Unavailable). The system then highlights the &quot;Best Days&quot; with the highest attendance percentage.</li>
+<li><strong>Fixed Events:</strong> Best when you already know the exact date and time. Invitees can quickly RSVP (Attending, Not Attending).</li>
+</ul>
+<p><strong>To create an event:</strong> Go to the Events tab, click the &quot;+&quot; button, and follow the wizard. You can add locations, virtual meeting links, a Team Leader, and set a <strong>Minimum Attendance (Quorum)</strong> to ensure the event only proceeds if enough people can make it.</p>
+<h2>3. Templates &amp; Recurring Events</h2>
+<p><strong>Standard Templates:</strong> Under the &quot;Saves&quot; tab, you can create and manage templates to instantly copy participants when creating a new event.</p>
+<p><strong>Recurring Templates:</strong> Also in the &quot;Saves&quot; tab, you can set up templates that automatically generate events on a schedule (e.g. &quot;First Monday of every month&quot; or &quot;Weekly&quot;).</p>
+<ul>
+<li>When creating a recurring template, use the <strong>Copy from Past Event</strong> button to quickly import all details (including meeting type, location, link, and exact participant list) from a previous gathering.</li>
+<li>GatherSync will automatically look ahead and generate the event for the correct upcoming date, saving you from having to recreate regular meetings.</li>
+</ul>
+<h2>4. Importing Participants (CSV)</h2>
+<p>For large gatherings like corporate events, weddings, or club meetings, you can bulk-import your invitees via a CSV file.</p>
+<ol>
+<li>Open any Event&#39;s details screen.</li>
+<li>Click the three dots &quot;...&quot; menu in the top right.</li>
+<li>Select <strong>Import Contact List (CSV)</strong>.</li>
+<li>Prepare a spreadsheet with columns: <em>Name, Phone, Email, Title/Designation, Company/Organization, Lead Source, Day 1, Day 2, Day 3</em>.<ul>
+<li><em>Note: For flexible events, you can include Day 1, Day 2, and Day 3 columns with day numbers (e.g., 12, 14, 16) to automatically mark those days as available for the participant.</em></li>
+</ul>
+</li>
+<li>Copy/paste the data or select the file directly to instantly import everyone. GatherSync will automatically skip duplicates.</li>
+</ol>
+<h2>5. Sending Messages &amp; Reminders</h2>
+<p>GatherSync makes it easy to communicate with your event participants.</p>
+<p><strong>Custom Reminders:</strong> On the event details page, you can draft a &quot;Reminder Message&quot;. This message will be automatically prepended whenever you share the event link.</p>
+<p><strong>Send Messages (SMS/Email):</strong> From the event menu, select &quot;Send Messages&quot;. Filter participants, then send an SMS, a Native Email (Bcc in your mail app), or an App Email (GatherSync sends personalized invitations from the app).</p>
+<p><strong>Meeting updates:</strong> When the time, date, Zoom link, or venue changes after the first invite, open Send Messages and turn on <strong>Meeting update</strong>. App Email uses subject <code>UPDATE — [Event name] (details changed)</code> with an orange <strong>MEETING UPDATE</strong> banner in the body. SMS and Native Email prepend an UPDATE notice at the top of the message. After you send App Email once for an event, <strong>Meeting update</strong> turns on automatically the next time you open Send Messages. Turn it off only for a true first invite (e.g. new participants).</p>
+<p><strong>Example:</strong> Your group meeting moved from 4:00pm to 3:30pm — edit the event, open Send Messages, confirm <strong>Meeting update</strong> is on, then send App Email to the group.</p>
+<h2>6. Tracking Attendance</h2>
+<p>When a Fixed Event is happening, you can take live attendance:</p>
+<ol>
+<li>Open the Event Details and open the menu.</li>
+<li>Select <strong>Take / View Attendance</strong>.</li>
+<li>Simply tap names to mark them as &quot;Attended&quot;. Once saved, this feeds directly into your Analytics and Reports.</li>
+</ol>
+<h2>7. Receiving &amp; Responding to Invitations (The Invitee Experience)</h2>
+<p>When you invite others to an event, they also get a seamless experience if they use GatherSync.</p>
+<ul>
+<li><strong>Events I&#39;m Invited To:</strong> When an invitee RSVPs to your event using their email address, that event will automatically appear on their own GatherSync dashboard under the &quot;Events I&#39;m Invited To&quot; section.</li>
+<li><strong>Managing Their Own Record:</strong> Invitees can click on the event from their dashboard to view the full details. They can then click on their own name in the participant list to edit their record.</li>
+<li><strong>Editing Details &amp; Adding Notes:</strong> Invitees have full control over their own profile for that event. For example, if you added them as &quot;Peter S&quot;, they have the ability to change it to their full name. They can also update their phone number, email address, Digital Twin URL, add Notes (e.g., &quot;Can only arrive after 6pm&quot;), and update their availability or RSVP status at any time. Any changes they make will automatically sync back to your organizer dashboard!</li>
+</ul>
+<h2>8. Reporting &amp; Exporting</h2>
+<p><strong>Analytics Dashboard:</strong> Found in the Admin menu, this gives you a macro view of your organization&#39;s health—total participants, overall response rates, and a history of past events.</p>
+<p><strong>Export Event to CSV:</strong> Need to print name tags using Canva, Microsoft Word, or import into another CRM? Open an event&#39;s menu and select &quot;Export Event to CSV&quot;. It generates a file with all contact details, titles, organizations, and their final RSVP/Attendance status!</p>
+<h2>9. Participant Management &amp; CRM</h2>
+<p>The <strong>Participant Management</strong> screen is your master directory and built-in CRM. If you edit a participant&#39;s phone number or Title here, it syncs globally across all their events!</p>
+<p><strong>Searching, Filtering &amp; Sorting:</strong></p>
+<ul>
+<li><strong>Search:</strong> Use the search bar to find people by name, phone, email, title, company, lead source, notes, or event name.</li>
+<li><strong>Filter by Event:</strong> Click <strong>Filter: All Events</strong> and choose a specific event or <strong>Prospects Only</strong> to narrow the list.</li>
+<li><strong>Contact Filters:</strong> Click <strong>Total</strong>, <strong>With Phone</strong>, <strong>With Email</strong>, or <strong>With Source</strong> to filter. Counts update to match your current event filter and search.</li>
+<li><strong>Missing Data:</strong> Amber cards below show database gaps — <strong>No Phone</strong>, <strong>No Email</strong>, <strong>No Source</strong>, <strong>No Company</strong>. Click one to list only those contacts, then <strong>Export Filtered</strong> for a cleanup CSV. On each card, missing fields appear in amber italic (e.g. <em>No phone</em>).</li>
+<li><strong>Sort:</strong> Sort by First Name, Last Name, Phone, Event, or Lead Source. Last Name sort lists people with a surname alphabetically first; single-name contacts (e.g. &quot;Ben&quot;) appear at the end.</li>
+<li><strong>Result Count:</strong> When filters or search are active, a line above the summary cards shows how many people match (e.g. &quot;Showing 12 of 175 matching prospects for &#39;letterbox&#39;&quot;).</li>
+</ul>
+<p><strong>Using the Prospecting System:</strong></p>
+<ul>
+<li><strong>Add a Prospect:</strong> Click &quot;+&quot;, enter their details, and select &quot;None (Add as Prospect)&quot; as the event. They will be saved to your directory without creating an account.</li>
+<li><strong>Find Prospects:</strong> Use the &quot;Filter: All Events&quot; button at the top and select &quot;Prospects Only&quot; to instantly view your leads.</li>
+<li><strong>Upgrade to User:</strong> Open a prospect&#39;s details and scroll to the bottom. Click &quot;Create Account &amp; Send Link&quot; to instantly generate a free GatherSync account and get a magic login link to email them!</li>
+</ul>
+<p><strong>Actions Menu (Bulk Operations):</strong>
+Click the <strong>Actions</strong> button (⋯) in the top right to work with everyone currently shown in your filtered list:</p>
+<ul>
+<li><strong>Add Filtered to Event...</strong> — Select an event and bulk-add all visible contacts. Great for inviting letterbox-drop prospects to a virtual event without adding them one by one.</li>
+<li><strong>Export Filtered List (CSV)</strong> — Download only the people in your current view.</li>
+<li><strong>Import Contact List (CSV)</strong> — Bulk import new prospects or contacts.</li>
+</ul>
+<p>You can also use <strong>Import List</strong> and <strong>Export List</strong> buttons below the summary cards for quick access to the same import/export tools.</p>
+<h2>10. Data Backup &amp; Recovery</h2>
+<p>Your event data is safely stored on your device, but it&#39;s important to know how the backup system works:</p>
+<p><strong>Export / Import Backup:</strong> From the main Events screen, you can export your entire database as a JSON file to your device. You can then use this file to restore your data later via &quot;Import Backup&quot;. <em>Note: Importing a backup completely overwrites your current data.</em></p>
+<p><strong>Single Event Backup:</strong> Have an important event with a lot of transactions? Open that specific event, click the menu (&quot;...&quot;), and select <strong>Export Backup (Single Event)</strong>. This lets you save the state of just one event without affecting the rest of your app.</p>
+<p><strong>Automatic Backups &amp; Data Recovery:</strong> GatherSync automatically takes hidden &quot;safety snapshots&quot; before major actions (like importing data or syncing to the cloud). If something goes wrong, use the <strong>Data Recovery</strong> tool to revert your app back to the exact moment before the action was taken.</p>
+
+</body>
+</html>
