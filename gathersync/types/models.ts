@@ -57,6 +57,8 @@ export interface Event {
   quorumValue?: number; // Minimum attendance requirement value
   attendanceRecords?: AttendanceRecord[]; // Attendance tracking for completed events
   deletedAt?: string; // ISO date string when event was soft-deleted
+  /** When App Email was last sent — used to default follow-up sends to UPDATE mode */
+  lastInvitationSentAt?: string;
 }
 
 export interface EventSnapshot {

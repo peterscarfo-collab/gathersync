@@ -339,6 +339,7 @@ export const appRouter = router({
           participantIds: z.array(z.string()),
           eventDetails: z.string(),
           baseUrl: z.string(),
+          isUpdate: z.boolean().optional(),
         })
       )
       .mutation(async ({ input }) => {
@@ -347,6 +348,7 @@ export const appRouter = router({
 
         const participants = await db.getEventParticipants(input.eventId);
         const selectedParticipants = participants.filter(p => input.participantIds.includes(p.id) && p.email);
+        const isUpdate = !!input.isUpdate;
 
         const results = [];
         for (const p of selectedParticipants) {
@@ -356,7 +358,8 @@ export const appRouter = router({
             p.name,
             event.name,
             input.eventDetails,
-            personalizedLink
+            personalizedLink,
+            { isUpdate }
           );
           results.push(result);
           

@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   Switch,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,6 +154,8 @@ export default function AdminInfluencersScreen() {
   const [editingSegmentSettings, setEditingSegmentSettings] = useState<OutreachSegmentKey | null>(null);
   const [linkedInPasteText, setLinkedInPasteText] = useState('');
   const [showLinkedInImport, setShowLinkedInImport] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ tone: 'info' | 'success' | 'error'; text: string } | null>(null);
 
   const getFirstName = (name: string) => {
     const trimmed = name.trim();
@@ -411,14 +414,28 @@ export default function AdminInfluencersScreen() {
   };
 
   const syncFromCloud = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    setSyncStatus({ tone: 'info', text: 'Syncing with cloud…' });
     try {
       const list = await influencersLocalStorage.syncFromCloud();
       list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setProspects(list);
-      Alert.alert('Synced', `${list.length} contact${list.length === 1 ? '' : 's'} loaded from your account.`);
+      const message = `Synced — ${list.length} contact${list.length === 1 ? '' : 's'} in your pipeline.`;
+      setSyncStatus({ tone: 'success', text: message });
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Synced', `${list.length} contact${list.length === 1 ? '' : 's'} loaded from your account.`);
+      }
     } catch (error) {
       console.error('[Influencers] Cloud sync failed:', error);
-      Alert.alert('Sync failed', 'Could not load from cloud. Check you are logged in and the server is updated.');
+      const message = 'Sync failed. Check you are logged in and the server is updated.';
+      setSyncStatus({ tone: 'error', text: message });
+      if (Platform.OS !== 'web') {
+        Alert.alert('Sync failed', message);
+      }
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -655,16 +672,38 @@ export default function AdminInfluencersScreen() {
   };
 
   const deleteProspect = (p: InfluencerProspect) => {
-    Alert.alert('Delete prospect', `Remove ${p.name}?`, [
+    const message = `Remove ${p.name} from your pipeline?`;
+
+    const performDelete = async () => {
+      try {
+        await influencersLocalStorage.delete(p.id);
+        setShowModal(false);
+        setEditingId(null);
+        setModalReturnTab(null);
+        await loadProspects();
+        setSyncStatus({ tone: 'success', text: `Deleted ${p.name}.` });
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } catch (error) {
+        console.error('[Influencers] Delete failed:', error);
+        setSyncStatus({ tone: 'error', text: `Could not delete ${p.name}. Try again.` });
+        if (Platform.OS !== 'web') {
+          Alert.alert('Delete failed', `Could not delete ${p.name}. Try again.`);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete prospect?\n\n${message}`)) {
+        void performDelete();
+      }
+      return;
+    }
+
+    Alert.alert('Delete prospect', message, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await influencersLocalStorage.delete(p.id);
-          loadProspects();
-        },
-      },
+      { text: 'Delete', style: 'destructive', onPress: () => void performDelete() },
     ]);
   };
 
@@ -779,16 +818,52 @@ export default function AdminInfluencersScreen() {
         </Pressable>
         {isAuthenticated && (
           <Pressable
-            style={[styles.toolBtn, { backgroundColor: surfaceColor, borderWidth: 1, borderColor: AdminColors.success }]}
+            style={[
+              styles.toolBtn,
+              {
+                backgroundColor: surfaceColor,
+                borderWidth: 1,
+                borderColor: AdminColors.success,
+                opacity: syncing ? 0.7 : 1,
+              },
+            ]}
             onPress={syncFromCloud}
+            disabled={syncing}
           >
-            <IconSymbol name="arrow.triangle.2.circlepath" size={18} color={AdminColors.success} />
-            {isDesktop && <ThemedText style={{ color: AdminColors.success, fontWeight: '600', marginLeft: 4, fontSize: 13 }}>Sync</ThemedText>}
+            {syncing ? (
+              <ActivityIndicator size="small" color={AdminColors.success} />
+            ) : (
+              <IconSymbol name="arrow.triangle.2.circlepath" size={18} color={AdminColors.success} />
+            )}
+            {isDesktop && (
+              <ThemedText style={{ color: AdminColors.success, fontWeight: '600', marginLeft: 4, fontSize: 13 }}>
+                {syncing ? 'Syncing…' : 'Sync'}
+              </ThemedText>
+            )}
           </Pressable>
         )}
       </View>
 
-      {isAuthenticated ? (
+      {syncStatus ? (
+        <ThemedText
+          style={[
+            styles.cardMeta,
+            {
+              paddingHorizontal: 20,
+              marginBottom: 8,
+              fontWeight: '600',
+              color:
+                syncStatus.tone === 'error'
+                  ? AdminColors.warning
+                  : syncStatus.tone === 'info'
+                    ? AdminColors.info
+                    : AdminColors.success,
+            },
+          ]}
+        >
+          {syncStatus.text}
+        </ThemedText>
+      ) : isAuthenticated ? (
         <ThemedText style={[styles.cardMeta, { paddingHorizontal: 20, marginBottom: 8, color: AdminColors.success }]}>
           Cloud sync enabled — prospects save to your account, not just this browser.
         </ThemedText>
@@ -2176,10 +2251,13 @@ export default function AdminInfluencersScreen() {
               </Pressable>
 
               {editingId && (
-                <Pressable style={[styles.saveBtn, { backgroundColor: '#ef4444', marginTop: 8 }]} onPress={() => {
-                  const p = prospects.find(x => x.id === editingId);
-                  if (p) { setShowModal(false); deleteProspect(p); }
-                }}>
+                <Pressable
+                  style={[styles.saveBtn, { backgroundColor: '#ef4444', marginTop: 8 }]}
+                  onPress={() => {
+                    const p = prospects.find(x => x.id === editingId);
+                    if (p) deleteProspect(p);
+                  }}
+                >
                   <ThemedText style={{ color: '#fff', fontWeight: '700' }}>Delete</ThemedText>
                 </Pressable>
               )}

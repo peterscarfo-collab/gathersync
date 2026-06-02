@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View, Linking } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View, Linking, Switch } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -12,6 +12,11 @@ import { eventsLocalStorage } from '@/lib/local-storage';
 import { getMonthName, getBestDays } from '@/lib/calendar-utils';
 import type { Event, Participant } from '@/types/models';
 import { getEffectiveAttendanceStatus, getParticipantStatus } from '@/lib/participant-status';
+import {
+  getInvitationEmailSubject,
+  prependUpdateToMessage,
+  shouldDefaultToUpdate,
+} from '@/lib/invitation-message';
 import { trpc } from '@/lib/trpc';
 
 export default function SendMessagesScreen() {
@@ -21,6 +26,7 @@ export default function SendMessagesScreen() {
 
   const [event, setEvent] = useState<Event | null>(null);
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
+  const [isUpdateEmail, setIsUpdateEmail] = useState(false);
 
   const tintColor = useThemeColor({}, 'tint');
   const backgroundColor = useThemeColor({}, 'background');
@@ -66,6 +72,7 @@ export default function SendMessagesScreen() {
       loadedEvent.participants = loadedEvent.participants.filter(p => !p.deletedAt);
       
       setEvent(loadedEvent);
+      setIsUpdateEmail(shouldDefaultToUpdate(loadedEvent));
     }
   };
 
@@ -155,9 +162,11 @@ export default function SendMessagesScreen() {
 
     const baseMessage = `📅 ${event.name}\n\n${eventType}${bestDayText}${meetingDetails.length > 0 ? '\n\n' + meetingDetails.join('\n') : ''}\n\nView and RSVP:\n${webUrl}`;
     
-    return event.reminderMessage
+    const withReminder = event.reminderMessage
       ? `${event.reminderMessage}\n\n${baseMessage}`
       : baseMessage;
+
+    return prependUpdateToMessage(withReminder, isUpdateEmail);
   };
 
   const sendSms = () => {
@@ -199,7 +208,7 @@ export default function SendMessagesScreen() {
     }
 
     const bccString = emails.join(',');
-    const subject = encodeURIComponent(`Update regarding ${event.name}`);
+    const subject = encodeURIComponent(getInvitationEmailSubject(event.name, isUpdateEmail));
     const body = encodeURIComponent(message);
     const mailtoUrl = `mailto:?bcc=${bccString}&subject=${subject}&body=${body}`;
     
@@ -271,12 +280,18 @@ export default function SendMessagesScreen() {
         participantIds: selected.map(p => p.id),
         eventDetails: message,
         baseUrl,
+        isUpdate: isUpdateEmail,
       });
 
+      const sentAt = new Date().toISOString();
+      await eventsLocalStorage.update(event.id, { lastInvitationSentAt: sentAt });
+      setEvent(prev => (prev ? { ...prev, lastInvitationSentAt: sentAt } : prev));
+
+      const successLabel = isUpdateEmail ? 'update emails' : 'emails';
       if (Platform.OS === 'web') {
-        alert(`Successfully sent ${result.sentCount} emails!`);
+        alert(`Successfully sent ${result.sentCount} ${successLabel}!`);
       } else {
-        Alert.alert('Success', `Successfully sent ${result.sentCount} emails!`);
+        Alert.alert('Success', `Successfully sent ${result.sentCount} ${successLabel}!`);
       }
       
       router.back();
@@ -356,6 +371,30 @@ export default function SendMessagesScreen() {
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        <View style={[styles.card, { backgroundColor: surfaceColor, marginBottom: 16 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <ThemedText type="defaultSemiBold">Meeting update</ThemedText>
+              <ThemedText style={{ color: textSecondaryColor, fontSize: 13, marginTop: 4 }}>
+                Turn on when re-sending after a time, date, or link change — adds an UPDATE headline so people don&apos;t ignore it.
+              </ThemedText>
+            </View>
+            <Switch
+              value={isUpdateEmail}
+              onValueChange={setIsUpdateEmail}
+              trackColor={{ false: textSecondaryColor + '40', true: tintColor + '80' }}
+              thumbColor={isUpdateEmail ? tintColor : '#f4f3f4'}
+            />
+          </View>
+          {isUpdateEmail && (
+            <View style={{ marginTop: 12, padding: 10, borderRadius: 8, backgroundColor: '#FF6B0020' }}>
+              <ThemedText style={{ fontWeight: '700', color: '#C2410C' }}>
+                App email subject: {getInvitationEmailSubject(event.name, true)}
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
         {/* Preview of the message */}
         <View style={[styles.card, { backgroundColor: surfaceColor, marginBottom: 16 }]}>
           <ThemedText type="defaultSemiBold" style={{ marginBottom: 8 }}>Message Preview</ThemedText>

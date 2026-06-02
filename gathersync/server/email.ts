@@ -70,19 +70,36 @@ export async function sendConfirmationEmail(participantEmail: string, participan
   return sendEmail({ to: participantEmail, subject, html });
 }
 
-export async function sendInvitationEmail(participantEmail: string, participantName: string, eventName: string, eventDetails: string, link: string) {
-  const subject = `Invitation: ${eventName}`;
-  
+export async function sendInvitationEmail(
+  participantEmail: string,
+  participantName: string,
+  eventName: string,
+  eventDetails: string,
+  link: string,
+  options?: { isUpdate?: boolean }
+) {
+  const isUpdate = !!options?.isUpdate;
+  const subject = isUpdate ? `UPDATE — ${eventName} (details changed)` : `Invitation: ${eventName}`;
+
+  const intro = isUpdate
+    ? `<p>The details for <strong>${eventName}</strong> have been updated. Please review the changes below.</p>`
+    : `<p>You have been invited to <strong>${eventName}</strong>.</p>`;
+
+  const updateBanner = isUpdate
+    ? `<div style="background-color: #FF6B00; color: #ffffff; padding: 14px 16px; border-radius: 8px; margin: 0 0 16px 0; font-weight: bold; font-size: 18px; text-align: center;">⚠️ MEETING UPDATE — details have changed</div>`
+    : '';
+
   const html = `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      ${updateBanner}
       <h2 style="color: #007AFF;">GatherSync</h2>
       <p>Hi ${participantName},</p>
-      <p>You have been invited to <strong>${eventName}</strong>.</p>
+      ${intro}
       <div style="background-color: #f5f5f5; padding: 16px; border-radius: 8px; margin: 16px 0;">
         ${eventDetails.replace(/\n/g, '<br/>')}
       </div>
       <p>Please click the button below to view the details and confirm your RSVP:</p>
-      <a href="${link}" style="display: inline-block; background-color: #007AFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">Respond Now</a>
+      <a href="${link}" style="display: inline-block; background-color: #007AFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 16px 0;">${isUpdate ? 'View Updated Details' : 'Respond Now'}</a>
       <br/>
       <p style="color: #666; font-size: 12px;">Powered by GatherSync</p>
     </div>
