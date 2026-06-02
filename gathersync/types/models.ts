@@ -151,6 +151,7 @@ export type InfluencerStatus =
   | 'follow_up_1'
   | 'follow_up_2'
   | 'interested'
+  | 'bizomedia_invited'
   | 'lifetime_granted'
   | 'active'
   | 'declined'
@@ -204,6 +205,10 @@ export interface InfluencerProspect {
   notes?: string;
   participantDirectoryId?: string;
   addedToParticipantDirectoryAt?: string;
+  /** Set when BizoMedia admin invite webhook fires */
+  bizomediaUserId?: string;
+  bizomediaPublicSlug?: string;
+  bizomediaInvitedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -67,6 +67,7 @@ import {
 import { AdminColors } from '@/constants/admin-theme';
 import { computeOutreachAnalytics, formatCurrency, formatRate, getProspectActivityTimeline } from '@/lib/influencer-analytics';
 import { parseLinkedInPaste } from '@/lib/linkedin-paste-parser';
+import { buildBizomediaAdminInviteUrl } from '@/lib/bizomedia-invite';
 import type {
   InfluencerProspect,
   InfluencerProspectType,
@@ -452,7 +453,7 @@ export default function AdminInfluencersScreen() {
       list = list.filter(p => resolveOutreachTrack(p) === trackFilter);
     }
     if (statusFilter === 'in_progress') {
-      list = list.filter(p => ['contacted', 'follow_up_1', 'follow_up_2', 'interested'].includes(p.status));
+      list = list.filter(p => ['contacted', 'follow_up_1', 'follow_up_2', 'interested', 'bizomedia_invited'].includes(p.status));
     } else if (statusFilter !== 'all') {
       list = list.filter(p => p.status === statusFilter);
     }
@@ -488,7 +489,7 @@ export default function AdminInfluencersScreen() {
   const stats = {
     total: filtered.length,
     research: filtered.filter(p => p.status === 'research').length,
-    inProgress: filtered.filter(p => ['contacted', 'follow_up_1', 'follow_up_2', 'interested'].includes(p.status)).length,
+    inProgress: filtered.filter(p => ['contacted', 'follow_up_1', 'follow_up_2', 'interested', 'bizomedia_invited'].includes(p.status)).length,
     lifetime: filtered.filter(p => p.lifetimeProGranted || p.status === 'lifetime_granted' || p.status === 'active').length,
   };
 
@@ -609,6 +610,9 @@ export default function AdminInfluencersScreen() {
       notes: p.notes || '',
       participantDirectoryId: p.participantDirectoryId,
       addedToParticipantDirectoryAt: p.addedToParticipantDirectoryAt,
+      bizomediaUserId: p.bizomediaUserId || '',
+      bizomediaPublicSlug: p.bizomediaPublicSlug || '',
+      bizomediaInvitedAt: p.bizomediaInvitedAt || '',
     };
     const drafts = regenerateOutreachDrafts(base);
     setForm({
@@ -1000,6 +1004,11 @@ export default function AdminInfluencersScreen() {
               {p.personalVideoUrl && (
                 <ThemedText style={[styles.cardMeta, { color: AdminColors.warning, marginTop: 4 }]}>
                   HeyGen video saved
+                </ThemedText>
+              )}
+              {(p.bizomediaUserId || p.status === 'bizomedia_invited') && (
+                <ThemedText style={[styles.cardMeta, { color: AdminColors.info, marginTop: 4 }]}>
+                  BizoMedia{p.bizomediaPublicSlug ? ` · /${p.bizomediaPublicSlug}` : ''}
                 </ThemedText>
               )}
               <View style={[styles.row, { marginTop: 10, gap: 8, flexWrap: 'wrap' }]}>
@@ -1853,6 +1862,64 @@ export default function AdminInfluencersScreen() {
                 placeholder="Mastermind facilitator | Community builder"
                 multiline
               />
+
+              {editingId && (
+                <View style={[styles.linkedinImportBox, { borderColor: AdminColors.info + '40', backgroundColor: cardBg, marginBottom: 12 }]}>
+                  <ThemedText type="defaultSemiBold" style={{ marginBottom: 4 }}>BizoMedia CRM</ThemedText>
+                  <ThemedText style={styles.cardMeta}>
+                    Paste this contact ID when inviting in BizoMedia admin. After invite, the webhook sets status to BizoMedia Invited.
+                  </ThemedText>
+                  <ThemedText style={[styles.fieldLabel, { marginTop: 8 }]}>GatherSync contact ID</ThemedText>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, color: tintColor, borderColor: '#ddd', marginBottom: 0 }]}
+                      value={editingId}
+                      editable={false}
+                    />
+                    <Pressable
+                      style={[styles.copyBtn, { borderColor: AdminColors.info, paddingHorizontal: 12 }]}
+                      onPress={() => copyText(editingId, 'Contact ID')}
+                    >
+                      <ThemedText style={{ color: AdminColors.info, fontWeight: '600' }}>Copy</ThemedText>
+                    </Pressable>
+                  </View>
+                  {form.contactEmail?.trim() ? (
+                    <>
+                      <ThemedText style={styles.fieldLabel}>BizoMedia admin invite link</ThemedText>
+                      <ThemedText style={[styles.cardMeta, { marginBottom: 8 }]} numberOfLines={3}>
+                        {buildBizomediaAdminInviteUrl(form.contactEmail, editingId)}
+                      </ThemedText>
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                        <Pressable
+                          style={[styles.copyBtn, { borderColor: AdminColors.info }]}
+                          onPress={() =>
+                            copyText(buildBizomediaAdminInviteUrl(form.contactEmail!, editingId), 'BizoMedia invite link')
+                          }
+                        >
+                          <ThemedText style={{ color: AdminColors.info, fontWeight: '600' }}>Copy link</ThemedText>
+                        </Pressable>
+                        <Pressable
+                          style={[styles.copyBtn, { borderColor: AdminColors.info }]}
+                          onPress={() => Linking.openURL(buildBizomediaAdminInviteUrl(form.contactEmail!, editingId))}
+                        >
+                          <ThemedText style={{ color: AdminColors.info, fontWeight: '600' }}>Open BizoMedia</ThemedText>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : (
+                    <ThemedText style={[styles.cardMeta, { marginTop: 4 }]}>
+                      Add an email to generate the BizoMedia admin invite link.
+                    </ThemedText>
+                  )}
+                  {form.bizomediaUserId ? (
+                    <ThemedText style={[styles.cardMeta, { marginTop: 8, color: AdminColors.success }]}>
+                      BizoMedia user: {form.bizomediaUserId}
+                      {form.bizomediaPublicSlug ? ` · /${form.bizomediaPublicSlug}` : ''}
+                      {form.bizomediaInvitedAt ? ` · invited ${formatDisplayDate(form.bizomediaInvitedAt.slice(0, 10))}` : ''}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              )}
 
               <ThemedText style={styles.fieldLabel}>Track</ThemedText>
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>

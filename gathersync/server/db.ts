@@ -417,3 +417,49 @@ export async function deleteInfluencerProspect(prospectId: string, userId: numbe
     .set({ deletedAt: new Date() })
     .where(and(eq(influencerProspects.id, prospectId), eq(influencerProspects.userId, userId)));
 }
+
+function rowToInfluencerProspect(row: { id: string; prospectData: Record<string, unknown> }): Record<string, unknown> {
+  return { ...row.prospectData, id: row.id };
+}
+
+/** Webhook lookup — contactId first, then email across all users */
+export async function findInfluencerProspectForWebhook(opts: {
+  contactId?: string | null;
+  email?: string;
+}): Promise<{ userId: number; prospect: Record<string, unknown> } | null> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(influencerProspects)
+    .where(isNull(influencerProspects.deletedAt));
+
+  const contactId = opts.contactId?.trim();
+  const emailLower = opts.email?.trim().toLowerCase();
+
+  if (contactId) {
+    const byId = rows.find(r => r.id === contactId);
+    if (byId) {
+      return { userId: byId.userId, prospect: rowToInfluencerProspect(byId) };
+    }
+  }
+
+  if (emailLower) {
+    for (const row of rows) {
+      const data = row.prospectData as Record<string, unknown>;
+      const prospectEmail = String(data.contactEmail || '')
+        .trim()
+        .toLowerCase();
+      if (prospectEmail === emailLower) {
+        return { userId: row.userId, prospect: rowToInfluencerProspect(row) };
+      }
+    }
+  }
+
+  return null;
+}
+
+export async function applyBizomediaInviteWebhook(userId: number, prospect: Record<string, unknown>) {
+  return upsertInfluencerProspect(userId, prospect);
+}

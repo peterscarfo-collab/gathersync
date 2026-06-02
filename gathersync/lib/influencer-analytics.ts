@@ -54,7 +54,7 @@ export interface OutreachAnalytics {
   recentProspects: RecentProspectSummary[];
 }
 
-const IN_PROGRESS: InfluencerStatus[] = ['contacted', 'follow_up_1', 'follow_up_2', 'interested'];
+const IN_PROGRESS: InfluencerStatus[] = ['contacted', 'follow_up_1', 'follow_up_2', 'interested', 'bizomedia_invited'];
 const TERMINAL: InfluencerStatus[] = ['declined', 'not_a_fit', 'lifetime_granted', 'active'];
 
 function startOfDay(date: Date): Date {
