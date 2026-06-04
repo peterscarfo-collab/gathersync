@@ -17,6 +17,11 @@ import {
   type InsertInfluencerProspectRow,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import {
+  normalizeBusinessName,
+  normalizePhone,
+  prospectBusinessNameKey,
+} from "../lib/bizomedia-letterbox";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -458,6 +463,86 @@ export async function findInfluencerProspectForWebhook(opts: {
   }
 
   return null;
+}
+
+/** Letterbox prospect webhook — contactId → email → phone → businessName */
+export async function findLetterboxProspectForWebhook(opts: {
+  contactId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  businessName?: string | null;
+}): Promise<{ userId: number; prospect: Record<string, unknown> } | null> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(influencerProspects)
+    .where(isNull(influencerProspects.deletedAt));
+
+  const contactId = opts.contactId?.trim();
+  if (contactId) {
+    const byId = rows.find(r => r.id === contactId);
+    if (byId) {
+      return { userId: byId.userId, prospect: rowToInfluencerProspect(byId) };
+    }
+  }
+
+  const emailLower = opts.email?.trim().toLowerCase();
+  if (emailLower) {
+    for (const row of rows) {
+      const data = row.prospectData as Record<string, unknown>;
+      const prospectEmail = String(data.contactEmail || "")
+        .trim()
+        .toLowerCase();
+      if (prospectEmail && prospectEmail === emailLower) {
+        return { userId: row.userId, prospect: rowToInfluencerProspect(row) };
+      }
+    }
+  }
+
+  const phoneKey = opts.phone?.trim() ? normalizePhone(opts.phone) : "";
+  if (phoneKey.length >= 8) {
+    for (const row of rows) {
+      const data = row.prospectData as Record<string, unknown>;
+      const prospectPhone = String(data.contactPhone || "").trim();
+      if (prospectPhone && normalizePhone(prospectPhone) === phoneKey) {
+        return { userId: row.userId, prospect: rowToInfluencerProspect(row) };
+      }
+    }
+  }
+
+  const businessKey = opts.businessName?.trim()
+    ? normalizeBusinessName(opts.businessName)
+    : "";
+  if (businessKey) {
+    for (const row of rows) {
+      const data = row.prospectData as Record<string, unknown>;
+      if (prospectBusinessNameKey(data) === businessKey) {
+        return { userId: row.userId, prospect: rowToInfluencerProspect(row) };
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Owner user for CRM webhooks that create new letterbox contacts */
+export async function resolveCrmWebhookUserId(): Promise<number | null> {
+  const explicit = process.env.GATHERSYNC_CRM_WEBHOOK_USER_ID?.trim();
+  if (explicit) {
+    const parsed = Number.parseInt(explicit, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  const openId =
+    ENV.ownerOpenId?.trim() ||
+    process.env.EXPO_PUBLIC_OWNER_OPEN_ID?.trim() ||
+    "";
+  if (!openId) return null;
+
+  const owner = await getUserByOpenId(openId);
+  return owner?.id ?? null;
 }
 
 export async function applyBizomediaInviteWebhook(userId: number, prospect: Record<string, unknown>) {

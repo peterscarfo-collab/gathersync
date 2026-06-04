@@ -75,6 +75,13 @@ In the Render dashboard, add these environment variables:
 | `STRIPE_PRICE_ID_PRO_MONTHLY` | Monthly subscription price ID |
 | `STRIPE_PRICE_ID_PRO_YEARLY` | Yearly subscription price ID |
 
+### Optional Variables (BizoMedia CRM webhooks)
+
+| Variable | Description |
+|----------|-------------|
+| `GATHERSYNC_CRM_WEBHOOK_SECRET` | Shared secret for `POST /api/crm/bizomedia-invite` (`Authorization: Bearer …`) — must match BizoMedia `GATHERSYNC_CRM_WEBHOOK_SECRET` |
+| `GATHERSYNC_CRM_WEBHOOK_USER_ID` | Numeric user id for new letterbox contacts (optional; defaults to owner from `OWNER_OPEN_ID` / `EXPO_PUBLIC_OWNER_OPEN_ID`) |
+
 ## Step 5: Deploy
 
 1. Click **"Create Web Service"**

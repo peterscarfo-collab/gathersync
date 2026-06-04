@@ -209,6 +209,13 @@ export interface InfluencerProspect {
   bizomediaUserId?: string;
   bizomediaPublicSlug?: string;
   bizomediaInvitedAt?: string;
+  /** Letterbox / BizoMedia prospect pipeline */
+  businessName?: string;
+  contactName?: string;
+  bizomediaProspectId?: string;
+  previewUrl?: string;
+  /** e.g. letterbox-drop — BizoMedia brochure outreach */
+  outreachSource?: string;
   createdAt: string;
   updatedAt: string;
 }
