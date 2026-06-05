@@ -135,6 +135,94 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return undefined;
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = ${normalized}`)
+    .limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/** User who already owns the influencer pipeline (most prospects in DB). */
+export async function getPrimaryInfluencerPipelineUserId(): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const rows = await db
+    .select({ userId: influencerProspects.userId })
+    .from(influencerProspects)
+    .where(isNull(influencerProspects.deletedAt));
+
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    counts.set(row.userId, (counts.get(row.userId) ?? 0) + 1);
+  }
+
+  let bestUserId: number | null = null;
+  let bestCount = 0;
+  for (const [userId, count] of counts) {
+    if (count > bestCount) {
+      bestCount = count;
+      bestUserId = userId;
+    }
+  }
+
+  return bestUserId;
+}
+
+export type CrmWebhookOwnerResolution = {
+  userId: number;
+  source:
+    | "GATHERSYNC_CRM_WEBHOOK_USER_ID"
+    | "OWNER_OPEN_ID"
+    | "GATHERSYNC_CRM_OWNER_EMAIL"
+    | "primary_pipeline_user";
+};
+
+export async function resolveCrmWebhookUserIdWithSource(): Promise<CrmWebhookOwnerResolution | null> {
+  const explicit = process.env.GATHERSYNC_CRM_WEBHOOK_USER_ID?.trim();
+  if (explicit) {
+    const parsed = Number.parseInt(explicit, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return { userId: parsed, source: "GATHERSYNC_CRM_WEBHOOK_USER_ID" };
+    }
+  }
+
+  const openId =
+    ENV.ownerOpenId?.trim() ||
+    process.env.EXPO_PUBLIC_OWNER_OPEN_ID?.trim() ||
+    "";
+  if (openId) {
+    const owner = await getUserByOpenId(openId);
+    if (owner?.id) {
+      return { userId: owner.id, source: "OWNER_OPEN_ID" };
+    }
+  }
+
+  const ownerEmail = process.env.GATHERSYNC_CRM_OWNER_EMAIL?.trim();
+  if (ownerEmail) {
+    const byEmail = await getUserByEmail(ownerEmail);
+    if (byEmail?.id) {
+      return { userId: byEmail.id, source: "GATHERSYNC_CRM_OWNER_EMAIL" };
+    }
+  }
+
+  const pipelineUserId = await getPrimaryInfluencerPipelineUserId();
+  if (pipelineUserId) {
+    return { userId: pipelineUserId, source: "primary_pipeline_user" };
+  }
+
+  return null;
+}
+
 /**
  * Events
  */
@@ -529,20 +617,8 @@ export async function findLetterboxProspectForWebhook(opts: {
 
 /** Owner user for CRM webhooks that create new letterbox contacts */
 export async function resolveCrmWebhookUserId(): Promise<number | null> {
-  const explicit = process.env.GATHERSYNC_CRM_WEBHOOK_USER_ID?.trim();
-  if (explicit) {
-    const parsed = Number.parseInt(explicit, 10);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-  }
-
-  const openId =
-    ENV.ownerOpenId?.trim() ||
-    process.env.EXPO_PUBLIC_OWNER_OPEN_ID?.trim() ||
-    "";
-  if (!openId) return null;
-
-  const owner = await getUserByOpenId(openId);
-  return owner?.id ?? null;
+  const resolved = await resolveCrmWebhookUserIdWithSource();
+  return resolved?.userId ?? null;
 }
 
 export async function applyBizomediaInviteWebhook(userId: number, prospect: Record<string, unknown>) {

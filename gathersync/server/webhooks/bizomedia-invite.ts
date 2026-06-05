@@ -13,7 +13,9 @@ import {
   applyBizomediaInviteWebhook,
   findInfluencerProspectForWebhook,
   findLetterboxProspectForWebhook,
-  resolveCrmWebhookUserId,
+  getPrimaryInfluencerPipelineUserId,
+  getUserInfluencerProspects,
+  resolveCrmWebhookUserIdWithSource,
 } from '../db';
 
 function unauthorized(res: Response) {
@@ -95,13 +97,16 @@ async function handleBizomediaProspectCreated(
     let userId = match?.userId;
 
     if (!contactId) {
-      const ownerId = await resolveCrmWebhookUserId();
-      if (!ownerId) {
-        console.error('[bizomedia-prospect] no CRM owner user (OWNER_OPEN_ID or GATHERSYNC_CRM_WEBHOOK_USER_ID)');
+      const owner = await resolveCrmWebhookUserIdWithSource();
+      if (!owner) {
+        console.error(
+          '[bizomedia-prospect] no CRM owner user — set GATHERSYNC_CRM_WEBHOOK_USER_ID, GATHERSYNC_CRM_OWNER_EMAIL, or OWNER_OPEN_ID'
+        );
         return res.status(500).json({ error: 'CRM owner user not configured' });
       }
-      userId = ownerId;
+      userId = owner.userId;
       contactId = randomUUID();
+      console.info('[bizomedia-prospect] new contact owner', owner);
     }
 
     const updated = applyBizomediaProspectCreated(
@@ -124,6 +129,27 @@ async function handleBizomediaProspectCreated(
     console.error('[bizomedia-prospect] failed', error);
     return res.status(500).json({ error: 'Failed to upsert contact' });
   }
+}
+
+export async function handleBizomediaCrmHealth(req: Request, res: Response) {
+  if (!verifyCrmWebhookAuth(req, res)) return;
+
+  const owner = await resolveCrmWebhookUserIdWithSource();
+  const pipelineUserId = await getPrimaryInfluencerPipelineUserId();
+  let prospectCount = 0;
+  if (owner?.userId) {
+    const rows = await getUserInfluencerProspects(owner.userId);
+    prospectCount = rows.length;
+  }
+
+  return res.status(200).json({
+    ok: true,
+    secretConfigured: Boolean(process.env.GATHERSYNC_CRM_WEBHOOK_SECRET?.trim()),
+    ownerUserId: owner?.userId ?? null,
+    ownerResolvedBy: owner?.source ?? null,
+    primaryPipelineUserId: pipelineUserId,
+    prospectCountForOwner: prospectCount,
+  });
 }
 
 export async function handleBizomediaInviteWebhook(req: Request, res: Response) {

@@ -9,7 +9,10 @@ import { createContext } from "./context";
 import { publicApiRouter } from "../public-api";
 import { handleStripeWebhook } from "../webhooks/stripe";
 import { startReminderCron } from "../reminders";
-import { handleBizomediaInviteWebhook } from "../webhooks/bizomedia-invite";
+import {
+  handleBizomediaCrmHealth,
+  handleBizomediaInviteWebhook,
+} from "../webhooks/bizomedia-invite";
 import { ensureInfluencerProspectsTable } from "../db";
 
 async function startServer() {
@@ -56,6 +59,10 @@ async function startServer() {
   });
 
   app.use("/api/public", publicApiRouter);
+
+  app.get("/api/crm/bizomedia-health", (req, res) => {
+    void handleBizomediaCrmHealth(req, res);
+  });
 
   app.post("/api/crm/bizomedia-invite", (req, res) => {
     void handleBizomediaInviteWebhook(req, res);

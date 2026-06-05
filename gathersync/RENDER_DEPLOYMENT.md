@@ -80,7 +80,11 @@ In the Render dashboard, add these environment variables:
 | Variable | Description |
 |----------|-------------|
 | `GATHERSYNC_CRM_WEBHOOK_SECRET` | Shared secret for `POST /api/crm/bizomedia-invite` (`Authorization: Bearer …`) — must match BizoMedia `GATHERSYNC_CRM_WEBHOOK_SECRET` |
-| `GATHERSYNC_CRM_WEBHOOK_USER_ID` | Numeric user id for new letterbox contacts (optional; defaults to owner from `OWNER_OPEN_ID` / `EXPO_PUBLIC_OWNER_OPEN_ID`) |
+| `GATHERSYNC_CRM_WEBHOOK_USER_ID` | Numeric user id for new letterbox contacts (optional; see fallbacks below) |
+| `GATHERSYNC_CRM_OWNER_EMAIL` | Google login email — resolves CRM owner when Manus `OWNER_OPEN_ID` is stale |
+| *(auto)* | If unset, uses the user who already owns the most influencer prospects in MySQL |
+
+**Health check (after deploy):** `GET https://gathersync-api.onrender.com/api/crm/bizomedia-health` with `Authorization: Bearer <secret>` — returns `ownerUserId` and `prospectCountForOwner`.
 
 ## Step 5: Deploy
 
