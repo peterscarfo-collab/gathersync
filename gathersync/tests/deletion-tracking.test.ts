@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '@/lib/event-delete-guards';
 import type { Event, Participant } from '@/types/models';
 
 describe('Deletion Tracking', () => {
@@ -104,6 +105,23 @@ describe('Deletion Tracking', () => {
   });
 
   describe('Sync Behavior', () => {
+    it('should normalize delete event IDs and reject non-string handshakes', () => {
+      expect(normalizeEventId(' event-1 ')).toBe('event-1');
+      expect(() => normalizeEventId({ id: 'event-1' })).toThrow(
+        'Expected eventId to be a string, received object'
+      );
+      expect(() => normalizeEventId(['event-1'])).toThrow(
+        'Expected eventId to be a string, received array'
+      );
+    });
+
+    it('should skip cloud events while a delete is pending locally', () => {
+      const pendingDeleteIds = new Set(['event-1']);
+
+      expect(shouldSkipCloudEventForPendingDelete('event-1', pendingDeleteIds)).toBe(true);
+      expect(shouldSkipCloudEventForPendingDelete('event-2', pendingDeleteIds)).toBe(false);
+    });
+
     it('should include deletedAt field when syncing to cloud', () => {
       const deletedEvent = {
         ...mockEvent,
