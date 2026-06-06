@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
+import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '@/lib/event-delete-guards';
 import { useAuth } from './use-auth';
 import type { Event } from '@/types/models';
 
@@ -14,19 +15,6 @@ interface SyncQueue {
   data?: Event;
   timestamp: number;
   retries: number;
-}
-
-function normalizeEventId(eventId: unknown): string {
-  if (typeof eventId !== 'string') {
-    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
-  }
-
-  const trimmed = eventId.trim();
-  if (!trimmed) {
-    throw new Error('Expected eventId to be a non-empty string');
-  }
-
-  return trimmed;
 }
 
 /**
@@ -108,7 +96,7 @@ export function useAutoSync() {
       
       // Merge events using last-write-wins based on updatedAt timestamp
       for (const cloudEvent of cloudEvents) {
-        if (pendingDeleteIdsRef.current.has(cloudEvent.id)) {
+        if (shouldSkipCloudEventForPendingDelete(cloudEvent.id, pendingDeleteIdsRef.current)) {
           console.log('[AutoSync] Skipping cloud event with pending delete:', cloudEvent.id, cloudEvent.name);
           continue;
         }
