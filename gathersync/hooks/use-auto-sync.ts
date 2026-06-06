@@ -40,6 +40,7 @@ export function useAutoSync() {
   const syncQueueRef = useRef<SyncQueue[]>([]);
   const isSyncingRef = useRef(false);
   const lastSyncRef = useRef<number>(0);
+  const pendingDeleteIdsRef = useRef<Set<string>>(new Set());
 
   // Monitor network status
   useEffect(() => {
@@ -97,9 +98,21 @@ export function useAutoSync() {
       // Build maps for efficient lookup
       const cloudMap = new Map(cloudEvents.map(e => [e.id, e]));
       const localMap = new Map(localEventsRaw.map(e => [e.id, e]));
+
+      // Keep pending delete protection until a pull confirms the cloud row is gone.
+      for (const pendingDeleteId of Array.from(pendingDeleteIdsRef.current)) {
+        if (!cloudMap.has(pendingDeleteId)) {
+          pendingDeleteIdsRef.current.delete(pendingDeleteId);
+        }
+      }
       
       // Merge events using last-write-wins based on updatedAt timestamp
       for (const cloudEvent of cloudEvents) {
+        if (pendingDeleteIdsRef.current.has(cloudEvent.id)) {
+          console.log('[AutoSync] Skipping cloud event with pending delete:', cloudEvent.id, cloudEvent.name);
+          continue;
+        }
+
         const localEvent = localMap.get(cloudEvent.id);
         
         if (!localEvent) {
@@ -269,9 +282,15 @@ export function useAutoSync() {
 
   const deleteEvent = useCallback(async (eventId: string) => {
     const normalizedEventId = normalizeEventId(eventId);
+    pendingDeleteIdsRef.current.add(normalizedEventId);
 
-    // Optimistic update: delete locally first
-    await eventsLocalStorage.delete(normalizedEventId);
+    try {
+      // Optimistic update: delete locally first
+      await eventsLocalStorage.delete(normalizedEventId);
+    } catch (error) {
+      pendingDeleteIdsRef.current.delete(normalizedEventId);
+      throw error;
+    }
     
     // Deletes must await cloud sync so permission/API failures are visible to callers.
     const syncedOrQueued = await pushToCloud('delete', normalizedEventId);
