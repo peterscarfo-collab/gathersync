@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '@/lib/event-delete-guards';
+import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '../lib/event-delete-guards';
 import type { Event, Participant } from '@/types/models';
 
 describe('Deletion Tracking', () => {
