@@ -1,8 +1,7 @@
-import Constants from 'expo-constants';
+import pkg from '../package.json';
 
-/** App version — keep in sync with package.json and app.config.ts */
-export const APP_VERSION =
-  Constants.expoConfig?.version ?? Constants.manifest2?.extra?.expoClient?.version ?? '1.1.0';
+/** App version — single source: package.json (synced to app.config on deploy:web) */
+export const APP_VERSION = pkg.version;
 
 /** Shown on About screen and deploy logs */
 export function getVersionLabel(): string {

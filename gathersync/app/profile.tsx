@@ -14,6 +14,13 @@ import { getTierDisplayName, formatPricing, getSubscriptionLimits } from '@/lib/
 import { getSubscriptionInfo, getSubscriptionDisplayText, isEligibleForTrial } from '@/lib/trial';
 import { trpc } from '@/lib/trpc';
 import { getLoginUrl } from '@/constants/oauth';
+import { getVersionLabel } from '@/constants/version';
+import { getTodayCalendarDate } from '@/lib/calendar-utils';
+import {
+  AUSTRALIAN_TIMEZONES,
+  formatTimeZoneLabel,
+} from '@/lib/user-preferences';
+import { useEffectiveTimeZone } from '@/hooks/use-effective-timezone';
 import { Platform } from 'react-native';
 
 export default function ProfileScreen() {
@@ -21,6 +28,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, isAuthenticated, logout, loading, refresh } = useAuth();
   const { syncStatus } = useAutoSync();
+  const { timeZone, override, deviceTimeZone, saveOverride } = useEffectiveTimeZone();
   const startTrialMutation = trpc.trial.startTrial.useMutation();
   
   const backgroundColor = useThemeColor({}, 'background');
@@ -266,6 +274,87 @@ export default function ProfileScreen() {
         )}
 
 
+        {/* App */}
+        <View style={[styles.section, { backgroundColor: surfaceColor }]}>
+          <View style={styles.sectionHeader}>
+            <ThemedText type="subtitle">App</ThemedText>
+          </View>
+
+          <View style={styles.infoRow}>
+            <ThemedText style={{ color: textSecondaryColor }}>Version</ThemedText>
+            <ThemedText>{getVersionLabel()}</ThemedText>
+          </View>
+
+          <View style={[styles.infoRow, { alignItems: 'flex-start' }]}>
+            <ThemedText style={{ color: textSecondaryColor }}>Timezone</ThemedText>
+            <View style={{ flex: 1, alignItems: 'flex-end', gap: 4 }}>
+              <ThemedText style={{ textAlign: 'right' }}>
+                {formatTimeZoneLabel(timeZone)}
+              </ThemedText>
+              <ThemedText style={{ color: textSecondaryColor, fontSize: 12, textAlign: 'right' }}>
+                Today: {getTodayCalendarDate(timeZone)}
+              </ThemedText>
+            </View>
+          </View>
+
+          <ThemedText style={{ color: textSecondaryColor, fontSize: 12, marginBottom: 8 }}>
+            Event dates use this timezone for today/past/future checks.
+          </ThemedText>
+
+          <View style={styles.timezoneOptions}>
+            <Pressable
+              style={[
+                styles.timezoneChip,
+                !override && { borderColor: tintColor, backgroundColor: `${tintColor}12` },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                saveOverride(null);
+              }}
+            >
+              <ThemedText style={[styles.timezoneChipText, !override && { color: tintColor }]}>
+                Device ({deviceTimeZone})
+              </ThemedText>
+            </Pressable>
+            {AUSTRALIAN_TIMEZONES.map((option) => (
+              <Pressable
+                key={option.id}
+                style={[
+                  styles.timezoneChip,
+                  override === option.id && {
+                    borderColor: tintColor,
+                    backgroundColor: `${tintColor}12`,
+                  },
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  saveOverride(option.id);
+                }}
+              >
+                <ThemedText
+                  style={[
+                    styles.timezoneChipText,
+                    override === option.id && { color: tintColor },
+                  ]}
+                >
+                  {option.label}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+
+          <Pressable
+            style={styles.aboutLink}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/about' as any);
+            }}
+          >
+            <ThemedText style={{ color: tintColor }}>About GatherSync</ThemedText>
+            <IconSymbol name="chevron.right" size={18} color={textSecondaryColor} />
+          </Pressable>
+        </View>
+
         {/* Actions */}
         {isAuthenticated ? (
           <Pressable
@@ -410,5 +499,30 @@ const styles = StyleSheet.create({
   trialText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  aboutLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  timezoneOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  timezoneChip: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  timezoneChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
   },
 });

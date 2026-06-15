@@ -12,13 +12,20 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useAuth } from "@/hooks/use-auth";
+import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { eventsLocalStorage } from "@/lib/local-storage";
+import {
+  formatEventCalendarDate,
+  isCalendarDateInFuture,
+  isEventInFuture,
+} from "@/lib/calendar-utils";
 import type { Event } from "@/types/models";
 
 type AttendanceState = "unchecked" | "attended" | "not-attended";
@@ -32,6 +39,7 @@ export default function AdminAttendanceEventScreen() {
     view?: string | string[];
   }>();
   const { user } = useAuth();
+  const { timeZone } = useEffectiveTimeZone();
   const tintColor = useThemeColor({}, "tint");
   const cardBg = useThemeColor(
     { light: "#f5f5f5", dark: "#2a2a2a" },
@@ -71,12 +79,8 @@ export default function AdminAttendanceEventScreen() {
     loadEvent();
   }, [eventId]);
 
-  const formatEventDate = (current: Event) => {
-    if (current.eventType === "fixed" && current.fixedDate) {
-      return new Date(current.fixedDate).toLocaleDateString();
-    }
-    return `${current.month}/${current.year}`;
-  };
+  const formatEventDate = (current: Event) =>
+    formatEventCalendarDate(current);
 
   const getActiveParticipants = (current: Event) =>
     current.participants.filter((participant) => !participant.deletedAt);
@@ -89,28 +93,7 @@ export default function AdminAttendanceEventScreen() {
     )[0];
   };
 
-  const isEventInFuture = (current: Event) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    if (current.eventType === "fixed" && current.fixedDate) {
-      const eventDateStart = new Date(current.fixedDate);
-      eventDateStart.setHours(0, 0, 0, 0);
-      return eventDateStart.getTime() > today.getTime();
-    } else if (
-      current.eventType === "flexible" &&
-      current.year &&
-      current.month
-    ) {
-      const currentYear = today.getFullYear();
-      const currentMonth = today.getMonth() + 1;
-      if (current.year > currentYear) return true;
-      if (current.year === currentYear && current.month > currentMonth)
-        return true;
-      return false;
-    }
-    return false;
-  };
+  const eventIsInFuture = (current: Event) => isEventInFuture(current, timeZone);
 
   const hasAttendanceOutcomes = (current: Event) => {
     const latest = getLatestAttendanceRecord(current);
@@ -129,7 +112,7 @@ export default function AdminAttendanceEventScreen() {
     const map: Record<string, AttendanceState> = {};
     const participants = getActiveParticipants(current);
     const useAttendanceOutcomes =
-      !isEventInFuture(current) && hasAttendanceOutcomes(current);
+      !eventIsInFuture(current) && hasAttendanceOutcomes(current);
     participants.forEach((participant) => {
       if (useAttendanceOutcomes) {
         map[participant.id] = "unchecked";
@@ -149,6 +132,44 @@ export default function AdminAttendanceEventScreen() {
     if (!useAttendanceOutcomes) {
       return map;
     }
+
+    if (latest.statuses && typeof latest.statuses === "object") {
+      participants.forEach((participant) => {
+        const value =
+          latest.statuses[participant.id] ?? latest.statuses[participant.name];
+        if (
+          value === "attended" ||
+          value === "not-attended" ||
+          value === "unchecked"
+        ) {
+          map[participant.id] = value;
+        }
+      });
+      return map;
+    }
+
+    const attended = latest.attendees || [];
+    attended.forEach((name: string) => {
+      const participant = participants.find(
+        (p) => p.name === name || p.id === name,
+      );
+      if (participant) map[participant.id] = "attended";
+    });
+    return map;
+  };
+
+  /** Reads only saved attendance records — not RSVP fallback used for display. */
+  const getPersistedAttendanceMap = (
+    current: Event,
+  ): Record<string, AttendanceState> => {
+    const map: Record<string, AttendanceState> = {};
+    const participants = getActiveParticipants(current);
+    participants.forEach((participant) => {
+      map[participant.id] = "unchecked";
+    });
+
+    const latest = getLatestAttendanceRecord(current);
+    if (!latest) return map;
 
     if (latest.statuses && typeof latest.statuses === "object") {
       participants.forEach((participant) => {
@@ -229,7 +250,7 @@ export default function AdminAttendanceEventScreen() {
     nextState: AttendanceState,
   ) => {
     if (!event) return;
-    if (isEventInFuture(event)) {
+    if (eventIsInFuture(event)) {
       Alert.alert(
         "RSVP Stage",
         "This event has not happened yet. Open the participant to update RSVP details.",
@@ -245,12 +266,8 @@ export default function AdminAttendanceEventScreen() {
     if (currentState === nextState) return;
 
     if (event.eventType === "fixed" && event.fixedDate) {
-      const eventDateStart = new Date(event.fixedDate);
-      eventDateStart.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       if (
-        eventDateStart.getTime() > today.getTime() &&
+        isCalendarDateInFuture(event.fixedDate, timeZone) &&
         currentState !== "attended" &&
         nextState === "attended"
       ) {
@@ -359,52 +376,108 @@ export default function AdminAttendanceEventScreen() {
 
   const markAllAttendingAsAttended = async () => {
     if (!event) return;
-    const latestMap = getAttendanceMap(event);
-    const nextMap = { ...latestMap };
+    if (eventIsInFuture(event)) {
+      if (Platform.OS === "web")
+        alert(
+          "This event has not happened yet. Open each participant to update RSVP status.",
+        );
+      else
+        Alert.alert(
+          "RSVP Stage",
+          "This event has not happened yet. Open each participant to update RSVP status.",
+        );
+      return;
+    }
+
+    const displayMap = getAttendanceMap(event);
+    const persistedMap = getPersistedAttendanceMap(event);
+    const nextMap = { ...displayMap };
     let count = 0;
-    
-    getActiveParticipants(event).forEach(p => {
-      if (p.rsvpStatus === 'attending' && (!latestMap[p.id] || latestMap[p.id] === 'unchecked')) {
-        nextMap[p.id] = 'attended';
+
+    getActiveParticipants(event).forEach((p) => {
+      if (
+        p.rsvpStatus === "attending" &&
+        persistedMap[p.id] !== "attended"
+      ) {
+        nextMap[p.id] = "attended";
         count++;
       }
     });
 
     if (count === 0) {
-      if (Platform.OS === "web") alert("No unchecked participants with 'Attending' RSVP found.");
-      else Alert.alert("No updates", "No unchecked participants with 'Attending' RSVP found.");
+      if (Platform.OS === "web")
+        alert("All 'Attending' RSVPs are already marked as Attended.");
+      else
+        Alert.alert(
+          "No updates",
+          "All 'Attending' RSVPs are already marked as Attended.",
+        );
       return;
     }
 
     await persistAttendanceMap(event, nextMap);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (Platform.OS === "web") alert(`Marked ${count} 'Attending' RSVPs as Attended.`);
-    else Alert.alert("Success", `Marked ${count} 'Attending' RSVPs as Attended.`);
+    if (Platform.OS === "web")
+      alert(`Marked ${count} 'Attending' RSVPs as Attended.`);
+    else
+      Alert.alert(
+        "Success",
+        `Marked ${count} 'Attending' RSVPs as Attended.`,
+      );
   };
 
   const markAllNotAttendingAsNotAttended = async () => {
     if (!event) return;
-    const latestMap = getAttendanceMap(event);
-    const nextMap = { ...latestMap };
+    if (eventIsInFuture(event)) {
+      if (Platform.OS === "web")
+        alert(
+          "This event has not happened yet. Open each participant to update RSVP status.",
+        );
+      else
+        Alert.alert(
+          "RSVP Stage",
+          "This event has not happened yet. Open each participant to update RSVP status.",
+        );
+      return;
+    }
+
+    const displayMap = getAttendanceMap(event);
+    const persistedMap = getPersistedAttendanceMap(event);
+    const nextMap = { ...displayMap };
     let count = 0;
-    
-    getActiveParticipants(event).forEach(p => {
-      if (p.rsvpStatus === 'not-attending' && (!latestMap[p.id] || latestMap[p.id] === 'unchecked')) {
-        nextMap[p.id] = 'not-attended';
+
+    getActiveParticipants(event).forEach((p) => {
+      if (
+        p.rsvpStatus === "not-attending" &&
+        persistedMap[p.id] !== "not-attended"
+      ) {
+        nextMap[p.id] = "not-attended";
         count++;
       }
     });
 
     if (count === 0) {
-      if (Platform.OS === "web") alert("No unchecked participants with 'Not Attending' RSVP found.");
-      else Alert.alert("No updates", "No unchecked participants with 'Not Attending' RSVP found.");
+      if (Platform.OS === "web")
+        alert(
+          "All 'Not Attending' RSVPs are already marked as Did Not Attend.",
+        );
+      else
+        Alert.alert(
+          "No updates",
+          "All 'Not Attending' RSVPs are already marked as Did Not Attend.",
+        );
       return;
     }
 
     await persistAttendanceMap(event, nextMap);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    if (Platform.OS === "web") alert(`Marked ${count} 'Not Attending' RSVPs as Did Not Attend.`);
-    else Alert.alert("Success", `Marked ${count} 'Not Attending' RSVPs as Did Not Attend.`);
+    if (Platform.OS === "web")
+      alert(`Marked ${count} 'Not Attending' RSVPs as Did Not Attend.`);
+    else
+      Alert.alert(
+        "Success",
+        `Marked ${count} 'Not Attending' RSVPs as Did Not Attend.`,
+      );
   };
 
   const finalizeAttendance = async () => {
@@ -695,7 +768,7 @@ export default function AdminAttendanceEventScreen() {
   const participantCount = event.participants.filter(
     (p) => !p.deletedAt,
   ).length;
-  const preEventStage = isEventInFuture(event);
+  const preEventStage = eventIsInFuture(event);
   const attendanceStage = !preEventStage && hasAttendanceOutcomes(event);
   const totalAttended = getCountByState("attended");
   const totalNotAttended = getCountByState("not-attended");
@@ -793,6 +866,12 @@ export default function AdminAttendanceEventScreen() {
               </ThemedText>
             </Pressable>
           </View>
+
+          {preEventStage ? (
+            <ThemedText style={[styles.metaText, { marginBottom: 12 }]}>
+              RSVP stage — attendance marking unlocks on the event date ({formatEventDate(event)}).
+            </ThemedText>
+          ) : null}
 
           <View style={styles.viewControls}>
             {(

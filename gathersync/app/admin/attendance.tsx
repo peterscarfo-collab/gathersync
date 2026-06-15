@@ -16,6 +16,8 @@ import { ThemedView } from "@/components/themed-view";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { eventsLocalStorage } from "@/lib/local-storage";
+import { formatEventCalendarDate, isEventInFuture } from "@/lib/calendar-utils";
+import { getEffectiveTimeZone } from "@/lib/user-preferences";
 import type { Event, AttendanceRecord } from "@/types/models";
 
 interface ParticipantStats {
@@ -59,6 +61,7 @@ export default function AdminAttendanceScreen() {
 
   const loadData = async () => {
     try {
+      const timeZone = await getEffectiveTimeZone();
       const allEvents = await eventsLocalStorage.getAll();
       const activeEvents = allEvents.filter((e) => !e.archived);
       setEvents(activeEvents);
@@ -87,28 +90,8 @@ export default function AdminAttendanceScreen() {
         }
       >();
 
-      const isEventInFuture = (current: Event) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (current.eventType === "fixed" && current.fixedDate) {
-          const eventDateStart = new Date(current.fixedDate);
-          eventDateStart.setHours(0, 0, 0, 0);
-          return eventDateStart.getTime() > today.getTime();
-        } else if (
-          current.eventType === "flexible" &&
-          current.year &&
-          current.month
-        ) {
-          const currentYear = today.getFullYear();
-          const currentMonth = today.getMonth() + 1;
-          if (current.year > currentYear) return true;
-          if (current.year === currentYear && current.month > currentMonth)
-            return true;
-          return false;
-        }
-        return false;
-      };
+      const eventIsInFuture = (current: Event) =>
+        isEventInFuture(current, timeZone);
 
       const getLatestAttendanceRecord = (current: Event) => {
         if (
@@ -139,7 +122,7 @@ export default function AdminAttendanceScreen() {
           {};
         const participants = current.participants.filter((p) => !p.deletedAt);
         const useAttendanceOutcomes =
-          !isEventInFuture(current) && hasAttendanceOutcomes(current);
+          !eventIsInFuture(current) && hasAttendanceOutcomes(current);
         participants.forEach((participant) => {
           if (useAttendanceOutcomes) {
             map[participant.id] = "unchecked";
@@ -188,7 +171,7 @@ export default function AdminAttendanceScreen() {
 
       allEvents.forEach((event) => {
         const attendanceMap = getAttendanceMap(event);
-        const isFuture = isEventInFuture(event);
+        const isFuture = eventIsInFuture(event);
 
         event.participants.forEach((participant) => {
           if (participant.deletedAt) return;
@@ -221,7 +204,7 @@ export default function AdminAttendanceScreen() {
 
           const eventDate =
             event.eventType === "fixed" && event.fixedDate
-              ? new Date(event.fixedDate).toLocaleDateString()
+              ? formatEventCalendarDate(event)
               : `${event.month}/${event.year}`;
 
           current.events.push({
@@ -269,7 +252,7 @@ export default function AdminAttendanceScreen() {
         event.attendanceRecords.forEach((record) => {
           const eventDate =
             event.eventType === "fixed" && event.fixedDate
-              ? new Date(event.fixedDate).toLocaleDateString()
+              ? formatEventCalendarDate(event)
               : `${event.month}/${event.year}`;
           csv += `${event.name},${eventDate},"${record.attendees.join(", ")}"\n`;
         });

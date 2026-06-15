@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /**
+ * @deprecated Use `pnpm deploy:web` (scripts/prepare-web-deploy.mjs) instead.
  * Creates versioned + latest web deploy zips after `expo export --platform web`.
  * Output:
  *   gathersync-web-v{version}-{YYYYMMDD}.zip  (archive)

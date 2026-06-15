@@ -27,8 +27,104 @@ export function formatDate(year: number, month: number, day: number): string {
  * Parse YYYY-MM-DD to date components
  */
 export function parseDate(dateStr: string): { year: number; month: number; day: number } {
-  const [year, month, day] = dateStr.split('-').map(Number);
+  const normalized = normalizeCalendarDate(dateStr);
+  const [year, month, day] = normalized.split('-').map(Number);
   return { year, month, day };
+}
+
+/** Strip YYYY-MM-DD from ISO or date-only strings. */
+export function normalizeCalendarDate(dateStr: string): string {
+  const match = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (!match) {
+    throw new Error(`Invalid calendar date: ${dateStr}`);
+  }
+  return match[1];
+}
+
+/** Device/browser IANA timezone (e.g. Australia/Sydney). */
+export function getDeviceTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** Today's calendar date (YYYY-MM-DD) in the given IANA timezone. */
+export function getTodayCalendarDate(timeZone?: string): string {
+  const tz = timeZone || getDeviceTimeZone();
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    if (year && month && day) {
+      return `${year}-${month}-${day}`;
+    }
+  } catch {
+    // fall through
+  }
+  const now = new Date();
+  return formatDate(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+/** Compare YYYY-MM-DD strings (timezone-agnostic). */
+export function compareCalendarDates(a: string, b: string): number {
+  const left = normalizeCalendarDate(a);
+  const right = normalizeCalendarDate(b);
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+export function isCalendarDateInFuture(dateStr: string, timeZone?: string): boolean {
+  return compareCalendarDates(dateStr, getTodayCalendarDate(timeZone)) > 0;
+}
+
+export function isCalendarDateTodayOrPast(dateStr: string, timeZone?: string): boolean {
+  return compareCalendarDates(dateStr, getTodayCalendarDate(timeZone)) <= 0;
+}
+
+/** Format YYYY-MM-DD for display without UTC midnight shifting the day. */
+export function formatCalendarDate(dateStr: string, locale?: string): string {
+  const { year, month, day } = parseDate(dateStr);
+  return new Date(year, month - 1, day).toLocaleDateString(locale);
+}
+
+export function getEventPrimaryCalendarDate(event: Event): string | null {
+  if (event.eventType === 'fixed' && event.fixedDate) {
+    return normalizeCalendarDate(event.fixedDate);
+  }
+  if (event.eventType === 'conference' && event.startDate) {
+    return normalizeCalendarDate(event.startDate);
+  }
+  return null;
+}
+
+export function formatEventCalendarDate(event: Event, locale?: string): string {
+  const primary = getEventPrimaryCalendarDate(event);
+  if (primary) return formatCalendarDate(primary, locale);
+  return `${event.month}/${event.year}`;
+}
+
+/** True when the event day has not arrived yet in the chosen timezone. */
+export function isEventInFuture(event: Event, timeZone?: string): boolean {
+  const primary = getEventPrimaryCalendarDate(event);
+  if (primary) {
+    return isCalendarDateInFuture(primary, timeZone);
+  }
+  if (event.eventType === 'flexible' && event.year && event.month) {
+    const today = getTodayCalendarDate(timeZone);
+    const { year, month } = parseDate(today);
+    if (event.year > year) return true;
+    if (event.year === year && event.month > month) return true;
+    return false;
+  }
+  return false;
 }
 
 /**
