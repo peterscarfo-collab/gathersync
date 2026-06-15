@@ -1,4 +1,39 @@
-import type { ConferenceSession, Event } from '@/types/models';
+import type { ConferenceSession, Event, SessionKind } from '@/types/models';
+
+export type { SessionKind };
+
+export const SESSION_KIND_OPTIONS: {
+  value: SessionKind;
+  label: string;
+  defaultTitle: string;
+}[] = [
+  { value: 'talk', label: 'Talk / session', defaultTitle: '' },
+  { value: 'breakfast', label: 'Breakfast', defaultTitle: 'Breakfast' },
+  { value: 'lunch', label: 'Lunch', defaultTitle: 'Lunch' },
+  { value: 'dinner', label: 'Dinner', defaultTitle: 'Dinner' },
+  { value: 'coffee', label: 'Coffee break', defaultTitle: 'Coffee break' },
+  { value: 'break', label: 'Break', defaultTitle: 'Break' },
+];
+
+export function getSessionKindLabel(kind?: SessionKind): string {
+  return SESSION_KIND_OPTIONS.find((o) => o.value === (kind ?? 'talk'))?.label ?? 'Session';
+}
+
+export function defaultTitleForKind(kind: SessionKind): string {
+  return SESSION_KIND_OPTIONS.find((o) => o.value === kind)?.defaultTitle ?? '';
+}
+
+export function isTalkSession(kind?: SessionKind): boolean {
+  return (kind ?? 'talk') === 'talk';
+}
+
+export function resolveSessionTitle(kind: SessionKind, title: string): string {
+  const trimmed = title.trim();
+  if (trimmed) return trimmed;
+  const fallback = defaultTitleForKind(kind);
+  if (fallback) return fallback;
+  return 'Session';
+}
 
 /** Format YYYY-MM-DD for display */
 export function formatConferenceDate(dateStr: string): string {

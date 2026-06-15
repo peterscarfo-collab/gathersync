@@ -4,6 +4,7 @@ import {
   getConferenceDayList,
   validateConferenceDates,
   validateSession,
+  resolveSessionTitle,
 } from '../lib/conference-utils';
 import type { Event } from '../types/models';
 
@@ -49,5 +50,11 @@ describe('conference-utils', () => {
         event,
       ),
     ).toMatch(/after/);
+  });
+
+  it('resolves default meal titles', () => {
+    expect(resolveSessionTitle('breakfast', '')).toBe('Breakfast');
+    expect(resolveSessionTitle('coffee', '')).toBe('Coffee break');
+    expect(resolveSessionTitle('talk', 'Keynote')).toBe('Keynote');
   });
 });

@@ -15,6 +15,20 @@ export type ReleaseNote = {
 /** In-app release history — keep in sync with CHANGELOG.md */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: '1.1.1',
+    date: '2026-06-15',
+    summary: 'Conference schedule items: speaker topics plus meals and breaks.',
+    sections: [
+      {
+        title: 'Added',
+        items: [
+          'Schedule item types: talk, breakfast, lunch, dinner, coffee break, break',
+          'Speaker topic field on talk sessions',
+        ],
+      },
+    ],
+  },
+  {
     version: '1.1.0',
     date: '2026-06-15',
     summary: 'Conference events (Phase 1), session schedule for organizers, and cloud sync improvements.',

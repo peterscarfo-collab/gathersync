@@ -20,31 +20,39 @@ import {
   formatConferenceDate,
   formatTime12h,
   getConferenceDayList,
+  getSessionKindLabel,
+  isTalkSession,
+  resolveSessionTitle,
+  SESSION_KIND_OPTIONS,
   sortSessions,
   validateSession,
 } from '@/lib/conference-utils';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { sessionsCloudStorage } from '@/lib/cloud-storage';
-import type { ConferenceSession, Event } from '@/types/models';
+import type { ConferenceSession, Event, SessionKind } from '@/types/models';
 
 type SessionDraft = {
+  kind: SessionKind;
   title: string;
   date: string;
   startTime: string;
   endTime: string;
   room: string;
   speaker: string;
+  speakerTopic: string;
   description: string;
   capacity: string;
 };
 
 const emptyDraft = (defaultDate: string): SessionDraft => ({
+  kind: 'talk',
   title: '',
   date: defaultDate,
   startTime: '09:00',
   endTime: '10:00',
   room: '',
   speaker: '',
+  speakerTopic: '',
   description: '',
   capacity: '',
 });
@@ -85,12 +93,14 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
   const openEditModal = (session: ConferenceSession) => {
     setEditingSession(session);
     setDraft({
+      kind: session.kind ?? 'talk',
       title: session.title,
       date: session.date,
       startTime: session.startTime,
       endTime: session.endTime,
       room: session.room ?? '',
       speaker: session.speaker ?? '',
+      speakerTopic: session.speakerTopic ?? '',
       description: session.description ?? '',
       capacity: session.capacity != null ? String(session.capacity) : '',
     });
@@ -104,13 +114,16 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
 
   const handleSaveSession = async () => {
     const capacity = draft.capacity.trim() ? parseInt(draft.capacity, 10) : undefined;
+    const resolvedTitle = resolveSessionTitle(draft.kind, draft.title);
     const base = {
-      title: draft.title.trim(),
+      kind: draft.kind,
+      title: resolvedTitle,
       date: draft.date,
       startTime: draft.startTime,
       endTime: draft.endTime,
       room: draft.room.trim() || undefined,
-      speaker: draft.speaker.trim() || undefined,
+      speaker: isTalkSession(draft.kind) ? draft.speaker.trim() || undefined : undefined,
+      speakerTopic: isTalkSession(draft.kind) ? draft.speakerTopic.trim() || undefined : undefined,
       description: draft.description.trim() || undefined,
       capacity: Number.isFinite(capacity) ? capacity : undefined,
     };
@@ -209,13 +222,13 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
   return (
     <View style={styles.wrapper}>
       <View style={styles.headerRow}>
-        <ThemedText type="subtitle">Session schedule</ThemedText>
+        <ThemedText type="subtitle">Conference schedule</ThemedText>
         <Pressable
           style={[styles.addButton, { backgroundColor: tintColor }]}
           onPress={openAddModal}
         >
           <IconSymbol name="plus" size={16} color="#fff" />
-          <ThemedText style={styles.addButtonText}>Add session</ThemedText>
+          <ThemedText style={styles.addButtonText}>Add item</ThemedText>
         </Pressable>
       </View>
 
@@ -234,20 +247,32 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
       {sessions.length === 0 ? (
         <View style={[styles.card, { backgroundColor: surfaceColor }]}>
           <ThemedText style={{ color: textSecondaryColor }}>
-            No sessions yet. Add keynotes, workshops, and breakouts for attendees to choose in Phase 2.
+            No schedule items yet. Add talks, meals (breakfast, lunch, dinner), and coffee breaks.
           </ThemedText>
         </View>
       ) : (
         sessions.map((session) => (
           <View key={session.id} style={[styles.sessionCard, { backgroundColor: surfaceColor }]}>
             <View style={styles.sessionMain}>
-              <ThemedText type="defaultSemiBold">{session.title}</ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <ThemedText type="defaultSemiBold">{session.title}</ThemedText>
+                {(session.kind ?? 'talk') !== 'talk' ? (
+                  <ThemedText style={[styles.kindBadge, { backgroundColor: tintColor + '18', color: tintColor }]}>
+                    {getSessionKindLabel(session.kind)}
+                  </ThemedText>
+                ) : null}
+              </View>
               <ThemedText style={{ color: textSecondaryColor, marginTop: 4 }}>
                 {formatConferenceDate(session.date)} · {formatTime12h(session.startTime)} – {formatTime12h(session.endTime)}
               </ThemedText>
               {session.speaker ? (
                 <ThemedText style={{ color: textSecondaryColor, marginTop: 2 }}>
                   {session.speaker}
+                  {session.speakerTopic ? ` — ${session.speakerTopic}` : ''}
+                </ThemedText>
+              ) : session.speakerTopic ? (
+                <ThemedText style={{ color: textSecondaryColor, marginTop: 2 }}>
+                  {session.speakerTopic}
                 </ThemedText>
               ) : null}
               <View style={styles.sessionMetaRow}>
@@ -279,15 +304,47 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: backgroundColor }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 16 }}>
-              {editingSession ? 'Edit session' : 'Add session'}
+              {editingSession ? 'Edit schedule item' : 'Add schedule item'}
             </ThemedText>
             <ScrollView keyboardShouldPersistTaps="handled">
+              <ThemedText style={styles.label}>Type</ThemedText>
+              <View style={styles.dayRow}>
+                {SESSION_KIND_OPTIONS.map((option) => (
+                  <Pressable
+                    key={option.value}
+                    style={[
+                      styles.dayChip,
+                      { backgroundColor: surfaceColor },
+                      draft.kind === option.value && { backgroundColor: tintColor },
+                    ]}
+                    onPress={() => {
+                      setDraft((d) => ({
+                        ...d,
+                        kind: option.value,
+                        title:
+                          !d.title.trim() || SESSION_KIND_OPTIONS.some((o) => o.defaultTitle === d.title)
+                            ? option.defaultTitle
+                            : d.title,
+                      }));
+                    }}
+                  >
+                    <ThemedText style={draft.kind === option.value ? styles.chipTextSelected : undefined}>
+                      {option.label}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+
               <ThemedText style={styles.label}>Title</ThemedText>
               <TextInput
                 style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
                 value={draft.title}
                 onChangeText={(title) => setDraft((d) => ({ ...d, title }))}
-                placeholder="Keynote, Workshop A…"
+                placeholder={
+                  isTalkSession(draft.kind)
+                    ? 'Keynote, Workshop A…'
+                    : `${getSessionKindLabel(draft.kind)} (optional if using default)`
+                }
               />
 
               <ThemedText style={styles.label}>Day</ThemedText>
@@ -330,29 +387,44 @@ export function ConferenceSessionsPanel({ event, onEventUpdated }: ConferenceSes
                 </View>
               </View>
 
-              <ThemedText style={styles.label}>Speaker (optional)</ThemedText>
-              <TextInput
-                style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
-                value={draft.speaker}
-                onChangeText={(speaker) => setDraft((d) => ({ ...d, speaker }))}
-              />
-
-              <ThemedText style={styles.label}>Room (optional)</ThemedText>
+              <ThemedText style={styles.label}>
+                {isTalkSession(draft.kind) ? 'Location / room (optional)' : 'Location (optional)'}
+              </ThemedText>
               <TextInput
                 style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
                 value={draft.room}
                 onChangeText={(room) => setDraft((d) => ({ ...d, room }))}
-                placeholder="Main Hall, Room B…"
+                placeholder={isTalkSession(draft.kind) ? 'Main Hall, Room B…' : 'Dining hall, Terrace…'}
               />
 
-              <ThemedText style={styles.label}>Capacity (optional)</ThemedText>
-              <TextInput
-                style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
-                value={draft.capacity}
-                onChangeText={(capacity) => setDraft((d) => ({ ...d, capacity }))}
-                keyboardType="number-pad"
-                placeholder="40"
-              />
+              {isTalkSession(draft.kind) ? (
+                <>
+                  <ThemedText style={styles.label}>Speaker (optional)</ThemedText>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={draft.speaker}
+                    onChangeText={(speaker) => setDraft((d) => ({ ...d, speaker }))}
+                    placeholder="Speaker name"
+                  />
+
+                  <ThemedText style={styles.label}>Topic (optional)</ThemedText>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={draft.speakerTopic}
+                    onChangeText={(speakerTopic) => setDraft((d) => ({ ...d, speakerTopic }))}
+                    placeholder="What they will present"
+                  />
+
+                  <ThemedText style={styles.label}>Capacity (optional)</ThemedText>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={draft.capacity}
+                    onChangeText={(capacity) => setDraft((d) => ({ ...d, capacity }))}
+                    keyboardType="number-pad"
+                    placeholder="40"
+                  />
+                </>
+              ) : null}
 
               <ThemedText style={styles.label}>Description (optional)</ThemedText>
               <TextInput
@@ -407,6 +479,14 @@ const styles = StyleSheet.create({
   sessionMain: { flex: 1 },
   sessionMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   badge: { fontSize: 12 },
+  kindBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
   sessionActions: { flexDirection: 'row', gap: 12, paddingLeft: 8 },
   modalOverlay: {
     flex: 1,

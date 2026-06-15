@@ -121,6 +121,9 @@ export async function ensureConferenceSchema(): Promise<void> {
   } catch (error) {
     console.error("[Database] Failed to ensure conference schema:", error);
   }
+
+  await addColumn(sql`ALTER TABLE eventSessions ADD COLUMN kind enum('talk','breakfast','lunch','dinner','coffee','break') DEFAULT 'talk'`);
+  await addColumn(sql`ALTER TABLE eventSessions ADD COLUMN speakerTopic varchar(500)`);
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

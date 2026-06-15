@@ -116,11 +116,13 @@ export const eventSessions = mysqlTable("eventSessions", {
   id: varchar("id", { length: 64 }).primaryKey(),
   eventId: varchar("eventId", { length: 64 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
+  kind: mysqlEnum("kind", ["talk", "breakfast", "lunch", "dinner", "coffee", "break"]).default("talk"),
   date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
   startTime: varchar("startTime", { length: 5 }).notNull(), // HH:MM
   endTime: varchar("endTime", { length: 5 }).notNull(), // HH:MM
   room: varchar("room", { length: 255 }),
   speaker: varchar("speaker", { length: 255 }),
+  speakerTopic: varchar("speakerTopic", { length: 500 }),
   description: text("description"),
   capacity: int("capacity"),
   sortOrder: int("sortOrder").default(0),

@@ -14,6 +14,15 @@ Deploy labels: web builds are zipped as `gathersync-web-vX.Y.Z-YYYYMMDD.zip` (se
 
 ---
 
+## [1.1.1] — 2026-06-15
+
+### Added
+- **Session types** on conference schedule: talk, breakfast, lunch, dinner, coffee break, break
+- **Speaker topic** field on talk sessions
+- Schedule UI: type picker, topic field, meal/break defaults
+
+---
+
 ## [1.1.0] — 2026-06-15
 
 ### Added

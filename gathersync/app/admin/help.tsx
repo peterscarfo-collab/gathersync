@@ -101,7 +101,7 @@ export default function HelpScreen() {
             • <ThemedText style={{ fontWeight: 'bold' }}>Fixed Events:</ThemedText> Best when you already know the exact date and time. Invitees can quickly RSVP (Attending, Not Attending).
           </ThemedText>
           <ThemedText style={styles.paragraph}>
-            • <ThemedText style={{ fontWeight: 'bold' }}>Conference Events:</ThemedText> Multi-day events (e.g. a 3-day summit). Set start/end dates, venue capacity, and a selection deadline. Add sessions (keynotes, workshops) on the event detail screen. Attendee day/session picking arrives in v1.2.0.
+            • <ThemedText style={{ fontWeight: 'bold' }}>Conference Events:</ThemedText> Multi-day events (e.g. a 3-day summit). Set start/end dates, venue capacity, and a selection deadline. Build the schedule with talks (speaker + topic), meals (breakfast, lunch, dinner), and coffee breaks on the event detail screen.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             <ThemedText style={{ fontWeight: 'bold' }}>To create an event:</ThemedText> Go to the Events tab, click the "+" button, and follow the wizard. You can add locations, virtual meeting links, a Team Leader, and set a <ThemedText style={{ fontWeight: 'bold' }}>Minimum Attendance (Quorum)</ThemedText> to ensure the event only proceeds if enough people can make it.

@@ -2,16 +2,22 @@
  * Core data models for GatherSync
  */
 
+/** Type of scheduled conference item */
+export type SessionKind = 'talk' | 'breakfast' | 'lunch' | 'dinner' | 'coffee' | 'break';
+
 /** Timed session within a conference event (organizer-created in Phase 1) */
 export interface ConferenceSession {
   id: string;
   eventId: string;
   title: string;
+  /** talk = speaker session; others = meals & breaks */
+  kind?: SessionKind;
   date: string; // YYYY-MM-DD — must fall within event startDate..endDate
   startTime: string; // HH:MM
   endTime: string; // HH:MM
   room?: string;
   speaker?: string;
+  speakerTopic?: string;
   description?: string;
   capacity?: number;
   sortOrder?: number;

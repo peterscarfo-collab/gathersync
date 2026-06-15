@@ -383,6 +383,8 @@ export const appRouter = router({
       }),
   }),
 
+const sessionKindEnum = z.enum(["talk", "breakfast", "lunch", "dinner", "coffee", "break"]);
+
   sessions: router({
     list: protectedProcedure
       .input(z.object({ eventId: z.string() }))
@@ -394,11 +396,13 @@ export const appRouter = router({
           id: z.string(),
           eventId: z.string(),
           title: z.string().min(1).max(255),
+          kind: sessionKindEnum.optional(),
           date: z.string().min(10).max(10),
           startTime: z.string().min(4).max(5),
           endTime: z.string().min(4).max(5),
           room: z.string().optional(),
           speaker: z.string().optional(),
+          speakerTopic: z.string().optional(),
           description: z.string().optional(),
           capacity: z.number().optional(),
           sortOrder: z.number().optional(),
@@ -416,11 +420,13 @@ export const appRouter = router({
           id: z.string(),
           eventId: z.string(),
           title: z.string().min(1).max(255).optional(),
+          kind: sessionKindEnum.optional(),
           date: z.string().min(10).max(10).optional(),
           startTime: z.string().min(4).max(5).optional(),
           endTime: z.string().min(4).max(5).optional(),
           room: z.string().optional(),
           speaker: z.string().optional(),
+          speakerTopic: z.string().optional(),
           description: z.string().optional(),
           capacity: z.number().optional(),
           sortOrder: z.number().optional(),

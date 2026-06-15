@@ -24,7 +24,7 @@ const env = {
 module.exports = {
   name: env.appName,
   slug: env.appSlug,
-  version: "1.1.0",
+  version: "1.1.1",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: env.scheme,
