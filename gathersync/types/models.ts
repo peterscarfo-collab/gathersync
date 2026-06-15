@@ -2,6 +2,24 @@
  * Core data models for GatherSync
  */
 
+/** Timed session within a conference event (organizer-created in Phase 1) */
+export interface ConferenceSession {
+  id: string;
+  eventId: string;
+  title: string;
+  date: string; // YYYY-MM-DD — must fall within event startDate..endDate
+  startTime: string; // HH:MM
+  endTime: string; // HH:MM
+  room?: string;
+  speaker?: string;
+  description?: string;
+  capacity?: number;
+  sortOrder?: number;
+  deletedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Participant {
   id: string;
   name: string;
@@ -24,11 +42,23 @@ export interface Event {
   userId?: number;
   isInvited?: boolean;
   name: string;
-  eventType: 'flexible' | 'fixed'; // Type of event
+  eventType: 'flexible' | 'fixed' | 'conference';
   month: number; // 1-12
   year: number;
   fixedDate?: string; // YYYY-MM-DD for fixed events
   fixedTime?: string; // HH:MM for fixed events
+  /** Conference: first day YYYY-MM-DD */
+  startDate?: string;
+  /** Conference: last day YYYY-MM-DD */
+  endDate?: string;
+  /** Conference: no single start time on the parent event */
+  allDay?: boolean;
+  /** Conference: max attendees for the venue */
+  venueCapacity?: number;
+  /** Conference: last day attendees may change day/session picks (YYYY-MM-DD) */
+  selectionDeadline?: string;
+  /** Conference: schedule sessions (organizer-managed) */
+  sessions?: ConferenceSession[];
   participants: Participant[];
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string

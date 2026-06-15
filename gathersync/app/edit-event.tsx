@@ -13,6 +13,7 @@ import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage as eventsLocalStorage } from '@/lib/local-storage';
 import { generateId } from '@/lib/calendar-utils';
 import type { Event } from '@/types/models';
+import { toDateInputValue, validateConferenceDates } from '@/lib/conference-utils';
 
 export default function EditEventScreen() {
   const router = useRouter();
@@ -25,10 +26,14 @@ export default function EditEventScreen() {
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [eventName, setEventName] = useState('');
-  const [eventType, setEventType] = useState<'flexible' | 'fixed'>('flexible');
+  const [eventType, setEventType] = useState<'flexible' | 'fixed' | 'conference'>('flexible');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [fixedDate, setFixedDate] = useState<Date>(new Date());
+  const [conferenceStartDate, setConferenceStartDate] = useState<Date>(new Date());
+  const [conferenceEndDate, setConferenceEndDate] = useState<Date>(new Date());
+  const [selectionDeadlineDate, setSelectionDeadlineDate] = useState<Date | null>(null);
+  const [venueCapacity, setVenueCapacity] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [teamLeader, setTeamLeader] = useState('');
@@ -65,7 +70,21 @@ export default function EditEventScreen() {
           const dateTime = new Date(existingEvent.fixedDate + 'T' + existingEvent.fixedTime);
           console.log('[EditEvent] Setting fixed date:', dateTime);
           setFixedDate(dateTime);
+        } else if (existingEvent.fixedDate) {
+          setFixedDate(new Date(existingEvent.fixedDate + 'T12:00:00'));
         }
+        if (existingEvent.startDate) {
+          setConferenceStartDate(new Date(existingEvent.startDate + 'T12:00:00'));
+        }
+        if (existingEvent.endDate) {
+          setConferenceEndDate(new Date(existingEvent.endDate + 'T12:00:00'));
+        }
+        if (existingEvent.selectionDeadline) {
+          setSelectionDeadlineDate(new Date(existingEvent.selectionDeadline + 'T12:00:00'));
+        }
+        setVenueCapacity(
+          existingEvent.venueCapacity != null ? String(existingEvent.venueCapacity) : '',
+        );
         setTeamLeader(existingEvent.teamLeader || '');
         setMeetingType(existingEvent.meetingType || 'in-person');
         setVenueName(existingEvent.venueName || '');
@@ -105,6 +124,17 @@ export default function EditEventScreen() {
     if (!eventName.trim()) {
       Alert.alert('Error', 'Please enter an event name');
       return;
+    }
+
+    if (eventType === 'conference') {
+      const dateError = validateConferenceDates(
+        toDateInputValue(conferenceStartDate),
+        toDateInputValue(conferenceEndDate),
+      );
+      if (dateError) {
+        Alert.alert('Conference dates', dateError);
+        return;
+      }
     }
 
     try {
@@ -160,10 +190,38 @@ export default function EditEventScreen() {
       const updates: Partial<Event> = {
         name: eventName.trim(),
         eventType,
-        month: eventType === 'fixed' ? new Date(fixedDate).getMonth() + 1 : selectedMonth,
-        year: eventType === 'fixed' ? new Date(fixedDate).getFullYear() : selectedYear,
-        fixedDate: eventType === 'fixed' ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}` : undefined,
-        fixedTime: eventType === 'fixed' ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}` : undefined,
+        month:
+          eventType === 'fixed'
+            ? new Date(fixedDate).getMonth() + 1
+            : eventType === 'conference'
+              ? conferenceStartDate.getMonth() + 1
+              : selectedMonth,
+        year:
+          eventType === 'fixed'
+            ? new Date(fixedDate).getFullYear()
+            : eventType === 'conference'
+              ? conferenceStartDate.getFullYear()
+              : selectedYear,
+        fixedDate:
+          eventType === 'fixed'
+            ? `${fixedDate.getFullYear()}-${String(fixedDate.getMonth() + 1).padStart(2, '0')}-${String(fixedDate.getDate()).padStart(2, '0')}`
+            : undefined,
+        fixedTime:
+          eventType === 'fixed'
+            ? `${String(fixedDate.getHours()).padStart(2, '0')}:${String(fixedDate.getMinutes()).padStart(2, '0')}`
+            : undefined,
+        startDate: eventType === 'conference' ? toDateInputValue(conferenceStartDate) : undefined,
+        endDate: eventType === 'conference' ? toDateInputValue(conferenceEndDate) : undefined,
+        allDay: eventType === 'conference' ? true : undefined,
+        venueCapacity:
+          eventType === 'conference' && venueCapacity.trim()
+            ? parseInt(venueCapacity, 10)
+            : undefined,
+        selectionDeadline:
+          eventType === 'conference' && selectionDeadlineDate
+            ? toDateInputValue(selectionDeadlineDate)
+            : undefined,
+        sessions: eventType === 'conference' ? event.sessions : undefined,
         updatedAt: new Date().toISOString(),
         teamLeader: teamLeader.trim() || undefined,
         ...(teamLeader.trim() !== (event.teamLeader || '') ? { teamLeaderPhone: undefined } : {}),
@@ -253,52 +311,60 @@ export default function EditEventScreen() {
           <ThemedText type="defaultSemiBold" style={styles.label}>
             Event Type
           </ThemedText>
-          <View style={styles.yearRow}>
-            <Pressable
-              style={[
-                styles.yearItem,
-                { backgroundColor: surfaceColor },
-                eventType === 'flexible' && { backgroundColor: tintColor },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEventType('flexible');
-              }}
-            >
-              <ThemedText
+          {eventType === 'conference' ? (
+            <View style={[styles.yearItem, { backgroundColor: tintColor, alignSelf: 'flex-start', paddingHorizontal: 16 }]}>
+              <ThemedText style={styles.pickerTextSelected}>Conference</ThemedText>
+            </View>
+          ) : (
+            <View style={styles.yearRow}>
+              <Pressable
                 style={[
-                  styles.yearText,
-                  eventType === 'flexible' && styles.pickerTextSelected,
+                  styles.yearItem,
+                  { backgroundColor: surfaceColor },
+                  eventType === 'flexible' && { backgroundColor: tintColor },
                 ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setEventType('flexible');
+                }}
               >
-                Flexible
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.yearItem,
-                { backgroundColor: surfaceColor },
-                eventType === 'fixed' && { backgroundColor: tintColor },
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEventType('fixed');
-              }}
-            >
-              <ThemedText
+                <ThemedText
+                  style={[
+                    styles.yearText,
+                    eventType === 'flexible' && styles.pickerTextSelected,
+                  ]}
+                >
+                  Flexible
+                </ThemedText>
+              </Pressable>
+              <Pressable
                 style={[
-                  styles.yearText,
-                  eventType === 'fixed' && styles.pickerTextSelected,
+                  styles.yearItem,
+                  { backgroundColor: surfaceColor },
+                  eventType === 'fixed' && { backgroundColor: tintColor },
                 ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setEventType('fixed');
+                }}
               >
-                Fixed
-              </ThemedText>
-            </Pressable>
-          </View>
+                <ThemedText
+                  style={[
+                    styles.yearText,
+                    eventType === 'fixed' && styles.pickerTextSelected,
+                  ]}
+                >
+                  Fixed
+                </ThemedText>
+              </Pressable>
+            </View>
+          )}
           <ThemedText style={[styles.helperText, { color: textSecondaryColor }]}>
-            {eventType === 'flexible' 
+            {eventType === 'flexible'
               ? 'Participants mark multiple days they\'re available'
-              : 'Set a specific date and time for the event'}
+              : eventType === 'fixed'
+                ? 'Set a specific date and time for the event'
+                : 'Multi-day event with sessions'}
           </ThemedText>
         </View>
 
@@ -555,6 +621,134 @@ export default function EditEventScreen() {
                   }}
                 />
               )}
+            </View>
+          </>
+        )}
+
+        {eventType === 'conference' && (
+          <>
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <View style={[styles.section, { flex: 1 }]}>
+                <ThemedText type="defaultSemiBold" style={styles.label}>Start date</ThemedText>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    style={{
+                      width: '100%',
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={toDateInputValue(conferenceStartDate)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const [year, month, day] = e.target.value.split('-').map(Number);
+                        setConferenceStartDate(new Date(year, month - 1, day));
+                      }
+                    }}
+                  />
+                ) : (
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={toDateInputValue(conferenceStartDate)}
+                    onChangeText={(v) => {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                        const [y, m, d] = v.split('-').map(Number);
+                        setConferenceStartDate(new Date(y, m - 1, d));
+                      }
+                    }}
+                  />
+                )}
+              </View>
+              <View style={[styles.section, { flex: 1 }]}>
+                <ThemedText type="defaultSemiBold" style={styles.label}>End date</ThemedText>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    style={{
+                      width: '100%',
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={toDateInputValue(conferenceEndDate)}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const [year, month, day] = e.target.value.split('-').map(Number);
+                        setConferenceEndDate(new Date(year, month - 1, day));
+                      }
+                    }}
+                  />
+                ) : (
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={toDateInputValue(conferenceEndDate)}
+                    onChangeText={(v) => {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                        const [y, m, d] = v.split('-').map(Number);
+                        setConferenceEndDate(new Date(y, m - 1, d));
+                      }
+                    }}
+                  />
+                )}
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <View style={[styles.section, { flex: 1 }]}>
+                <ThemedText type="defaultSemiBold" style={styles.label}>Venue capacity</ThemedText>
+                <TextInput
+                  style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                  value={venueCapacity}
+                  onChangeText={setVenueCapacity}
+                  keyboardType="number-pad"
+                  placeholder="e.g. 100"
+                />
+              </View>
+              <View style={[styles.section, { flex: 1 }]}>
+                <ThemedText type="defaultSemiBold" style={styles.label}>Selection deadline</ThemedText>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    style={{
+                      width: '100%',
+                      padding: 16,
+                      fontSize: 16,
+                      backgroundColor: surfaceColor,
+                      color: textColor,
+                      border: 'none',
+                      borderRadius: 12,
+                    }}
+                    value={selectionDeadlineDate ? toDateInputValue(selectionDeadlineDate) : ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const [year, month, day] = e.target.value.split('-').map(Number);
+                        setSelectionDeadlineDate(new Date(year, month - 1, day));
+                      } else {
+                        setSelectionDeadlineDate(null);
+                      }
+                    }}
+                  />
+                ) : (
+                  <TextInput
+                    style={[styles.input, { backgroundColor: surfaceColor, color: textColor }]}
+                    value={selectionDeadlineDate ? toDateInputValue(selectionDeadlineDate) : ''}
+                    onChangeText={(v) => {
+                      if (!v) setSelectionDeadlineDate(null);
+                      else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                        const [y, m, d] = v.split('-').map(Number);
+                        setSelectionDeadlineDate(new Date(y, m - 1, d));
+                      }
+                    }}
+                    placeholder="YYYY-MM-DD"
+                  />
+                )}
+              </View>
             </View>
           </>
         )}

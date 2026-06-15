@@ -20,6 +20,8 @@ import { exportToCalendar } from '@/lib/calendar-export';
 import { exportSingleEventBackup, downloadBackup } from '@/lib/backup';
 import { getEffectiveAttendanceStatus, getParticipantStatus, getRsvpCounts, getStatusBadge, hasRecordedAttendance, ParticipantStatus } from '@/lib/participant-status';
 import { getTeamLeaderDigitalTwinUrl } from '@/lib/public-event-utils';
+import { formatConferenceDateRange, activeSessionCount } from '@/lib/conference-utils';
+import { ConferenceSessionsPanel } from '@/components/conference-sessions-panel';
 import type { Event, Participant } from '@/types/models';
 
 export default function EventDetailScreen() {
@@ -1504,6 +1506,36 @@ export default function EventDetailScreen() {
                       </View>
                     )}
                   </View>
+                </View>
+              </>
+            ) : event.eventType === 'conference' ? (
+              <>
+                <View style={[styles.fixedDateCard, { backgroundColor: surfaceColor }]}>
+                  <View style={styles.fixedDateHeader}>
+                    <IconSymbol name="calendar" size={24} color={tintColor} />
+                    <ThemedText type="subtitle">
+                      {formatConferenceDateRange(event.startDate, event.endDate)}
+                    </ThemedText>
+                  </View>
+                  <ThemedText style={{ color: textSecondaryColor, marginTop: 8 }}>
+                    All day · {activeSessionCount(event)} session{activeSessionCount(event) === 1 ? '' : 's'}
+                  </ThemedText>
+                  {event.venueCapacity ? (
+                    <ThemedText style={{ color: textSecondaryColor, marginTop: 4 }}>
+                      Venue capacity: {event.venueCapacity}
+                    </ThemedText>
+                  ) : null}
+                  {event.selectionDeadline ? (
+                    <ThemedText style={{ color: textSecondaryColor, marginTop: 4 }}>
+                      Selection deadline: {new Date(event.selectionDeadline + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </ThemedText>
+                  ) : null}
+                </View>
+                <View style={styles.section}>
+                  <ConferenceSessionsPanel
+                    event={event}
+                    onEventUpdated={(updated) => setEvent(updated)}
+                  />
                 </View>
               </>
             ) : (

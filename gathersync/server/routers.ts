@@ -145,11 +145,16 @@ export const appRouter = router({
         z.object({
           id: z.string(),
           name: z.string().min(1).max(255),
-          eventType: z.enum(["flexible", "fixed"]),
+          eventType: z.enum(["flexible", "fixed", "conference"]),
           month: z.number().min(1).max(12),
           year: z.number(),
           fixedDate: z.string().optional(),
           fixedTime: z.string().optional(),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          allDay: z.boolean().optional(),
+          venueCapacity: z.number().optional(),
+          selectionDeadline: z.string().optional(),
           reminderDaysBefore: z.number().optional(),
           reminderScheduled: z.boolean().optional(),
           archived: z.boolean().optional(),
@@ -186,11 +191,16 @@ export const appRouter = router({
         z.object({
           id: z.string(),
           name: z.string().min(1).max(255).optional(),
-          eventType: z.enum(["flexible", "fixed"]).optional(),
+          eventType: z.enum(["flexible", "fixed", "conference"]).optional(),
           month: z.number().min(1).max(12).optional(),
           year: z.number().optional(),
           fixedDate: z.string().optional(),
           fixedTime: z.string().optional(),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+          allDay: z.boolean().optional(),
+          venueCapacity: z.number().optional(),
+          selectionDeadline: z.string().optional(),
           reminderDaysBefore: z.number().optional(),
           reminderScheduled: z.boolean().optional(),
           archived: z.boolean().optional(),
@@ -370,6 +380,65 @@ export const appRouter = router({
         }
 
         return { success: true, sentCount: results.filter(r => r.success).length };
+      }),
+  }),
+
+  sessions: router({
+    list: protectedProcedure
+      .input(z.object({ eventId: z.string() }))
+      .query(({ input }) => db.getEventSessions(input.eventId)),
+
+    create: protectedProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          eventId: z.string(),
+          title: z.string().min(1).max(255),
+          date: z.string().min(10).max(10),
+          startTime: z.string().min(4).max(5),
+          endTime: z.string().min(4).max(5),
+          room: z.string().optional(),
+          speaker: z.string().optional(),
+          description: z.string().optional(),
+          capacity: z.number().optional(),
+          sortOrder: z.number().optional(),
+        })
+      )
+      .mutation(({ input }) => {
+        const result = db.createEventSession(input);
+        db.updateEvent(input.eventId, { updatedAt: new Date() }).catch(console.error);
+        return result;
+      }),
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.string(),
+          eventId: z.string(),
+          title: z.string().min(1).max(255).optional(),
+          date: z.string().min(10).max(10).optional(),
+          startTime: z.string().min(4).max(5).optional(),
+          endTime: z.string().min(4).max(5).optional(),
+          room: z.string().optional(),
+          speaker: z.string().optional(),
+          description: z.string().optional(),
+          capacity: z.number().optional(),
+          sortOrder: z.number().optional(),
+        })
+      )
+      .mutation(({ input }) => {
+        const { id, eventId, ...data } = input;
+        const result = db.updateEventSession(id, data);
+        db.updateEvent(eventId, { updatedAt: new Date() }).catch(console.error);
+        return result;
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.string(), eventId: z.string() }))
+      .mutation(({ input }) => {
+        const result = db.deleteEventSession(input.id);
+        db.updateEvent(input.eventId, { updatedAt: new Date() }).catch(console.error);
+        return result;
       }),
   }),
 

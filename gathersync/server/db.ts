@@ -5,11 +5,13 @@ import {
   users,
   events,
   participants,
+  eventSessions,
   eventSnapshots,
   groupTemplates,
   pushTokens,
   influencerProspects,
   type InsertEvent,
+  type InsertEventSession,
   type InsertParticipant,
   type InsertEventSnapshot,
   type InsertGroupTemplate,
@@ -61,6 +63,63 @@ export async function ensureInfluencerProspectsTable(): Promise<void> {
     console.log("[Database] influencerProspects table ready");
   } catch (error) {
     console.error("[Database] Failed to ensure influencerProspects table:", error);
+  }
+}
+
+/** Conference columns + eventSessions table — runs on server start (idempotent). */
+export async function ensureConferenceSchema(): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[Database] Skipping conference schema setup — DATABASE_URL not configured");
+    return;
+  }
+  try {
+    await db.execute(sql`
+      ALTER TABLE events
+      MODIFY eventType enum('flexible','fixed','conference') NOT NULL
+    `);
+  } catch (error) {
+    console.warn("[Database] eventType enum may already include conference:", error);
+  }
+
+  const addColumn = async (columnSql: ReturnType<typeof sql>) => {
+    try {
+      await db.execute(columnSql);
+    } catch {
+      // Column likely exists
+    }
+  };
+
+  await addColumn(sql`ALTER TABLE events ADD COLUMN startDate varchar(10)`);
+  await addColumn(sql`ALTER TABLE events ADD COLUMN endDate varchar(10)`);
+  await addColumn(sql`ALTER TABLE events ADD COLUMN allDay boolean DEFAULT false`);
+  await addColumn(sql`ALTER TABLE events ADD COLUMN venueCapacity int`);
+  await addColumn(sql`ALTER TABLE events ADD COLUMN selectionDeadline varchar(10)`);
+
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS eventSessions (
+        id varchar(64) NOT NULL,
+        eventId varchar(64) NOT NULL,
+        title varchar(255) NOT NULL,
+        date varchar(10) NOT NULL,
+        startTime varchar(5) NOT NULL,
+        endTime varchar(5) NOT NULL,
+        room varchar(255),
+        speaker varchar(255),
+        description text,
+        capacity int,
+        sortOrder int DEFAULT 0,
+        deletedAt timestamp NULL,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY eventSessions_eventId_idx (eventId)
+      )
+    `);
+    console.log("[Database] Conference schema ready");
+  } catch (error) {
+    console.error("[Database] Failed to ensure conference schema:", error);
   }
 }
 
@@ -298,8 +357,9 @@ export async function deleteEvent(eventId: string, userId: number) {
       throw new Error(`Event ${eventId} not found for current user`);
     }
 
-    // Keep participant and event deletion atomic so sync cannot observe a partial delete.
+    // Keep participant, session, and event deletion atomic.
     await tx.delete(participants).where(eq(participants.eventId, eventId));
+    await tx.delete(eventSessions).where(eq(eventSessions.eventId, eventId));
     await tx.delete(events).where(and(eq(events.id, eventId), eq(events.userId, userId)));
   });
 }
@@ -334,6 +394,44 @@ export async function deleteParticipant(participantId: string) {
   if (!db) throw new Error("Database not available");
 
   await db.delete(participants).where(eq(participants.id, participantId));
+}
+
+/**
+ * Conference sessions
+ */
+export async function getEventSessions(eventId: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select()
+    .from(eventSessions)
+    .where(and(eq(eventSessions.eventId, eventId), isNull(eventSessions.deletedAt)));
+}
+
+export async function createEventSession(data: InsertEventSession) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(eventSessions).values(data);
+  return data.id;
+}
+
+export async function updateEventSession(sessionId: string, data: Partial<InsertEventSession>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(eventSessions).set(data).where(eq(eventSessions.id, sessionId));
+}
+
+export async function deleteEventSession(sessionId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(eventSessions)
+    .set({ deletedAt: new Date() })
+    .where(eq(eventSessions.id, sessionId));
 }
 
 /**

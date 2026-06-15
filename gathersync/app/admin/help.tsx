@@ -10,6 +10,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { AdminColors, AdminTypography, AdminSpacing, AdminBorderRadius, AdminShadows } from '@/constants/admin-theme';
 import { DesktopLayout } from '@/components/desktop-layout';
+import { getVersionDisplay, RELEASE_NOTES } from '@/lib/release-notes';
 
 interface HelpTopic {
   id: string;
@@ -52,6 +53,39 @@ export default function HelpScreen() {
       ),
     },
     {
+      id: 'release-notes',
+      title: `Release Notes (${getVersionDisplay()})`,
+      icon: 'info.circle',
+      content: (
+        <View style={styles.topicContent}>
+          <ThemedText style={styles.paragraph}>
+            GatherSync uses semantic versioning (e.g. 1.1.0). Each release is documented in{' '}
+            <ThemedText style={{ fontWeight: 'bold' }}>CHANGELOG.md</ThemedText> in the repo. Web deploys are saved as{' '}
+            <ThemedText style={{ fontWeight: 'bold' }}>gathersync-web-vX.Y.Z-date.zip</ThemedText>.
+          </ThemedText>
+          {RELEASE_NOTES.map((release) => (
+            <View key={release.version} style={{ marginTop: 12 }}>
+              <ThemedText style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 4 }}>
+                v{release.version} — {release.date}
+              </ThemedText>
+              <ThemedText style={[styles.paragraph, { marginBottom: 8 }]}>{release.summary}</ThemedText>
+              {release.sections.map((section) => (
+                <View key={section.title} style={{ marginBottom: 6 }}>
+                  <ThemedText style={{ fontWeight: '600', color: AdminColors.gray800 }}>{section.title}</ThemedText>
+                  {section.items.map((item) => (
+                    <ThemedText key={item} style={styles.paragraph}>• {item}</ThemedText>
+                  ))}
+                </View>
+              ))}
+            </View>
+          ))}
+          <ThemedText style={[styles.paragraph, { marginTop: 8, fontStyle: 'italic' }]}>
+            Planned: v1.2.0 — attendees pick conference days and sessions from the public link.
+          </ThemedText>
+        </View>
+      ),
+    },
+    {
       id: 'creating-events',
       title: 'Creating & Managing Events',
       icon: 'calendar',
@@ -65,6 +99,9 @@ export default function HelpScreen() {
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             • <ThemedText style={{ fontWeight: 'bold' }}>Fixed Events:</ThemedText> Best when you already know the exact date and time. Invitees can quickly RSVP (Attending, Not Attending).
+          </ThemedText>
+          <ThemedText style={styles.paragraph}>
+            • <ThemedText style={{ fontWeight: 'bold' }}>Conference Events:</ThemedText> Multi-day events (e.g. a 3-day summit). Set start/end dates, venue capacity, and a selection deadline. Add sessions (keynotes, workshops) on the event detail screen. Attendee day/session picking arrives in v1.2.0.
           </ThemedText>
           <ThemedText style={styles.paragraph}>
             <ThemedText style={{ fontWeight: 'bold' }}>To create an event:</ThemedText> Go to the Events tab, click the "+" button, and follow the wizard. You can add locations, virtual meeting links, a Team Leader, and set a <ThemedText style={{ fontWeight: 'bold' }}>Minimum Attendance (Quorum)</ThemedText> to ensure the event only proceeds if enough people can make it.

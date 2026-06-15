@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +16,6 @@ import { useAuth } from '@/hooks/use-auth';
 import { useAutoSync } from '@/hooks/use-auto-sync';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { recurringTemplatesStorage } from '@/lib/recurring-storage';
-import { syncService } from '@/lib/sync-service';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { exportBackup, downloadBackup, importBackup, readBackupFile, getBackupStats } from '@/lib/backup';
 import * as DocumentPicker from 'expo-document-picker';
@@ -45,7 +44,7 @@ export default function EventsScreen() {
   const backgroundColor = useThemeColor({}, 'background');
   const textSecondaryColor = useThemeColor({}, 'textSecondary');
 
-  const loadEvents = async (isRefresh = false) => {
+  const loadEvents = useCallback(async (isRefresh = false, skipSync = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
@@ -53,7 +52,7 @@ export default function EventsScreen() {
       console.log('[EventsScreen] Loading events...');
       
       // Bidirectional sync on launch when authenticated
-      if (isAuthenticated && !authLoading) {
+      if (!skipSync && isAuthenticated && !authLoading) {
         console.log('[EventsScreen] Running bidirectional sync...');
         try {
           await bidirectionalSync();
@@ -107,6 +106,11 @@ export default function EventsScreen() {
       
       // Sort by date (chronological order)
       const sortEvents = (a: Event, b: Event) => {
+        if (a.eventType === 'conference' && b.eventType === 'conference') {
+          const dateA = a.startDate ?? `${a.year}-${String(a.month).padStart(2, '0')}-01`;
+          const dateB = b.startDate ?? `${b.year}-${String(b.month).padStart(2, '0')}-01`;
+          return dateA.localeCompare(dateB);
+        }
         if (a.eventType === 'fixed' && b.eventType === 'fixed') {
           const dateA = new Date(a.fixedDate + 'T' + a.fixedTime);
           const dateB = new Date(b.fixedDate + 'T' + b.fixedTime);
@@ -119,6 +123,13 @@ export default function EventsScreen() {
         if (a.eventType === 'fixed') {
           const dateA = new Date(a.fixedDate + 'T' + a.fixedTime);
           const dateB = new Date(b.year, b.month - 1, 15);
+          return dateA.getTime() - dateB.getTime();
+        }
+        if (a.eventType === 'conference') {
+          const dateA = new Date((a.startDate ?? `${a.year}-01-01`) + 'T12:00:00');
+          const dateB = b.eventType === 'fixed'
+            ? new Date(b.fixedDate + 'T' + b.fixedTime)
+            : new Date(b.year, b.month - 1, 15);
           return dateA.getTime() - dateB.getTime();
         }
         const dateA = new Date(a.year, a.month - 1, 15);
@@ -137,11 +148,24 @@ export default function EventsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [isAuthenticated, authLoading, bidirectionalSync]);
 
   const handleRefresh = () => {
     loadEvents(true);
   };
+
+  const prevSyncStatusRef = useRef(syncStatus);
+
+  useEffect(() => {
+    if (
+      prevSyncStatusRef.current === 'syncing' &&
+      syncStatus === 'synced' &&
+      isAuthenticated
+    ) {
+      loadEvents(false, true);
+    }
+    prevSyncStatusRef.current = syncStatus;
+  }, [syncStatus, isAuthenticated, loadEvents]);
 
   useFocusEffect(
     useCallback(() => {
@@ -153,7 +177,7 @@ export default function EventsScreen() {
           setShowOnboarding(true);
         }
       });
-    }, [])
+    }, [loadEvents])
   );
 
   const handleCreateEvent = () => {

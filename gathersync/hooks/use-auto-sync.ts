@@ -406,6 +406,7 @@ export function useAutoSync() {
     updateEvent,
     deleteEvent,
     pullFromCloud,
+    pushToCloud,
     pushAllToCloud,
     bidirectionalSync,
     queueSize: syncQueueRef.current.length,

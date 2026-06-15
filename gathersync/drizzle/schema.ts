@@ -56,11 +56,16 @@ export const events = mysqlTable("events", {
   id: varchar("id", { length: 64 }).primaryKey(),
   userId: int("userId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
-  eventType: mysqlEnum("eventType", ["flexible", "fixed"]).notNull(),
+  eventType: mysqlEnum("eventType", ["flexible", "fixed", "conference"]).notNull(),
   month: int("month").notNull(), // 1-12
   year: int("year").notNull(),
   fixedDate: varchar("fixedDate", { length: 10 }), // YYYY-MM-DD
   fixedTime: varchar("fixedTime", { length: 5 }), // HH:MM
+  startDate: varchar("startDate", { length: 10 }), // Conference start YYYY-MM-DD
+  endDate: varchar("endDate", { length: 10 }), // Conference end YYYY-MM-DD
+  allDay: boolean("allDay").default(false),
+  venueCapacity: int("venueCapacity"),
+  selectionDeadline: varchar("selectionDeadline", { length: 10 }), // YYYY-MM-DD
   reminderDaysBefore: int("reminderDaysBefore"),
   reminderScheduled: boolean("reminderScheduled").default(false),
   archived: boolean("archived").default(false).notNull(),
@@ -107,6 +112,23 @@ export const participants = mysqlTable("participants", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const eventSessions = mysqlTable("eventSessions", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  eventId: varchar("eventId", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  startTime: varchar("startTime", { length: 5 }).notNull(), // HH:MM
+  endTime: varchar("endTime", { length: 5 }).notNull(), // HH:MM
+  room: varchar("room", { length: 255 }),
+  speaker: varchar("speaker", { length: 255 }),
+  description: text("description"),
+  capacity: int("capacity"),
+  sortOrder: int("sortOrder").default(0),
+  deletedAt: timestamp("deletedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const eventSnapshots = mysqlTable("eventSnapshots", {
   id: varchar("id", { length: 64 }).primaryKey(),
   userId: int("userId").notNull(),
@@ -144,6 +166,7 @@ export const influencerProspects = mysqlTable("influencerProspects", {
 });
 
 export type Event = typeof events.$inferSelect;
+export type EventSession = typeof eventSessions.$inferSelect;
 export type Participant = typeof participants.$inferSelect;
 export type EventSnapshot = typeof eventSnapshots.$inferSelect;
 export type GroupTemplate = typeof groupTemplates.$inferSelect;
@@ -151,6 +174,7 @@ export type PushToken = typeof pushTokens.$inferSelect;
 export type InfluencerProspectRow = typeof influencerProspects.$inferSelect;
 
 export type InsertEvent = typeof events.$inferInsert;
+export type InsertEventSession = typeof eventSessions.$inferInsert;
 export type InsertParticipant = typeof participants.$inferInsert;
 export type InsertEventSnapshot = typeof eventSnapshots.$inferInsert;
 export type InsertGroupTemplate = typeof groupTemplates.$inferInsert;

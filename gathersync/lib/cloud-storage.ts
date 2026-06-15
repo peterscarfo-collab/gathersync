@@ -1,4 +1,4 @@
-import type { Event, Participant, EventSnapshot, GroupTemplate, InfluencerProspect } from '@/types/models';
+import type { Event, Participant, EventSnapshot, GroupTemplate, InfluencerProspect, ConferenceSession } from '@/types/models';
 import { QueryClient } from '@tanstack/react-query';
 import { createTRPCClient, httpBatchLink } from '@trpc/client';
 import superjson from 'superjson';
@@ -78,7 +78,10 @@ export const eventsCloudStorage = {
       const eventsWithParticipants = await withTimeout(
         Promise.all(
           events.map(async (event) => {
-            const participants = await client.participants.list.query({ eventId: event.id });
+            const [participants, sessions] = await Promise.all([
+              client.participants.list.query({ eventId: event.id }),
+              client.sessions.list.query({ eventId: event.id }).catch(() => []),
+            ]);
             
             return {
               id: event.id,
@@ -90,6 +93,11 @@ export const eventsCloudStorage = {
               year: event.year,
               fixedDate: event.fixedDate,
               fixedTime: event.fixedTime,
+              startDate: event.startDate ?? undefined,
+              endDate: event.endDate ?? undefined,
+              allDay: event.allDay ?? undefined,
+              venueCapacity: event.venueCapacity ?? undefined,
+              selectionDeadline: event.selectionDeadline ?? undefined,
               hideAttendeeNames: event.hideAttendeeNames,
               showAttendeeNames: event.showAttendeeNames,
               showAttendeeEmails: event.showAttendeeEmails,
@@ -111,6 +119,21 @@ export const eventsCloudStorage = {
                 digitalTwinUrl: p.digitalTwinUrl,
                 rsvpStatus: p.rsvpStatus,
                 deletedAt: p.deletedAt?.toISOString(),
+              })),
+              sessions: sessions.map((s) => ({
+                id: s.id,
+                eventId: s.eventId,
+                title: s.title,
+                date: s.date,
+                startTime: s.startTime,
+                endTime: s.endTime,
+                room: s.room ?? undefined,
+                speaker: s.speaker ?? undefined,
+                description: s.description ?? undefined,
+                capacity: s.capacity ?? undefined,
+                sortOrder: s.sortOrder ?? undefined,
+                createdAt: s.createdAt?.toISOString?.() ?? undefined,
+                updatedAt: s.updatedAt?.toISOString?.() ?? undefined,
               })),
               archived: event.archived,
               finalized: event.finalized,
@@ -189,6 +212,11 @@ export const eventsCloudStorage = {
       if (event.year !== null && event.year !== undefined) eventPayload.year = event.year;
       if (event.fixedDate !== null && event.fixedDate !== undefined) eventPayload.fixedDate = event.fixedDate;
       if (event.fixedTime !== null && event.fixedTime !== undefined) eventPayload.fixedTime = event.fixedTime;
+      if (event.startDate !== null && event.startDate !== undefined) eventPayload.startDate = event.startDate;
+      if (event.endDate !== null && event.endDate !== undefined) eventPayload.endDate = event.endDate;
+      if (event.allDay !== null && event.allDay !== undefined) eventPayload.allDay = event.allDay;
+      if (event.venueCapacity !== null && event.venueCapacity !== undefined) eventPayload.venueCapacity = event.venueCapacity;
+      if (event.selectionDeadline !== null && event.selectionDeadline !== undefined) eventPayload.selectionDeadline = event.selectionDeadline;
       if (event.reminderDaysBefore !== null && event.reminderDaysBefore !== undefined) eventPayload.reminderDaysBefore = event.reminderDaysBefore;
       if (event.reminderScheduled !== null && event.reminderScheduled !== undefined) eventPayload.reminderScheduled = event.reminderScheduled;
       if (event.archived !== null && event.archived !== undefined) eventPayload.archived = event.archived;
@@ -251,6 +279,17 @@ export const eventsCloudStorage = {
         );
         console.log(`[CloudStorage] All participants uploaded successfully`);
       }
+
+      if (event.sessions && event.sessions.length > 0) {
+        const activeSessions = event.sessions.filter((s) => !s.deletedAt);
+        if (activeSessions.length > 0) {
+          await withTimeout(
+            Promise.all(activeSessions.map((s) => sessionsCloudStorage.create(s))),
+            30000,
+            `Upload ${activeSessions.length} sessions`,
+          );
+        }
+      }
     } catch (error) {
       console.error('[CloudStorage] Failed to create event:', event.name);
       console.error('[CloudStorage] Error details:', error);
@@ -275,6 +314,11 @@ export const eventsCloudStorage = {
       if (updates.year !== undefined && updates.year !== null) eventUpdatePayload.year = updates.year;
       if (updates.fixedDate !== undefined && updates.fixedDate !== null) eventUpdatePayload.fixedDate = updates.fixedDate;
       if (updates.fixedTime !== undefined && updates.fixedTime !== null) eventUpdatePayload.fixedTime = updates.fixedTime;
+      if (updates.startDate !== undefined && updates.startDate !== null) eventUpdatePayload.startDate = updates.startDate;
+      if (updates.endDate !== undefined && updates.endDate !== null) eventUpdatePayload.endDate = updates.endDate;
+      if (updates.allDay !== undefined && updates.allDay !== null) eventUpdatePayload.allDay = updates.allDay;
+      if (updates.venueCapacity !== undefined && updates.venueCapacity !== null) eventUpdatePayload.venueCapacity = updates.venueCapacity;
+      if (updates.selectionDeadline !== undefined && updates.selectionDeadline !== null) eventUpdatePayload.selectionDeadline = updates.selectionDeadline;
       if (updates.reminderDaysBefore !== undefined && updates.reminderDaysBefore !== null) eventUpdatePayload.reminderDaysBefore = updates.reminderDaysBefore;
       if (updates.reminderScheduled !== undefined && updates.reminderScheduled !== null) eventUpdatePayload.reminderScheduled = updates.reminderScheduled;
       if (updates.archived !== undefined && updates.archived !== null) eventUpdatePayload.archived = updates.archived;
@@ -371,6 +415,44 @@ export const eventsCloudStorage = {
           `Update/create ${updates.participants.length} participants`
         );
         console.log(`[CloudStorage] Participants updated successfully`);
+      }
+
+      if (updates.sessions) {
+        const existingSessions = await withTimeout(
+          client.sessions.list.query({ eventId: id }),
+          10000,
+          'Fetch existing sessions',
+        ).catch(() => []);
+        const existingIds = new Set(existingSessions.map((s) => s.id));
+        const activeSessions = updates.sessions.filter((s) => !s.deletedAt);
+        const activeIds = new Set(activeSessions.map((s) => s.id));
+
+        const toDelete = existingSessions.filter((s) => !activeIds.has(s.id));
+        await Promise.all(
+          toDelete.map((s) => client.sessions.delete.mutate({ id: s.id, eventId: id })),
+        );
+
+        await Promise.all(
+          activeSessions.map((session) => {
+            const payload = {
+              id: session.id,
+              eventId: id,
+              title: session.title,
+              date: session.date,
+              startTime: session.startTime,
+              endTime: session.endTime,
+              room: session.room,
+              speaker: session.speaker,
+              description: session.description,
+              capacity: session.capacity,
+              sortOrder: session.sortOrder,
+            };
+            if (existingIds.has(session.id)) {
+              return client.sessions.update.mutate(payload);
+            }
+            return client.sessions.create.mutate(payload);
+          }),
+        );
       }
     } catch (error) {
       console.error('Failed to update event:', error);
@@ -474,6 +556,47 @@ export const templatesCloudStorage = {
       console.error('Failed to delete template:', error);
       throw error;
     }
+  },
+};
+
+export const sessionsCloudStorage = {
+  async create(session: ConferenceSession): Promise<void> {
+    const client = getTRPCClient();
+    await client.sessions.create.mutate({
+      id: session.id,
+      eventId: session.eventId,
+      title: session.title,
+      date: session.date,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      room: session.room,
+      speaker: session.speaker,
+      description: session.description,
+      capacity: session.capacity,
+      sortOrder: session.sortOrder,
+    });
+  },
+
+  async update(session: ConferenceSession): Promise<void> {
+    const client = getTRPCClient();
+    await client.sessions.update.mutate({
+      id: session.id,
+      eventId: session.eventId,
+      title: session.title,
+      date: session.date,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      room: session.room,
+      speaker: session.speaker,
+      description: session.description,
+      capacity: session.capacity,
+      sortOrder: session.sortOrder,
+    });
+  },
+
+  async delete(sessionId: string, eventId: string): Promise<void> {
+    const client = getTRPCClient();
+    await client.sessions.delete.mutate({ id: sessionId, eventId });
   },
 };
 

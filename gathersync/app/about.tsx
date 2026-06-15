@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { getVersionLabel } from '@/constants/version';
 
 export default function AboutScreen() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function AboutScreen() {
             GatherSync
           </ThemedText>
           <ThemedText style={[styles.version, { color: textSecondaryColor }]}>
-            Version 1.0.0
+            Version {getVersionLabel()}
           </ThemedText>
         </View>
 

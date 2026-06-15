@@ -13,10 +13,11 @@ import {
   handleBizomediaCrmHealth,
   handleBizomediaInviteWebhook,
 } from "../webhooks/bizomedia-invite";
-import { ensureInfluencerProspectsTable } from "../db";
+import { ensureInfluencerProspectsTable, ensureConferenceSchema } from "../db";
 
 async function startServer() {
   await ensureInfluencerProspectsTable();
+  await ensureConferenceSchema();
   // Start the reminder cron job
   startReminderCron();
 

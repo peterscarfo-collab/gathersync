@@ -5,6 +5,7 @@ import { ThemedView } from './themed-view';
 import { IconSymbol } from './ui/icon-symbol';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { getMonthName, getBestDays } from '@/lib/calendar-utils';
+import { formatConferenceDateRange, activeSessionCount } from '@/lib/conference-utils';
 import { hasRecordedAttendance, getRsvpCounts } from '@/lib/participant-status';
 import type { Event } from '@/types/models';
 
@@ -51,7 +52,16 @@ export function EventCard({ event, onPress }: EventCardProps) {
       </View>
 
       <View style={styles.details}>
-        {event.eventType === 'fixed' && event.fixedDate ? (
+        {event.eventType === 'conference' && event.startDate ? (
+          <>
+            <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
+              {formatConferenceDateRange(event.startDate, event.endDate)}
+            </ThemedText>
+            <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
+              • All day · {activeSessionCount(event)} sessions
+            </ThemedText>
+          </>
+        ) : event.eventType === 'fixed' && event.fixedDate ? (
           <>
             <ThemedText style={[styles.detailText, { color: textSecondaryColor }]}>
               {new Date(event.fixedDate + 'T12:00:00').toLocaleDateString('en-US', {
