@@ -6,6 +6,19 @@
 import { db } from '@/lib/db';
 import type { Event, Participant } from '@/types/models';
 
+function normalizeEventId(eventId: unknown): string {
+  if (typeof eventId !== 'string') {
+    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
+  }
+
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    throw new Error('Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
 function normalizeDeletedAt(value: unknown): string | undefined {
   if (!value) return undefined;
   if (value instanceof Date) return value.toISOString();
@@ -228,5 +241,26 @@ export function useEvent(eventId: string | null) {
     event,
     isLoading,
     error,
+  };
+}
+
+export async function deleteEvent(eventId: string): Promise<void> {
+  const normalizedEventId = normalizeEventId(eventId);
+
+  // InstantDB reliably resolves deletes when transactions are submitted as a batch.
+  await db.transact([db.tx.events[normalizedEventId].delete()]);
+}
+
+export function useInstantEventMutations() {
+  const { user } = db.useAuth();
+
+  return {
+    deleteEvent: async (eventId: string): Promise<void> => {
+      if (!user?.id) {
+        throw new Error('Cannot delete event without an authenticated InstantDB user');
+      }
+
+      await deleteEvent(eventId);
+    },
   };
 }
