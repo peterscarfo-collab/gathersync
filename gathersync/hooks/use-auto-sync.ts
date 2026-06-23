@@ -39,6 +39,7 @@ export function useAutoSync() {
   const [isOnline, setIsOnline] = useState(true);
   const syncQueueRef = useRef<SyncQueue[]>([]);
   const isSyncingRef = useRef(false);
+  const pendingDeleteIdsRef = useRef<Set<string>>(new Set());
   const lastSyncRef = useRef<number>(0);
 
   // Monitor network status
@@ -87,6 +88,12 @@ export function useAutoSync() {
   const pullFromCloud = useCallback(async () => {
     if (!isAuthenticated || !isOnline || isSyncingRef.current) return;
 
+    const hasQueuedDeletes = syncQueueRef.current.some((item) => item.operation === 'delete');
+    if (pendingDeleteIdsRef.current.size > 0 || hasQueuedDeletes) {
+      console.log('[AutoSync] Skipping pull; event delete is still pending cloud sync');
+      return;
+    }
+
     try {
       isSyncingRef.current = true;
       setSyncStatus('syncing');
@@ -110,6 +117,14 @@ export function useAutoSync() {
           // Event exists locally, compare timestamps
           const cloudTime = new Date(cloudEvent.updatedAt).getTime();
           const localTime = new Date(localEvent.updatedAt).getTime();
+          const localDeletedTime = localEvent.deletedAt
+            ? Math.max(new Date(localEvent.deletedAt).getTime(), localTime)
+            : null;
+
+          if (localDeletedTime !== null && localDeletedTime >= cloudTime) {
+            console.log('[AutoSync] Keeping local deletion tombstone:', localEvent.id, localEvent.name);
+            continue;
+          }
           
           if (cloudTime > localTime) {
             // Cloud version is newer, update local
@@ -146,6 +161,9 @@ export function useAutoSync() {
   const pushToCloud = useCallback(async (operation: 'create' | 'update' | 'delete', eventId: string, data?: Event): Promise<boolean> => {
     if (!isAuthenticated) {
       console.log('[AutoSync] Not authenticated, skipping push');
+      if (operation === 'delete') {
+        pendingDeleteIdsRef.current.delete(eventId);
+      }
       setSyncStatus('error');
       return false;
     }
@@ -186,6 +204,7 @@ export function useAutoSync() {
 
         case 'delete':
           await eventsCloudStorage.delete(eventId);
+          pendingDeleteIdsRef.current.delete(eventId);
           console.log('[AutoSync] Deleted event from cloud:', eventId);
           break;
       }
@@ -269,6 +288,7 @@ export function useAutoSync() {
 
   const deleteEvent = useCallback(async (eventId: string) => {
     const normalizedEventId = normalizeEventId(eventId);
+    pendingDeleteIdsRef.current.add(normalizedEventId);
 
     // Optimistic update: delete locally first
     await eventsLocalStorage.delete(normalizedEventId);
@@ -303,6 +323,7 @@ export function useAutoSync() {
       for (const deletedEvent of locallyDeletedEvents) {
         const cloudEvent = cloudEventMap.get(deletedEvent.id);
         if (!cloudEvent) {
+          pendingDeleteIdsRef.current.delete(deletedEvent.id);
           continue;
         }
 
@@ -316,6 +337,7 @@ export function useAutoSync() {
             console.log('[AutoSync] Deleting tombstoned event from cloud:', deletedEvent.id, deletedEvent.name);
             await eventsCloudStorage.delete(deletedEvent.id);
             cloudEventMap.delete(deletedEvent.id);
+            pendingDeleteIdsRef.current.delete(deletedEvent.id);
             successCount++;
           }
         } catch (eventError) {

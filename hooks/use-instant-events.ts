@@ -6,6 +6,19 @@
 import { db } from '@/lib/db';
 import type { Event, Participant } from '@/types/models';
 
+function normalizeEventId(eventId: unknown): string {
+  if (typeof eventId !== 'string') {
+    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
+  }
+
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    throw new Error('Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
 function normalizeDeletedAt(value: unknown): string | undefined {
   if (!value) return undefined;
   if (value instanceof Date) return value.toISOString();
@@ -151,6 +164,29 @@ export function useEvents() {
     events,
     isLoading: shouldQuery ? isLoading : false,
     error: shouldQuery ? error : null,
+  };
+}
+
+export async function deleteEvent(eventId: unknown): Promise<void> {
+  const normalizedEventId = normalizeEventId(eventId);
+  const tx = (db as any).tx?.events?.[normalizedEventId]?.delete?.();
+
+  if (!tx) {
+    throw new Error('InstantDB delete transaction could not be created for events');
+  }
+
+  await db.transact([tx]);
+}
+
+export function useDeleteEvent() {
+  const { user } = db.useAuth();
+
+  return async (eventId: unknown): Promise<void> => {
+    if (!user?.id) {
+      throw new Error('Cannot delete event without an authenticated InstantDB user');
+    }
+
+    await deleteEvent(eventId);
   };
 }
 
