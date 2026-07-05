@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
+import { normalizeEventId, shouldSkipCloudEventForDeleteGuard } from '@/lib/event-delete-guards';
 import { useAuth } from './use-auth';
 import type { Event } from '@/types/models';
 
@@ -16,19 +17,6 @@ interface SyncQueue {
   retries: number;
 }
 
-function normalizeEventId(eventId: unknown): string {
-  if (typeof eventId !== 'string') {
-    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
-  }
-
-  const trimmed = eventId.trim();
-  if (!trimmed) {
-    throw new Error('Expected eventId to be a non-empty string');
-  }
-
-  return trimmed;
-}
-
 /**
  * Automatic background sync hook
  * Syncs data changes immediately to cloud without user intervention
@@ -40,6 +28,7 @@ export function useAutoSync() {
   const syncQueueRef = useRef<SyncQueue[]>([]);
   const isSyncingRef = useRef(false);
   const lastSyncRef = useRef<number>(0);
+  const pendingDeleteEventIdsRef = useRef<Set<string>>(new Set());
 
   // Monitor network status
   useEffect(() => {
@@ -101,6 +90,15 @@ export function useAutoSync() {
       // Merge events using last-write-wins based on updatedAt timestamp
       for (const cloudEvent of cloudEvents) {
         const localEvent = localMap.get(cloudEvent.id);
+
+        if (shouldSkipCloudEventForDeleteGuard({
+          eventId: cloudEvent.id,
+          localEvent,
+          pendingDeleteIds: pendingDeleteEventIdsRef.current,
+        })) {
+          console.log('[AutoSync] Skipping cloud event because local delete is pending/tombstoned:', cloudEvent.id, cloudEvent.name);
+          continue;
+        }
         
         if (!localEvent) {
           // New event from cloud, add it
@@ -186,6 +184,7 @@ export function useAutoSync() {
 
         case 'delete':
           await eventsCloudStorage.delete(eventId);
+          pendingDeleteEventIdsRef.current.delete(eventId);
           console.log('[AutoSync] Deleted event from cloud:', eventId);
           break;
       }
@@ -269,6 +268,7 @@ export function useAutoSync() {
 
   const deleteEvent = useCallback(async (eventId: string) => {
     const normalizedEventId = normalizeEventId(eventId);
+    pendingDeleteEventIdsRef.current.add(normalizedEventId);
 
     // Optimistic update: delete locally first
     await eventsLocalStorage.delete(normalizedEventId);

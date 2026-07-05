@@ -19,6 +19,79 @@ function normalizeDeletedAt(value: unknown): string | undefined {
   return undefined;
 }
 
+function normalizeEventId(eventId: unknown): string {
+  if (typeof eventId !== 'string') {
+    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
+  }
+
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    throw new Error('Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
+function normalizeAuthUserId(userId: unknown): string | null {
+  if (typeof userId !== 'string' && typeof userId !== 'number') {
+    return null;
+  }
+
+  const normalized = String(userId).trim();
+  return normalized ? normalized : null;
+}
+
+async function queryEventForDelete(eventId: string) {
+  const result = await db.queryOnce({
+    events: {
+      $: {
+        where: {
+          id: eventId,
+        },
+      },
+      creator: {},
+    },
+  });
+
+  if (result?.error) {
+    throw result.error;
+  }
+
+  return result?.data?.events?.[0] ?? result?.events?.[0] ?? null;
+}
+
+export async function deleteEvent(eventId: unknown, userId: unknown): Promise<void> {
+  const normalizedEventId = normalizeEventId(eventId);
+  const normalizedUserId = normalizeAuthUserId(userId);
+
+  if (!normalizedUserId) {
+    throw new Error('[deleteEvent] Cannot delete event without an authenticated InstantDB user');
+  }
+
+  console.log('[deleteEvent] Preflight delete check:', {
+    eventId: normalizedEventId,
+    userId: normalizedUserId,
+  });
+
+  const event = await queryEventForDelete(normalizedEventId);
+  if (!event) {
+    throw new Error(`[deleteEvent] Event ${normalizedEventId} was not found`);
+  }
+
+  if (event.creator?.id !== normalizedUserId) {
+    throw new Error(`[deleteEvent] Event ${normalizedEventId} is not owned by the current user`);
+  }
+
+  await db.transact([
+    db.tx.events[normalizedEventId].delete(),
+  ]);
+
+  const remainingEvent = await queryEventForDelete(normalizedEventId);
+  if (remainingEvent) {
+    throw new Error(`[deleteEvent] Event ${normalizedEventId} still exists after delete transaction`);
+  }
+}
+
 function dedupeEvents(events: Event[]): Event[] {
   if (events.length <= 1) return events;
 
@@ -65,6 +138,10 @@ export function useEvents() {
   // Get the current user from InstantDB auth
   const { user } = db.useAuth();
   const shouldQuery = Boolean(user?.id);
+
+  const deleteEventForCurrentUser = async (eventId: unknown) => {
+    await deleteEvent(eventId, user?.id);
+  };
   
   // Query events with participants in real-time
   // Only fetch events created by the current user (permission-filtered)
@@ -151,6 +228,7 @@ export function useEvents() {
     events,
     isLoading: shouldQuery ? isLoading : false,
     error: shouldQuery ? error : null,
+    deleteEvent: deleteEventForCurrentUser,
   };
 }
 
