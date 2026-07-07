@@ -9,7 +9,11 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '../lib/event-delete-guards';
+import {
+  normalizeEventId,
+  shouldSkipCloudEventForDeleteGuard,
+  shouldSkipCloudEventForPendingDelete,
+} from '../lib/event-delete-guards';
 import type { Event, Participant } from '@/types/models';
 
 describe('Deletion Tracking', () => {
@@ -120,6 +124,42 @@ describe('Deletion Tracking', () => {
 
       expect(shouldSkipCloudEventForPendingDelete('event-1', pendingDeleteIds)).toBe(true);
       expect(shouldSkipCloudEventForPendingDelete('event-2', pendingDeleteIds)).toBe(false);
+    });
+
+    it('should skip active cloud events when a local deletion tombstone exists', () => {
+      const localEvent: Event = {
+        ...mockEvent,
+        deletedAt: '2025-12-25T02:00:00.000Z',
+        updatedAt: '2025-12-25T02:00:00.000Z',
+      };
+
+      const shouldSkip = shouldSkipCloudEventForDeleteGuard({
+        eventId: 'event-1',
+        localEvent,
+      });
+
+      expect(shouldSkip).toBe(true);
+    });
+
+    it('should skip cloud events while a delete is pending', () => {
+      const pendingDeleteIds = new Set(['event-1']);
+
+      const shouldSkip = shouldSkipCloudEventForDeleteGuard({
+        eventId: 'event-1',
+        pendingDeleteIds,
+      });
+
+      expect(shouldSkip).toBe(true);
+    });
+
+    it('should accept cloud events when there is no local or pending deletion', () => {
+      const shouldSkip = shouldSkipCloudEventForDeleteGuard({
+        eventId: 'event-1',
+        localEvent: mockEvent,
+        pendingDeleteIds: new Set(),
+      });
+
+      expect(shouldSkip).toBe(false);
     });
 
     it('should include deletedAt field when syncing to cloud', () => {

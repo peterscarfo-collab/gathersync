@@ -3,7 +3,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { eventsLocalStorage } from '@/lib/local-storage';
 import { eventsCloudStorage } from '@/lib/cloud-storage';
-import { normalizeEventId, shouldSkipCloudEventForPendingDelete } from '@/lib/event-delete-guards';
+import { normalizeEventId, shouldSkipCloudEventForDeleteGuard } from '@/lib/event-delete-guards';
 import { useAuth } from './use-auth';
 import type { Event } from '@/types/models';
 
@@ -96,12 +96,16 @@ export function useAutoSync() {
       
       // Merge events using last-write-wins based on updatedAt timestamp
       for (const cloudEvent of cloudEvents) {
-        if (shouldSkipCloudEventForPendingDelete(cloudEvent.id, pendingDeleteIdsRef.current)) {
-          console.log('[AutoSync] Skipping cloud event with pending delete:', cloudEvent.id, cloudEvent.name);
+        const localEvent = localMap.get(cloudEvent.id);
+
+        if (shouldSkipCloudEventForDeleteGuard({
+          eventId: cloudEvent.id,
+          localEvent,
+          pendingDeleteIds: pendingDeleteIdsRef.current,
+        })) {
+          console.log('[AutoSync] Skipping cloud event because local delete is pending/tombstoned:', cloudEvent.id, cloudEvent.name);
           continue;
         }
-
-        const localEvent = localMap.get(cloudEvent.id);
         
         if (!localEvent) {
           // New event from cloud, add it
