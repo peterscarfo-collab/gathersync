@@ -6,6 +6,8 @@
 import { db } from '@/lib/db';
 import type { Event, Participant } from '@/types/models';
 
+const pendingDeleteEventIds = new Set<string>();
+
 function normalizeDeletedAt(value: unknown): string | undefined {
   if (!value) return undefined;
   if (value instanceof Date) return value.toISOString();
@@ -17,6 +19,54 @@ function normalizeDeletedAt(value: unknown): string | undefined {
     return Number.isNaN(Date.parse(trimmed)) ? undefined : trimmed;
   }
   return undefined;
+}
+
+function normalizeEventId(eventId: unknown): string {
+  if (typeof eventId !== 'string') {
+    throw new Error(`Expected eventId to be a string, received ${typeof eventId}`);
+  }
+
+  const trimmed = eventId.trim();
+  if (!trimmed) {
+    throw new Error('Expected eventId to be a non-empty string');
+  }
+
+  return trimmed;
+}
+
+async function queryInstantEventById(eventId: string): Promise<any | null | undefined> {
+  if (typeof db.queryOnce !== 'function') {
+    return undefined;
+  }
+
+  const result = await db.queryOnce({
+    events: {
+      $: {
+        where: {
+          id: eventId,
+        },
+      },
+      creator: {},
+    },
+  });
+
+  const events = result?.data?.events ?? result?.events ?? [];
+  return events[0] ?? null;
+}
+
+function assertCanDeleteEvent(event: any, eventId: string, currentUserId?: string) {
+  if (event === undefined || !currentUserId) {
+    return;
+  }
+
+  if (!event) {
+    throw new Error(`Event ${eventId} was not found or is not readable by the current user`);
+  }
+
+  const creatorId = event.creator?.id;
+  if (creatorId && creatorId !== currentUserId) {
+    throw new Error(`Current user is not allowed to delete event ${eventId}`);
+  }
 }
 
 function dedupeEvents(events: Event[]): Event[] {
@@ -99,7 +149,11 @@ export function useEvents() {
     console.log('[useEvents] Got', data.events.length, 'events for user', user.id);
 
     const mapped = data.events
-      .filter((event: any) => event.creator?.id === user.id)
+      .filter((event: any) => (
+        event.creator?.id === user.id &&
+        !pendingDeleteEventIds.has(event.id) &&
+        !normalizeDeletedAt(event.deletedAt)
+      ))
       .map((event: any) => ({
       id: event.id,
       name: event.name,
@@ -179,6 +233,7 @@ export function useEvent(eventId: string | null) {
     if (!user?.id || !data?.events || data.events.length === 0) return null;
 
     const e = data.events[0];
+    if (pendingDeleteEventIds.has(e.id) || normalizeDeletedAt(e.deletedAt)) return null;
     if (e.creator?.id !== user.id) return null;
     return {
       id: e.id,
@@ -228,5 +283,44 @@ export function useEvent(eventId: string | null) {
     event,
     isLoading,
     error,
+  };
+}
+
+interface DeleteEventOptions {
+  currentUserId?: string;
+}
+
+export async function deleteEvent(eventId: string, options: DeleteEventOptions = {}): Promise<void> {
+  const normalizedEventId = normalizeEventId(eventId);
+  pendingDeleteEventIds.add(normalizedEventId);
+
+  try {
+    const event = await queryInstantEventById(normalizedEventId);
+    assertCanDeleteEvent(event, normalizedEventId, options.currentUserId);
+
+    // InstantDB delete transactions reliably resolve when submitted as a batch.
+    await db.transact([db.tx.events[normalizedEventId].delete()]);
+
+    const deletedEvent = await queryInstantEventById(normalizedEventId);
+    if (deletedEvent) {
+      throw new Error(`Event ${normalizedEventId} still exists after delete transaction`);
+    }
+  } catch (error) {
+    pendingDeleteEventIds.delete(normalizedEventId);
+    throw error;
+  }
+}
+
+export function useInstantEventMutations() {
+  const { user } = db.useAuth();
+
+  return {
+    deleteEvent: async (eventId: string): Promise<void> => {
+      if (!user?.id) {
+        throw new Error('Cannot delete event without an authenticated InstantDB user');
+      }
+
+      await deleteEvent(eventId, { currentUserId: user.id });
+    },
   };
 }
