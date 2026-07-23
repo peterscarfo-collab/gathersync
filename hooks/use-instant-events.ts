@@ -298,7 +298,7 @@ export async function deleteEvent(eventId: string, options: DeleteEventOptions =
     const event = await queryInstantEventById(normalizedEventId);
     assertCanDeleteEvent(event, normalizedEventId, options.currentUserId);
 
-    // InstantDB delete transactions reliably resolve when submitted as a batch.
+    // InstantDB accepts either one chunk or a batch; use the batch form consistently.
     await db.transact([db.tx.events[normalizedEventId].delete()]);
 
     const deletedEvent = await queryInstantEventById(normalizedEventId);
