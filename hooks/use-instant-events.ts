@@ -82,35 +82,47 @@ function getEventDeleteTransaction(eventId: string) {
   return (db as any).tx.events[eventId].delete();
 }
 
+async function queryInstantEventById(eventId: string): Promise<any | null | undefined> {
+  if (typeof (db as any).queryOnce !== 'function') {
+    // Older InstantDB clients may not expose queryOnce; skip preflight/verify in that case.
+    return undefined;
+  }
+
+  const result = await withTimeout(
+    (db as any).queryOnce({
+      events: {
+        $: {
+          where: {
+            id: eventId,
+          },
+        },
+        creator: {},
+      },
+    }),
+    10000,
+    `Fetch event ${eventId}`
+  );
+
+  const events = result?.data?.events ?? result?.events ?? [];
+  return events[0] ?? null;
+}
+
 async function deleteInstantEvent(eventId: unknown, expectedUserId?: string): Promise<string> {
   const normalizedEventId = normalizeEventId(eventId);
   addPendingDeleteId(normalizedEventId);
 
   try {
-    const { data: existingData } = await withTimeout(
-      db.queryOnce({
-        events: {
-          $: {
-            where: {
-              id: normalizedEventId,
-            },
-          },
-          creator: {},
-        },
-      }),
-      10000,
-      `Fetch event ${normalizedEventId} before delete`
-    );
+    const event = await queryInstantEventById(normalizedEventId);
 
-    const event = existingData?.events?.[0];
-    if (!event) {
+    // null means queryOnce ran and found nothing; undefined means preflight unavailable.
+    if (event === null) {
       throw new Error(
         `[useEvents] Event ${normalizedEventId} was not readable before delete. ` +
           'Confirm the current user owns the event and InstantDB permissions allow reads.'
       );
     }
 
-    if (expectedUserId && event.creator?.id !== expectedUserId) {
+    if (expectedUserId && event?.creator?.id && event.creator.id !== expectedUserId) {
       throw new Error(
         `[useEvents] User ${expectedUserId} cannot delete event ${normalizedEventId} owned by ${event.creator?.id || 'unknown'}`
       );
@@ -125,21 +137,8 @@ async function deleteInstantEvent(eventId: unknown, expectedUserId?: string): Pr
       `Delete event ${normalizedEventId}`
     );
 
-    const { data: verifyData } = await withTimeout(
-      db.queryOnce({
-        events: {
-          $: {
-            where: {
-              id: normalizedEventId,
-            },
-          },
-        },
-      }),
-      10000,
-      `Verify event ${normalizedEventId} deletion`
-    );
-
-    if (verifyData?.events?.some((event: any) => event.id === normalizedEventId)) {
+    const verifiedEvent = await queryInstantEventById(normalizedEventId);
+    if (verifiedEvent) {
       throw new Error(
         `[useEvents] Delete transaction completed, but event ${normalizedEventId} is still readable. ` +
           'Check InstantDB delete permissions for the events collection.'
